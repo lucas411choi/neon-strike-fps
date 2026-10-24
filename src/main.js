@@ -27,7 +27,7 @@ const platformName = { pc:'PC', mobile:'MOBILE' };
 const state = {
   device: matchMedia('(pointer:coarse)').matches ? 'mobile' : 'pc',
   rule:'crossplay', difficulty:'normal', name:'PLAYER', mode:'menu', phase:'menu',
-  round:0, selfScore:0, enemyScore:0, money:800, hp:100, armor:0,
+  round:0, selfScore:0, enemyScore:0, money:1200, hp:100, armor:0,
   currentWeapon:'pistol', owned:new Set(['pistol']), ammo:{},
   pos:new THREE.Vector3(0,0,15), velocityY:0, yaw:0, pitch:0,
   keys:new Set(), touchMove:{x:0,y:0}, canJump:true,
@@ -215,7 +215,7 @@ function backToMenu(){
   if(document.pointerLockElement)document.exitPointerLock();
   if(state.socket){state.socket.emit('leaveRoom');state.socket.disconnect();state.socket=null;state.socketReady=false;}
   clearRemotePlayers();clearBots();menu.classList.remove('hidden');hud.classList.add('hidden');buyMenu.classList.add('hidden');pauseMenu.classList.add('hidden');endScreen.classList.add('hidden');touchControls.classList.add('hidden');
-  $('room-code').value='';setMenuStatus('AI 라운드전에서 돈을 모으고 다음 라운드 무기를 구매하세요.');
+  $('room-code').value='';setMenuStatus('AI와 1대1 라운드전 · 선착순 6승 · 승리 크레딧으로 다음 장비를 구매하세요.');
 }
 function setDevice(device){state.device=device;document.querySelectorAll('[data-device]').forEach(b=>b.classList.toggle('selected',b.dataset.device===device));touchControls.classList.toggle('hidden',device!=='mobile');renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,device==='mobile'?1.25:1.75));renderer.setSize(window.innerWidth,window.innerHeight);}
 function setRule(rule){state.rule=rule;document.querySelectorAll('[data-rule]').forEach(b=>b.classList.toggle('selected',b.dataset.rule===rule));}
@@ -232,13 +232,14 @@ function setWeapon(id,notify=false){
 function updateHUD(){
   $('health-value').textContent=Math.max(0,Math.ceil(state.hp));$('health-fill').style.width=`${Math.max(0,state.hp)}%`;$('armor-value').textContent=Math.max(0,Math.ceil(state.armor));
   $('money-value').textContent=state.money.toLocaleString('en-US');$('buy-money').textContent=state.money.toLocaleString('en-US');
+  const shopAvailable=state.mode!=='menu'&&state.phase==='buy';$('open-buy').classList.toggle('hidden',!shopAvailable);$('touch-buy').classList.toggle('hidden',!shopAvailable);
   const w=currentWeapon(),a=state.ammo[w.id]||{mag:w.mag,reserve:w.reserve};
   $('weapon-class').textContent=w.type;$('weapon-name').textContent=w.name;$('weapon-index').textContent=`${WEAPONS.findIndex(x=>x.id===w.id)+1} / ${WEAPONS.length}`;
   $('weapon-stat').textContent=`CONTROL / ${w.control.toFixed(1)}`;$('ammo-current').textContent=a.mag;$('ammo-reserve').textContent=a.reserve;
   const bars=$('weapon-stat-bars');bars.querySelectorAll('i').forEach((i,index)=>i.classList.toggle('on',index<Math.max(1,Math.round(w.control/2))));
   $('self-score').textContent=state.selfScore;$('enemy-score').textContent=state.enemyScore;$('round-label').textContent=`ROUND ${String(Math.max(1,state.round)).padStart(2,'0')}`;
   $('net-label').textContent=state.mode==='online'?(state.socketReady?'ONLINE / ROOM '+state.roomCode:'CONNECTING...'):'LOCAL AI MATCH';$('net-dot').classList.toggle('offline',state.mode==='online'&&!state.socketReady);
-  $('objective-label').textContent=state.mode==='online'?'ELIMINATE OPPONENT':'ELIMINATE HOSTILES';
+  $('objective-label').textContent='ELIMINATE OPPONENT';
   renderBuyList();
 }
 
@@ -281,48 +282,55 @@ function buyArmor(){
 function openBuy(){if(state.phase!=='buy'||state.paused)return;buyMenu.classList.remove('hidden');updateHUD();}
 function closeBuy(){buyMenu.classList.add('hidden');}
 function startLocalRound(){
-  state.round++;state.phase='buy';state.hp=100;state.armor=0;state.velocityY=0;state.pos.set(0,0,19);state.yaw=0;state.pitch=0;state.phaseEnd=Date.now()+12000;state.roundLimit=Date.now()+102000;
+  state.round++;state.phase='buy';state.hp=100;state.armor=0;state.velocityY=0;state.pos.set(0,0,27);state.yaw=0;state.pitch=0;state.phaseEnd=Date.now()+12000;state.roundLimit=state.phaseEnd+90000;
   state.buyPrimaryThisRound=false;state.armorPurchased=false;state.reloading=false;state.resultShown=false;state.matchOver=false;
   makeAmmoFor(state.currentWeapon,true);state.botFireTimers=[];clearBots();setModeUI();$('phase-label').textContent='BUY PHASE';$('buy-countdown').textContent='12초';$('buy-feedback').textContent='라운드 시작 전 장비를 구매하세요.';
   updateHUD();openBuy();showToast(`ROUND ${state.round} — 구매 단계`,1800);
 }
 function startAIMatch(){
   initAudio();if(state.socket){state.socket.disconnect();state.socket=null;state.socketReady=false;}clearRemotePlayers();
-  state.mode='ai';state.name=($('player-name').value.trim()||'PLAYER').slice(0,16);state.money=800;state.hp=100;state.armor=0;state.selfScore=0;state.enemyScore=0;state.round=0;state.currentWeapon='pistol';state.owned=new Set(['pistol']);state.ammo={};for(const w of WEAPONS)state.ammo[w.id]={mag:w.mag,reserve:w.reserve};buildGun('pistol');state.pos.set(0,0,19);state.yaw=0;state.pitch=0;state.buyPrimaryThisRound=false;state.matchOver=false;
+  state.mode='ai';state.name=($('player-name').value.trim()||'PLAYER').slice(0,16);state.money=1200;state.hp=100;state.armor=0;state.selfScore=0;state.enemyScore=0;state.round=0;state.currentWeapon='pistol';state.owned=new Set(['pistol']);state.ammo={};for(const w of WEAPONS)state.ammo[w.id]={mag:w.mag,reserve:w.reserve};buildGun('pistol');state.pos.set(0,0,27);state.yaw=0;state.pitch=0;state.buyPrimaryThisRound=false;state.matchOver=false;
   startLocalRound();
 }
 function spawnBots(){
-  clearBots();const count=3;
-  for(let i=0;i<count;i++){
-    const angle=(i/count)*Math.PI*2+Math.PI/5;const dist=19+(i%2)*4;const x=Math.cos(angle)*dist,z=Math.sin(angle)*dist;
-    const root=makeCharacter({color:[0xff607b,0xf58e66,0xd16aff][i],accent:0x391d33,name:`BOT-${i+1}`});root.position.set(x,0,z);scene.add(root);
-    const id=`bot-${i}`;registerTarget(root,id);
-    state.botList.push({id,root,hp:100,alive:true,fireAt:Date.now()+1000+Math.random()*1000,movePhase:Math.random()*8,name:`BOT-${i+1}`,weapon:['smg','rifle','dmr'][i]});
-  }
+  clearBots();
+  // A single rival spawns at the far end, making this a true 1v1 round.
+  const id='bot-0';
+  const root=makeCharacter({color:0xff607b,accent:0x391d33,name:'RIVAL-01'});
+  root.position.set(0,0,-27);scene.add(root);registerTarget(root,id);
+  state.botList.push({id,root,hp:100,alive:true,fireAt:Date.now()+1300+Math.random()*500,movePhase:Math.random()*8,name:'RIVAL-01',weapon:'rifle'});
 }
 function clearBots(){for(const b of state.botList){unregisterTarget(b.id);disposeGroup(b.root);}state.botList=[];}
 function beginLocalLive(){
   if(state.phase!=='buy')return;
-  state.phase='live';state.phaseEnd=Date.now()+90000;buyMenu.classList.add('hidden');$('phase-label').textContent='LIVE';$('objective-label').textContent='ELIMINATE HOSTILES';spawnBots();showToast('라운드 시작! 적 3명을 모두 처치하세요.',1800);updateHUD();
+  state.phase='live';state.phaseEnd=Date.now()+90000;state.roundLimit=state.phaseEnd;buyMenu.classList.add('hidden');$('phase-label').textContent='LIVE';$('objective-label').textContent='ELIMINATE OPPONENT';spawnBots();showToast('라운드 시작! 상대를 처치하세요. 선착순 6승!',1800);updateHUD();
 }
 function endLocalRound(win,reason=''){
   if(state.mode!=='ai'||state.phase==='ended'||state.phase==='matchover')return;
-  state.phase='ended';state.resultShown=true;const reward=win?3000:1900;state.money+=reward;
+  state.phase='ended';state.resultShown=true;const reward=win?1700:1000;state.money+=reward;
   if(win)state.selfScore++;else state.enemyScore++;
-  state.matchOver=state.selfScore>=5||state.enemyScore>=5;
+  state.matchOver=state.selfScore>=6||state.enemyScore>=6;
   $('result-kicker').textContent=state.matchOver?'MATCH RESULT':'ROUND RESULT';
   $('result-title').innerHTML=state.matchOver?(win?'MATCH<br/><span>VICTORY.</span>':'MATCH<br/><span>DEFEAT.</span>'):(win?'ROUND<br/><span>WON.</span>':'ROUND<br/><span>LOST.</span>');
-  $('result-copy').textContent=reason|| (win?'적 팀을 전멸시켰습니다.':'다음 라운드에는 장비와 엄폐를 활용하세요.');$('result-reward').textContent=`+${reward.toLocaleString()} CR`;
+  $('result-copy').textContent=reason|| (win?'상대 플레이어를 처치했습니다.':'다음 라운드에는 장비와 엄폐를 활용하세요.');$('result-reward').textContent=`+${reward.toLocaleString()} CR`;
   $('next-round').textContent=state.matchOver?'다시 도전':'다음 라운드';$('next-round').classList.remove('hidden');endScreen.classList.remove('hidden');buyMenu.classList.add('hidden');soundKill();updateHUD();
 }
 function nextLocalRound(){
-  endScreen.classList.add('hidden');if(state.matchOver){state.selfScore=0;state.enemyScore=0;state.money=800;state.currentWeapon='pistol';state.owned=new Set(['pistol']);for(const w of WEAPONS)state.ammo[w.id]={mag:w.mag,reserve:w.reserve};state.round=0;}
+  endScreen.classList.add('hidden');if(state.matchOver){state.selfScore=0;state.enemyScore=0;state.money=1200;state.currentWeapon='pistol';state.owned=new Set(['pistol']);for(const w of WEAPONS)state.ammo[w.id]={mag:w.mag,reserve:w.reserve};state.round=0;}
   startLocalRound();
 }
 function switchWeaponByNumber(n){const w=WEAPONS[n-1];if(w)setWeapon(w.id,true);}
 function reloadWeapon(){
-  if(state.phase!=='live'||state.reloading)return;const w=currentWeapon(),a=state.ammo[w.id];if(a.mag>=w.mag||a.reserve<=0)return;
-  state.reloading=true;state.reloadUntil=performance.now()+w.reload*1000;soundReload();showToast('재장전 중...',700);
+  if(state.phase!=='live'||state.paused||state.reloading)return;
+  const w=currentWeapon(),a=state.ammo[w.id];
+  if(a.mag>=w.mag||a.reserve<=0){showToast(a.mag>=w.mag?'탄창이 이미 가득 찼습니다.':'예비 탄약이 없습니다.',900);return;}
+  state.reloading=true;state.reloadWeaponId=w.id;state.reloadUntil=performance.now()+w.reload*1000;soundReload();showToast('재장전 중...',700);
+}
+function completeReload(now){
+  if(!state.reloading||now<state.reloadUntil)return;
+  const id=state.reloadWeaponId||state.currentWeapon,w=WEAPON_BY_ID[id],a=state.ammo[id];
+  if(w&&a){const needed=Math.max(0,w.mag-a.mag),loaded=Math.min(needed,a.reserve);a.mag+=loaded;a.reserve-=loaded;}
+  state.reloading=false;state.reloadWeaponId=null;updateHUD();showToast('재장전 완료',650);
 }
 function applyLocalDamage(damage){let left=damage;if(state.armor>0){const absorbed=Math.min(state.armor,damage*.48);state.armor-=absorbed;left-=absorbed;}state.hp=Math.max(0,state.hp-left);updateHUD();if(state.hp<=0)endLocalRound(false,'플레이어가 쓰러졌습니다.');}
 function addShotFx(from,to,color=0x8ffff0){
@@ -355,7 +363,7 @@ function doShoot(){
     }
   }
   addShotFx(origin,hitPoint,w.id==='sniper'?0xffdfb5:0x73f8e4);
-  if(state.mode==='ai'&&hitOwner&&String(hitOwner).startsWith('bot-')&&totalDamage>0){const bot=state.botList.find(b=>b.id===hitOwner);if(bot&&bot.alive){bot.hp-=totalDamage;soundHit();$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),100);if(bot.hp<=0){bot.hp=0;bot.alive=false;bot.root.visible=false;unregisterTarget(bot.id);state.money+=200;soundKill();$('kill-banner').innerHTML=`${bot.name} ELIMINATED <small>+200 CR</small>`;$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),850);updateHUD();if(state.botList.every(b=>!b.alive))endLocalRound(true,'적 3명을 모두 처치했습니다.');}}}
+  if(state.mode==='ai'&&hitOwner&&String(hitOwner).startsWith('bot-')&&totalDamage>0){const bot=state.botList.find(b=>b.id===hitOwner);if(bot&&bot.alive){bot.hp-=totalDamage;soundHit();$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),100);if(bot.hp<=0){bot.hp=0;bot.alive=false;bot.root.visible=false;unregisterTarget(bot.id);state.money+=150;soundKill();$('kill-banner').innerHTML=`${bot.name} ELIMINATED <small>+150 CR</small>`;$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),850);updateHUD();if(state.botList.every(b=>!b.alive))endLocalRound(true,'상대 플레이어를 처치했습니다.');}}}
   if(state.mode==='online'&&state.socketReady){state.socket.emit('fire',{weaponId:w.id,origin:{x:origin.x,y:origin.y,z:origin.z},direction:{x:direction.x,y:direction.y,z:direction.z}});}
   updateHUD();
 }
@@ -394,7 +402,7 @@ function soundBotShot(){initAudio();const c=state.audio;if(!c)return;const t=c.c
 
 function beginOnline(){
   if((state.rule==='pc'&&state.device!=='pc')||(state.rule==='mobile'&&state.device!=='mobile')){showToast(state.rule==='pc'?'PC끼리 모드는 PC를 선택하세요.':'모바일끼리 모드는 모바일을 선택하세요.');return;}
-  initAudio();state.mode='online';state.name=($('player-name').value.trim()||'PLAYER').slice(0,16);state.money=800;state.hp=100;state.armor=0;state.selfScore=0;state.enemyScore=0;state.round=0;state.currentWeapon='pistol';state.owned=new Set(['pistol']);state.ammo={};for(const w of WEAPONS)state.ammo[w.id]={mag:w.mag,reserve:w.reserve};state.pos.set(0,0,18);state.yaw=Math.PI;state.pitch=0;state.buyPrimaryThisRound=false;state.phase='waiting';state.roomCode='';clearBots();clearRemotePlayers();setModeUI();$('phase-label').textContent='CONNECTING';$('objective-label').textContent='WAITING FOR OPPONENT';updateHUD();
+  initAudio();state.mode='online';state.name=($('player-name').value.trim()||'PLAYER').slice(0,16);state.money=1200;state.hp=100;state.armor=0;state.selfScore=0;state.enemyScore=0;state.round=0;state.currentWeapon='pistol';state.owned=new Set(['pistol']);state.ammo={};for(const w of WEAPONS)state.ammo[w.id]={mag:w.mag,reserve:w.reserve};state.pos.set(0,0,27);state.yaw=Math.PI;state.pitch=0;state.buyPrimaryThisRound=false;state.phase='waiting';state.roomCode='';clearBots();clearRemotePlayers();setModeUI();$('phase-label').textContent='CONNECTING';$('objective-label').textContent='WAITING FOR OPPONENT';updateHUD();
   const socket=io({transports:['websocket','polling'],reconnection:true});state.socket=socket;
   socket.on('connect',()=>{state.socketReady=true;updateHUD();});
   socket.on('connect_error',()=>{state.socketReady=false;updateHUD();setMenuStatus('온라인 서버에 연결할 수 없습니다. 서버가 배포되어 있는지 확인하세요.');showToast('온라인 서버 연결 실패. 공개 배포 주소에서 접속했는지 확인하세요.',3200);});
@@ -406,12 +414,12 @@ function beginOnline(){
   socket.on('playersSnapshot',data=>{for(const [id,p] of Object.entries(data||{}))updateRemotePlayer(id,p);});
   socket.on('playerMoved',data=>updateRemotePlayer(data.id,data));
   socket.on('roundState',data=>{
-    hideRoomWait();endScreen.classList.add('hidden');state.phase=data.phase;state.round=data.round;state.phaseEnd=data.endsAt;state.roundLimit=data.roundEndsAt||0;state.selfScore=data.scores?.[socket.id]||0;state.enemyScore=Object.entries(data.scores||{}).filter(([id])=>id!==socket.id).reduce((a,[,v])=>a+v,0);state.money=data.self?.money??state.money;state.hp=data.self?.hp??100;state.armor=data.self?.armor??state.armor;state.currentWeapon=data.self?.weapon||state.currentWeapon;state.buyPrimaryThisRound=!!data.self?.boughtPrimary;state.owned=new Set(['pistol',...(data.self?.weapon&&data.self.weapon!=='pistol'?[data.self.weapon]:[])]);state.pos.set(data.self?.x??0,0,data.self?.z??18);state.yaw=data.self?.yaw??state.yaw;state.pitch=data.self?.pitch??0;state.reloading=false;buildGun(state.currentWeapon);if(data.phase==='buy'){clearRemotePlayers();for(const [id,p]of Object.entries(data.players||{}))if(id!==socket.id)updateRemotePlayer(id,p);$('phase-label').textContent='BUY PHASE';openBuy();}else{$('phase-label').textContent='LIVE';closeBuy();}updateHUD();
+    hideRoomWait();endScreen.classList.add('hidden');state.phase=data.phase;state.round=data.round;state.phaseEnd=data.endsAt;state.roundLimit=data.roundEndsAt||0;state.selfScore=data.scores?.[socket.id]||0;state.enemyScore=Object.entries(data.scores||{}).filter(([id])=>id!==socket.id).reduce((a,[,v])=>a+v,0);state.money=data.self?.money??state.money;state.hp=data.self?.hp??100;state.armor=data.self?.armor??state.armor;state.currentWeapon=data.self?.weapon||state.currentWeapon;state.buyPrimaryThisRound=!!data.self?.boughtPrimary;state.owned=new Set(['pistol',...(data.self?.weapon&&data.self.weapon!=='pistol'?[data.self.weapon]:[])]);state.pos.set(data.self?.x??0,0,data.self?.z??27);state.yaw=data.self?.yaw??state.yaw;state.pitch=data.self?.pitch??0;state.reloading=false;state.reloadWeaponId=null;makeAmmoFor(state.currentWeapon,true);buildGun(state.currentWeapon);if(data.phase==='buy'){clearRemotePlayers();for(const [id,p]of Object.entries(data.players||{}))if(id!==socket.id)updateRemotePlayer(id,p);$('phase-label').textContent='BUY PHASE';openBuy();}else{$('phase-label').textContent='LIVE';closeBuy();}updateHUD();
   });
   socket.on('selfState',data=>{if(data.money!=null)state.money=data.money;if(data.hp!=null)state.hp=data.hp;if(data.armor!=null)state.armor=data.armor;if(data.weapon){state.currentWeapon=data.weapon;state.owned=new Set(['pistol',data.weapon]);buildGun(data.weapon);}if(data.boughtPrimary!=null)state.buyPrimaryThisRound=data.boughtPrimary;updateHUD();});
   socket.on('roundPhase',data=>{state.phase=data.phase;state.phaseEnd=data.endsAt;if(data.phase==='live')state.roundLimit=data.endsAt;if(data.phase==='live'){$('phase-label').textContent='LIVE';closeBuy();showToast(`ROUND ${data.round} — FIGHT`,1600);}if(data.phase==='buy'){$('phase-label').textContent='BUY PHASE';openBuy();}updateHUD();});
   socket.on('shotFx',data=>{if(data.id===socket.id)return;const from=new THREE.Vector3(data.origin.x,data.origin.y,data.origin.z),to=new THREE.Vector3(data.end.x,data.end.y,data.end.z);addShotFx(from,to,0xff718a);soundShot(data.weaponId);});
-  socket.on('damage',data=>{if(data.targetId===socket.id){state.hp=data.hp;if(data.armor!=null)state.armor=data.armor;updateHUD();soundHit();if(data.hp<=0)showToast('쓰러졌습니다. 다음 라운드를 준비하세요.',1800);}if(data.attackerId===socket.id&&data.targetId!==socket.id){$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),110);soundHit();}if(data.killed&&data.attackerId===socket.id){soundKill();$('kill-banner').innerHTML=`TARGET ELIMINATED <small>+200 CR</small>`;$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),900);}});
+  socket.on('damage',data=>{if(data.targetId===socket.id){state.hp=data.hp;if(data.armor!=null)state.armor=data.armor;updateHUD();soundHit();if(data.hp<=0)showToast('쓰러졌습니다. 다음 라운드를 준비하세요.',1800);}if(data.attackerId===socket.id&&data.targetId!==socket.id){$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),110);soundHit();}if(data.killed&&data.attackerId===socket.id){soundKill();$('kill-banner').innerHTML=`TARGET ELIMINATED <small>+150 CR</small>`;$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),900);}});
   socket.on('buyResult',data=>{if(!data.ok){showToast(data.message||'구매할 수 없습니다.');return;}state.money=data.money;state.armor=data.armor??state.armor;if(data.weapon){state.currentWeapon=data.weapon;state.owned=new Set(['pistol',data.weapon]);makeAmmoFor(data.weapon,true);buildGun(data.weapon);}state.buyPrimaryThisRound=!!data.boughtPrimary;state.armorPurchased=!!data.armorPurchased;soundBuy();$('buy-feedback').textContent=data.message||'구매 완료';updateHUD();});
   socket.on('roundResult',data=>{state.phase='ended';state.selfScore=data.scores?.[socket.id]||0;state.enemyScore=Object.entries(data.scores||{}).filter(([id])=>id!==socket.id).reduce((a,[,v])=>a+v,0);state.money=data.selfMoney??state.money;state.matchOver=!!data.matchOver;$('result-kicker').textContent=data.matchOver?'MATCH RESULT':'ROUND RESULT';const won=data.winnerId===socket.id;$('result-title').innerHTML=data.matchOver?(won?'MATCH<br/><span>VICTORY.</span>':'MATCH<br/><span>DEFEAT.</span>'):(won?'ROUND<br/><span>WON.</span>':'ROUND<br/><span>LOST.</span>');$('result-copy').textContent=data.reason|| (won?'라운드 승리!':'상대가 라운드를 가져갔습니다.');$('result-reward').textContent=`+${(data.reward??0).toLocaleString()} CR`;$('next-round').classList.toggle('hidden',!!data.matchOver||state.mode==='online');$('next-round').textContent='상대가 다음 라운드를 준비 중…';endScreen.classList.remove('hidden');updateHUD();});
   socket.on('roomMessage',data=>showToast(data.message));
@@ -420,12 +428,12 @@ function beginOnline(){
 function showRoomWait(code){let panel=$('room-wait');if(!panel){panel=document.createElement('div');panel.id='room-wait';panel.className='room-wait';panel.innerHTML='<div class="room-wait-card"><small>PRIVATE MATCH / INVITE</small><h3>친구를 기다리는 중</h3><p>아래 6자리 코드를 친구에게 공유하세요.</p><strong id="wait-code">------</strong><button id="copy-room-code" class="solid-button">방 코드 복사</button><button id="cancel-room-wait" class="outline-button full-button">메인 메뉴로</button></div>';document.body.append(panel);$('copy-room-code').addEventListener('click',()=>navigator.clipboard?.writeText(state.roomCode).then(()=>showToast('방 코드를 복사했습니다.')).catch(()=>showToast(`방 코드: ${state.roomCode}`)));$('cancel-room-wait').addEventListener('click',backToMenu);}
   $('wait-code').textContent=code||'------';panel.classList.remove('hidden');}
 function hideRoomWait(){const p=$('room-wait');if(p)p.classList.add('hidden');}
-function joinOnline(){const code=$('room-code').value.trim().toUpperCase().replace(/[^A-Z0-9]/g,'');if(code.length!==6){showToast('6자리 방 코드를 입력하세요.');return;}initAudio();state.mode='online';state.name=($('player-name').value.trim()||'PLAYER').slice(0,16);state.rule=state.rule||'crossplay';state.money=800;state.hp=100;state.armor=0;state.selfScore=0;state.enemyScore=0;state.round=0;state.currentWeapon='pistol';state.owned=new Set(['pistol']);state.phase='waiting';state.roomCode='';clearBots();clearRemotePlayers();setModeUI();updateHUD();
+function joinOnline(){const code=$('room-code').value.trim().toUpperCase().replace(/[^A-Z0-9]/g,'');if(code.length!==6){showToast('6자리 방 코드를 입력하세요.');return;}initAudio();state.mode='online';state.name=($('player-name').value.trim()||'PLAYER').slice(0,16);state.rule=state.rule||'crossplay';state.money=1200;state.hp=100;state.armor=0;state.selfScore=0;state.enemyScore=0;state.round=0;state.currentWeapon='pistol';state.owned=new Set(['pistol']);state.phase='waiting';state.roomCode='';clearBots();clearRemotePlayers();setModeUI();updateHUD();
   const socket=io({transports:['websocket','polling'],reconnection:true});state.socket=socket;socket.on('connect',()=>{state.socketReady=true;updateHUD();socket.emit('joinRoom',{code,name:state.name,device:state.device});});socket.on('connect_error',()=>{state.socketReady=false;showToast('온라인 서버 연결 실패. 배포된 게임 주소인지 확인하세요.',3200);});
   // Reuse identical room listeners by registering a lightweight join-mode bridge.
   socket.on('roomError',d=>showToast(d.message||'방 입장 실패',3200));socket.on('roomJoined',d=>{state.roomCode=d.code;showRoomWait(d.code);});
   socket.on('playerJoined',d=>{updateRemotePlayer(d.id,d.player);hideRoomWait();});socket.on('playerLeft',d=>{const r=state.remotePlayers.get(d.id);if(r){unregisterTarget(d.id);disposeGroup(r.root);state.remotePlayers.delete(d.id);}state.phase='waiting';});socket.on('playerMoved',d=>updateRemotePlayer(d.id,d));socket.on('playersSnapshot',d=>{for(const[id,p]of Object.entries(d||{}))if(id!==socket.id)updateRemotePlayer(id,p);});
-  socket.on('roundState',d=>{hideRoomWait();endScreen.classList.add('hidden');state.phase=d.phase;state.round=d.round;state.phaseEnd=d.endsAt;state.roundLimit=d.roundEndsAt||0;state.selfScore=d.scores?.[socket.id]||0;state.enemyScore=Object.entries(d.scores||{}).filter(([id])=>id!==socket.id).reduce((a,[,v])=>a+v,0);state.money=d.self?.money??800;state.hp=d.self?.hp??100;state.armor=d.self?.armor??0;state.currentWeapon=d.self?.weapon||'pistol';state.owned=new Set(['pistol',...(state.currentWeapon!=='pistol'?[state.currentWeapon]:[])]);state.buyPrimaryThisRound=!!d.self?.boughtPrimary;buildGun(state.currentWeapon);if(d.phase==='buy')openBuy();else closeBuy();$('phase-label').textContent=d.phase==='buy'?'BUY PHASE':'LIVE';updateHUD();});
+  socket.on('roundState',d=>{hideRoomWait();endScreen.classList.add('hidden');state.phase=d.phase;state.round=d.round;state.phaseEnd=d.endsAt;state.roundLimit=d.roundEndsAt||0;state.selfScore=d.scores?.[socket.id]||0;state.enemyScore=Object.entries(d.scores||{}).filter(([id])=>id!==socket.id).reduce((a,[,v])=>a+v,0);state.money=d.self?.money??1200;state.hp=d.self?.hp??100;state.armor=d.self?.armor??0;state.currentWeapon=d.self?.weapon||'pistol';state.owned=new Set(['pistol',...(state.currentWeapon!=='pistol'?[state.currentWeapon]:[])]);state.buyPrimaryThisRound=!!d.self?.boughtPrimary;state.pos.set(d.self?.x??0,0,d.self?.z??27);state.yaw=d.self?.yaw??state.yaw;state.pitch=d.self?.pitch??0;state.reloading=false;state.reloadWeaponId=null;makeAmmoFor(state.currentWeapon,true);clearRemotePlayers();for(const[id,player]of Object.entries(d.players||{}))if(id!==socket.id)updateRemotePlayer(id,player);buildGun(state.currentWeapon);if(d.phase==='buy')openBuy();else closeBuy();$('phase-label').textContent=d.phase==='buy'?'BUY PHASE':'LIVE';updateHUD();});
   socket.on('roundPhase',d=>{state.phase=d.phase;state.phaseEnd=d.endsAt;if(d.phase==='live')state.roundLimit=d.endsAt;$('phase-label').textContent=d.phase==='buy'?'BUY PHASE':'LIVE';if(d.phase==='buy')openBuy();else closeBuy();});socket.on('selfState',d=>{state.money=d.money??state.money;state.hp=d.hp??state.hp;state.armor=d.armor??state.armor;if(d.weapon){state.currentWeapon=d.weapon;state.owned=new Set(['pistol',d.weapon]);buildGun(d.weapon);}state.buyPrimaryThisRound=!!d.boughtPrimary;updateHUD();});
   socket.on('buyResult',d=>{if(!d.ok){showToast(d.message||'구매할 수 없습니다.');return;}state.money=d.money;state.armor=d.armor??state.armor;if(d.weapon){state.currentWeapon=d.weapon;state.owned=new Set(['pistol',d.weapon]);makeAmmoFor(d.weapon,true);buildGun(d.weapon);}state.buyPrimaryThisRound=!!d.boughtPrimary;state.armorPurchased=!!d.armorPurchased;soundBuy();updateHUD();});socket.on('shotFx',d=>{if(d.id!==socket.id){addShotFx(new THREE.Vector3(d.origin.x,d.origin.y,d.origin.z),new THREE.Vector3(d.end.x,d.end.y,d.end.z),0xff718a);soundShot(d.weaponId);}});socket.on('damage',d=>{if(d.targetId===socket.id){state.hp=d.hp;state.armor=d.armor??state.armor;updateHUD();soundHit();}if(d.attackerId===socket.id&&d.targetId!==socket.id){$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),110);soundHit();}if(d.killed&&d.attackerId===socket.id){soundKill();$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),900);}});
   socket.on('roundResult',d=>{state.phase='ended';state.selfScore=d.scores?.[socket.id]||0;state.enemyScore=Object.entries(d.scores||{}).filter(([id])=>id!==socket.id).reduce((a,[,v])=>a+v,0);state.money=d.selfMoney??state.money;state.matchOver=!!d.matchOver;const won=d.winnerId===socket.id;$('result-kicker').textContent=d.matchOver?'MATCH RESULT':'ROUND RESULT';$('result-title').innerHTML=d.matchOver?(won?'MATCH<br/><span>VICTORY.</span>':'MATCH<br/><span>DEFEAT.</span>'):(won?'ROUND<br/><span>WON.</span>':'ROUND<br/><span>LOST.</span>');$('result-copy').textContent=d.reason||'';$('result-reward').textContent=`+${(d.reward||0).toLocaleString()} CR`;$('next-round').classList.toggle('hidden',!!d.matchOver||state.mode==='online');$('next-round').textContent='다음 라운드는 자동 시작';endScreen.classList.remove('hidden');updateHUD();});
@@ -446,7 +454,7 @@ function setupEvents(){
     if(e.code==='Escape'){if(!buyMenu.classList.contains('hidden')){closeBuy();return;}if(!pauseMenu.classList.contains('hidden')){state.paused=false;pauseMenu.classList.add('hidden');return;}if(state.mode!=='menu'&&state.phase!=='ended'&&state.phase!=='matchover'){state.paused=true;pauseMenu.classList.remove('hidden');if(document.pointerLockElement)document.exitPointerLock();}return;}
     if(state.mode==='menu'||state.phase==='ended'||state.paused)return;
     state.keys.add(e.code);
-    if(e.code==='KeyB'){openBuy();}if(e.code==='KeyR')reloadWeapon();if(/^Digit[1-8]$/.test(e.code))switchWeaponByNumber(Number(e.code.slice(-1)));
+    if(e.code==='KeyR')reloadWeapon();if(/^Digit[1-8]$/.test(e.code))switchWeaponByNumber(Number(e.code.slice(-1)));
   });window.addEventListener('keyup',e=>state.keys.delete(e.code));window.addEventListener('blur',()=>state.keys.clear());
   canvas.addEventListener('pointerdown',e=>{if(state.mode==='menu'||state.device==='mobile'||state.paused)return;initAudio();if(document.pointerLockElement!==canvas){canvas.requestPointerLock?.();}if(e.button===0)doShoot();});
   document.addEventListener('pointerlockchange',()=>{state.pointerLocked=document.pointerLockElement===canvas;});
@@ -477,6 +485,7 @@ function updateWorld(dt,now){
   if(state.mode!=='menu'){
     camera.position.set(state.pos.x,state.pos.y+1.58,state.pos.z);camera.rotation.order='YXZ';camera.rotation.y=state.yaw;camera.rotation.x=state.pitch;
     gunRoot.position.x=state.device==='mobile'?.03:0;gunRoot.visible=state.phase==='live'||state.phase==='buy';
+    completeReload(now);
     if(state.phase==='buy'&&Date.now()>=state.phaseEnd&&state.mode==='ai')beginLocalLive();
     if(state.mode==='ai'&&state.phase==='live'&&Date.now()>=state.roundLimit)endLocalRound(state.hp>0,'시간 종료');
     if(state.phase==='buy'){$('buy-countdown').textContent=`${Math.max(0,Math.ceil((state.phaseEnd-Date.now())/1000))}초`;}
