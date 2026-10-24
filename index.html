@@ -18,7 +18,7 @@
   <main id="main-menu" class="menu-screen">
     <div class="menu-noise"></div>
     <section class="menu-left">
-      <div class="eyebrow"><span class="status-dot"></span> TACTICAL COMBAT SIMULATION <span class="build-tag">BUILD 0.5.1</span></div>
+      <div class="eyebrow"><span class="status-dot"></span> TACTICAL COMBAT SIMULATION <span class="build-tag">BUILD 0.6.0</span></div>
       <div class="brand-lockup"><div class="brand-mark"><span></span><span></span><span></span></div><div><div class="brand-kicker">PROTOCOL / 07</div><h1>NEON<span>STRIKE</span></h1></div></div>
       <p class="tagline">PRECISION IS EVERYTHING.</p>
       <div class="menu-divider"></div>
@@ -34,8 +34,17 @@
         </div>
       </div>
 
+      <div class="setting-block map-settings">
+        <div class="setting-heading"><span>02 / 전투 맵 선택</span><small id="map-status">선택된 맵: ARENA / HELIX YARD</small></div>
+        <div class="map-choice-row" id="map-choice">
+          <button class="map-choice selected map-arena" data-map="arena"><span class="map-number">01</span><b>아레나</b><small>전술 훈련장 · 엄폐 교전</small></button>
+          <button class="map-choice map-palace" data-map="palace"><span class="map-number">02</span><b>경복궁 야외</b><small>기와 지붕 · 잔디 정원</small></button>
+          <button class="map-choice map-city" data-map="city"><span class="map-number">03</span><b>도시</b><small>넓은 도로 · 빌딩 · 지하철</small></button>
+        </div>
+      </div>
+
       <div class="setting-block online-settings">
-        <div class="setting-heading"><span>02 / 온라인 매칭 규칙</span><small>방을 만드는 사람이 설정</small></div>
+        <div class="setting-heading"><span>03 / 온라인 매칭 규칙</span><small>방을 만드는 사람이 설정</small></div>
         <div class="segmented" id="platform-rule">
           <button data-rule="pc">PC끼리</button>
           <button data-rule="mobile">모바일끼리</button>
@@ -44,7 +53,7 @@
       </div>
 
       <div class="setting-block ai-settings">
-        <div class="setting-heading"><span>03 / AI 난이도</span><small>1대1 라운드전 · 선착순 6승</small></div>
+        <div class="setting-heading"><span>04 / AI 난이도</span><small>1대1 라운드전 · 선착순 6승</small></div>
         <div class="segmented" id="difficulty-choice">
           <button data-difficulty="easy">쉬움</button>
           <button data-difficulty="normal" class="selected">보통</button>
@@ -62,7 +71,7 @@
     </section>
 
     <aside class="menu-right">
-      <div class="map-label"><span class="crosshair-mini">+</span> MAP 01 / HELIX YARD <span class="map-live">LIVE SIMULATION</span></div>
+      <div class="map-label"><span class="crosshair-mini">+</span> <span id="menu-map-name">MAP 01 / HELIX YARD</span> <span class="map-live">LIVE SIMULATION</span></div>
       <div class="map-coordinates">37° 32' N<br/>126° 58' E</div>
       <div class="hero-reticle"><span></span><i></i></div>
       <div class="hero-callout"><span>COMBAT REPORT / 01</span><b>BUY SMART.<br/>FIGHT CLEAN.</b><small>라운드 승리로 크레딧을 얻고<br/>다음 전투를 준비하세요.</small></div>
