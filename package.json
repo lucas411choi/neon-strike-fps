@@ -1,10 +1,12 @@
 {
   "name": "neon-strike-fps",
-  "version": "0.3.0",
+  "version": "0.5.1",
   "private": true,
   "type": "module",
   "description": "Mobile-ready browser tactical FPS with round economy, AI matches, and Socket.IO 1v1 rooms.",
-  "engines": { "node": ">=20.19.0" },
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "dev": "node server/index.js",
     "build": "vite build",
