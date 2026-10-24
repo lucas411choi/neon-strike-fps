@@ -1,6 +1,6 @@
 {
   "name": "neon-strike-fps",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Mobile-ready browser tactical FPS with round economy, AI matches, and Socket.IO 1v1 rooms.",
