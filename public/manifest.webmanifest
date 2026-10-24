@@ -1,0 +1,13 @@
+{
+  "name": "NEON STRIKE Tactical FPS",
+  "short_name": "NEON STRIKE",
+  "description": "모바일과 PC에서 바로 플레이하는 라운드 기반 전술 FPS",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#080c15",
+  "theme_color": "#080c15",
+  "orientation": "landscape",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
