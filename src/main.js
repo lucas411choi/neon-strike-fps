@@ -27,7 +27,7 @@ const platformName = { pc:'PC', mobile:'MOBILE' };
 
 const state = {
   device: matchMedia('(pointer:coarse)').matches ? 'mobile' : 'pc',
-  rule:'crossplay', difficulty:'normal', name:'PLAYER', mode:'menu', phase:'menu',
+  rule:'crossplay', difficulty:'normal', name:'PLAYER', mode:'menu', phase:'menu', selectedMap:'arena', mapId:'arena', mapBounds:31.8,
   round:0, selfScore:0, enemyScore:0, money:450, hp:100, armor:0, armorTier:'none',
   currentWeapon:'pistol', owned:new Set(['pistol']), ammo:{},
   pos:new THREE.Vector3(0,0,15), velocityY:0, yaw:0, pitch:0,
@@ -55,7 +55,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.12;
 
-scene.add(new THREE.HemisphereLight(0x9fc9e8, 0x18202d, 1.6));
+const hemiLight = new THREE.HemisphereLight(0x9fc9e8, 0x18202d, 1.6); scene.add(hemiLight);
 const keyLight = new THREE.DirectionalLight(0xc7e6ff, 2.0);
 keyLight.position.set(-9, 18, 8);
 keyLight.castShadow = true;
@@ -75,48 +75,175 @@ const materials = {
 };
 const colliders = [];
 const obstacleMeshes = [];
-function addBox(x,y,z,w,h,d,mat,{collision=true,accent=null,rotation=0}={}) {
+const worldRoot = new THREE.Group(); scene.add(worldRoot);
+let mapScopedMaterials = [];
+const stairRamps = [];
+const elevatedPlatforms = [];
+const MAP_META = {
+  arena:{name:'ARENA / HELIX YARD',bounds:31.8,spawn:27,floor:0x111a25,sky:0x08101b,fog:0x08101b,fogDensity:.0125},
+  palace:{name:'경복궁 야외 / PALACE COURT',bounds:45.5,spawn:40,floor:0x71875c,sky:0x9cc8ed,fog:0xb6d8ed,fogDensity:.0034},
+  city:{name:'도시 / METRO DISTRICT',bounds:58,spawn:52,floor:0x323b45,sky:0x8797a9,fog:0x8797a9,fogDensity:.0026},
+};
+function addBox(x,y,z,w,h,d,mat,{collision=true,accent=null,rotation=0,rotationX=0,rotationZ=0}={}) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat);
-  mesh.position.set(x,y+h/2,z); mesh.rotation.y=rotation; mesh.castShadow=true; mesh.receiveShadow=true; scene.add(mesh);
+  mesh.position.set(x,y+h/2,z); mesh.rotation.set(rotationX,rotation,rotationZ); mesh.castShadow=true; mesh.receiveShadow=true; worldRoot.add(mesh);
   if (collision) { colliders.push({x,z,w,d,h}); obstacleMeshes.push(mesh); }
   if (accent) {
     const line = new THREE.Mesh(new THREE.BoxGeometry(w*0.86,0.035,0.04), accent);
-    line.position.set(x,y+h*.82,z-d*.501); scene.add(line);
+    line.position.set(x,y+h*.82,z-d*.501); line.rotation.y=rotation; worldRoot.add(line);
   }
   return mesh;
 }
-const floor = new THREE.Mesh(new THREE.PlaneGeometry(72,72), materials.floor); floor.rotation.x=-Math.PI/2; floor.position.y=-0.05; floor.receiveShadow=true; scene.add(floor);
-const grid = new THREE.GridHelper(72, 72, 0x2a666d, 0x213341); grid.position.y=-0.035; grid.material.transparent=true; grid.material.opacity=0.42; scene.add(grid);
-// Outer walls, cover boxes, lanes, and illuminated strips.
-addBox(0,0,-34,70,5,1.4,materials.wallDark,{accent:materials.cyan});
-addBox(0,0,34,70,5,1.4,materials.wallDark,{accent:materials.red});
-addBox(-34,0,0,1.4,5,70,materials.wallDark);
-addBox(34,0,0,1.4,5,70,materials.wallDark);
-[
-  [-15,0,-12,7,2.6,3,materials.wall],[-3,0,-14,4,1.5,4,materials.wallDark],[10,0,-12,7,2.8,3,materials.wall],
-  [-19,0,0,3,2.2,8,materials.wallDark],[-8,0,-1,5,1.4,3,materials.wall],[6,0,2,4,2.4,5,materials.wallDark],[19,0,0,3,2.2,8,materials.wall],
-  [-13,0,15,8,2.6,3,materials.wall],[0,0,13,5,1.5,4,materials.wallDark],[13,0,15,8,2.6,3,materials.wall],
-  [-2,0,0,2,3.6,2,materials.wall],
-] .forEach(([x,y,z,w,h,d,mat])=>addBox(x,y,z,w,h,d,mat,{accent:mat===materials.wall?materials.cyan:null}));
-// Tall spawn-screen barriers block instant spawn-to-spawn headshots; their offset gaps create flanking routes.
-addBox(-24,0,20,20,7.2,1.8,materials.wallDark,{accent:materials.red});
-addBox(13,0,20,42,7.2,1.8,materials.wallDark,{accent:materials.red});
-addBox(-13.5,0,-20,41,7.2,1.8,materials.wallDark,{accent:materials.cyan});
-addBox(23.5,0,-20,21,7.2,1.8,materials.wallDark,{accent:materials.cyan});
-// Offset interior partitions create a zig-zag lane: tall enough to block standing shots, with routes around each end.
-addBox(-10,0,-8,1.6,6.8,10,materials.wallDark,{accent:materials.cyan});
-addBox(10,0,8,1.6,6.8,10,materials.wallDark,{accent:materials.red});
-for (let i=-3;i<=3;i++) {
-  const stripe = new THREE.Mesh(new THREE.BoxGeometry(.045,.02,58), i%2===0?materials.cyan:materials.red);
-  stripe.position.set(i*8,.005,0); stripe.material= stripe.material.clone(); stripe.material.transparent=true; stripe.material.opacity=.18; scene.add(stripe);
+function addCylinder(x,y,z,rTop,rBottom,h,mat,{collision=false,segments=10}={}) {
+  const mesh=new THREE.Mesh(new THREE.CylinderGeometry(rTop,rBottom,h,segments),mat);
+  mesh.position.set(x,y+h/2,z);mesh.castShadow=true;mesh.receiveShadow=true;worldRoot.add(mesh);
+  if(collision){colliders.push({x,z,w:Math.max(rTop,rBottom)*2,d:Math.max(rTop,rBottom)*2,h});obstacleMeshes.push(mesh);}
+  return mesh;
 }
-function addGlowPillar(x,z,color) {
-  addBox(x,0,z,.7,4,.7,materials.wallDark,{collision:true});
-  const strip = new THREE.Mesh(new THREE.BoxGeometry(.72,2.7,.73),color); strip.position.set(x,2,z); scene.add(strip);
-  const light=new THREE.PointLight(color.color,2.2,8);light.position.set(x,3,z);scene.add(light);
+function addSphere(x,y,z,r,mat,scale={x:1,y:1,z:1}) {
+  const mesh=new THREE.Mesh(new THREE.SphereGeometry(r,9,7),mat);mesh.position.set(x,y,z);mesh.scale.set(scale.x,scale.y,scale.z);mesh.castShadow=true;worldRoot.add(mesh);return mesh;
 }
-addGlowPillar(-28,-27,materials.cyan); addGlowPillar(28,27,materials.red); addGlowPillar(-28,27,materials.cyan); addGlowPillar(28,-27,materials.red);
-
+function addTree(x,z,leafColor=0x2d7148,scale=1){
+  const trunk=new THREE.MeshStandardMaterial({color:0x65462f,roughness:.95});const leaves=new THREE.MeshStandardMaterial({color:leafColor,roughness:.9});mapScopedMaterials.push(trunk,leaves);
+  addCylinder(x,0,z,.24*scale,.34*scale,2.2*scale,trunk,{segments:7});
+  addSphere(x,2.7*scale,z,.95*scale,leaves,{x:1,y:1.12,z:1});
+  addSphere(x-.48*scale,2.35*scale,z+.1,.64*scale,leaves,{x:1,y:1,z:1});
+  addSphere(x+.45*scale,2.5*scale,z-.12,.68*scale,leaves,{x:1,y:1,z:1});
+}
+function clearMap(){
+  worldRoot.traverse(o=>{if(o.geometry)o.geometry.dispose();});
+  for(const m of mapScopedMaterials)m.dispose();mapScopedMaterials=[];
+  worldRoot.clear();colliders.length=0;obstacleMeshes.length=0;stairRamps.length=0;elevatedPlatforms.length=0;
+}
+function addBoundary(bounds,wallHeight,mat,accent=null){
+  const edge=bounds+1.8, length=edge*2;
+  addBox(0,0,-edge,length,wallHeight,1.5,mat,{accent});
+  addBox(0,0,edge,length,wallHeight,1.5,mat,{accent});
+  addBox(-edge,0,0,1.5,wallHeight,length,mat);
+  addBox(edge,0,0,1.5,wallHeight,length,mat);
+}
+function buildArenaMap(){
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(72,72), materials.floor); floor.rotation.x=-Math.PI/2; floor.position.y=-0.05; floor.receiveShadow=true; worldRoot.add(floor);
+  const grid = new THREE.GridHelper(72,72,0x2a666d,0x213341); grid.position.y=-0.035; grid.material.transparent=true; grid.material.opacity=.42; worldRoot.add(grid);
+  addBoundary(31.8,5,materials.wallDark,materials.cyan);
+  [[-15,-12,7,2.6,3,materials.wall],[-3,-14,4,1.5,4,materials.wallDark],[10,-12,7,2.8,3,materials.wall],[-19,0,3,2.2,8,materials.wallDark],[-8,-1,5,1.4,3,materials.wall],[6,2,4,2.4,5,materials.wallDark],[19,0,3,2.2,8,materials.wallDark],[-13,15,8,2.6,3,materials.wall],[0,13,5,1.5,4,materials.wallDark],[13,15,8,2.6,3,materials.wall],[-2,0,2,3.6,2,materials.wall]].forEach(([x,z,w,h,d,mat])=>addBox(x,0,z,w,h,d,mat,{accent:mat===materials.wall?materials.cyan:null}));
+  addBox(-24,0,20,20,7.2,1.8,materials.wallDark,{accent:materials.red});addBox(13,0,20,42,7.2,1.8,materials.wallDark,{accent:materials.red});
+  addBox(-13.5,0,-20,41,7.2,1.8,materials.wallDark,{accent:materials.cyan});addBox(23.5,0,-20,21,7.2,1.8,materials.wallDark,{accent:materials.cyan});
+  addBox(-10,0,-8,1.6,6.8,10,materials.wallDark,{accent:materials.cyan});addBox(10,0,8,1.6,6.8,10,materials.wallDark,{accent:materials.red});
+  for(let i=-3;i<=3;i++){const stripe=new THREE.Mesh(new THREE.BoxGeometry(.045,.02,58),i%2===0?materials.cyan:materials.red);stripe.position.set(i*8,.005,0);stripe.material=stripe.material.clone();stripe.material.transparent=true;stripe.material.opacity=.18;worldRoot.add(stripe);mapScopedMaterials.push(stripe.material);}
+  [[-28,-27,materials.cyan],[28,27,materials.red],[-28,27,materials.cyan],[28,-27,materials.red]].forEach(([x,z,color])=>{addBox(x,0,z,.7,4,.7,materials.wallDark);const strip=new THREE.Mesh(new THREE.BoxGeometry(.72,2.7,.73),color);strip.position.set(x,2,z);worldRoot.add(strip);});
+}
+function buildPalaceMap(){
+  materials.floor.color.setHex(0x71875c);materials.floor.roughness=.98;materials.floor.metalness=0;
+  materials.wall.color.setHex(0xe0d1ad);materials.wall.roughness=.9;materials.wall.metalness=0;
+  materials.wallDark.color.setHex(0x574b3e);materials.wallDark.roughness=.9;materials.wallDark.metalness=0;
+  materials.cyan.color.setHex(0x176e54);materials.cyan.emissive.setHex(0x073d2c);materials.cyan.emissiveIntensity=.32;
+  materials.red.color.setHex(0x9c2636);materials.red.emissive.setHex(0x3b0710);materials.red.emissiveIntensity=.22;
+  materials.white.color.setHex(0xf2e7c9);materials.white.metalness=0;materials.white.roughness=.8;
+  const floor=new THREE.Mesh(new THREE.PlaneGeometry(96,96),materials.floor);floor.rotation.x=-Math.PI/2;floor.position.y=-.05;floor.receiveShadow=true;worldRoot.add(floor);
+  const stoneMat=new THREE.MeshStandardMaterial({color:0xbcb39f,roughness:.96});const darkStone=new THREE.MeshStandardMaterial({color:0x746a58,roughness:.9});const greenTile=new THREE.MeshStandardMaterial({color:0x244c3d,roughness:.75});mapScopedMaterials.push(stoneMat,darkStone,greenTile);
+  addBox(0,-.015,0,12,.02,95,stoneMat,{collision:false});
+  for(let z=-43;z<=43;z+=5)addBox(0,.005,z,12,.025,.06,darkStone,{collision:false});
+  addBoundary(45.5,3.2,darkStone);
+  // Traditional palace facade and tiered dark-tile roof, deliberately outdoors rather than an interior.
+  addBox(0,0,-27,30,4.8,10,materials.wall);
+  addBox(0,4.8,-27,31,.55,10,materials.red,{collision:false});
+  for(let x=-13.5;x<=13.51;x+=4.5){addBox(x,0,-21.75,.62,5.9,.72,materials.red);addBox(x,4.7,-21.75,.82,.32,.88,materials.cyan,{collision:false});}
+  addBox(0,5.7,-21.6,31,.42,1.2,materials.cyan,{collision:false});
+  addBox(0,6.6,-23.3,34,.65,4.2,materials.wallDark,{collision:false,rotationX:.20});
+  addBox(0,6.6,-27.7,34,.65,4.2,materials.wallDark,{collision:false,rotationX:-.20});
+  addBox(0,7.15,-25.5,34,.35,.6,greenTile,{collision:false});
+  for(let x=-15;x<=15;x+=2.5){addBox(x,7.35,-25.5,.16,.16,7.1,materials.red,{collision:false});}
+  // Red-green palace gates / side pavilions and low stone cover.
+  for(const x of [-24,24]){
+    addBox(x,0,-17,9,3.6,6,materials.wall);for(let px=x-3;px<=x+3;px+=3)addBox(px,0,-13.8,.42,4.2,.42,materials.red);
+    addBox(x,4.1,-17,11,.48,7,materials.wallDark,{collision:false,rotationX:.15});addBox(x,4.3,-17,11,.26,1.0,materials.cyan,{collision:false});
+  }
+  for(const z of [-7,4,16,28]){
+    addBox(-20,0,z,10,1.18,1.2,darkStone);addBox(20,0,z,10,1.18,1.2,darkStone);
+    addBox(-8,0,z+2,4,.92,1.1,stoneMat);addBox(8,0,z-2,4,.92,1.1,stoneMat);
+  }
+  // Stone lanterns / ornaments.
+  for(const [x,z] of [[-15,-8],[15,-8],[-15,13],[15,13],[-31,3],[31,3]]){
+    addBox(x,0,z,.65,1.2,.65,darkStone);addBox(x,1.2,z,.9,.18,.9,stoneMat);addBox(x,1.38,z,.45,.35,.45,materials.wallDark);
+  }
+  for(const z of [-36,-25,-12,2,14,27,37]){addTree(-38,z,z%2?0x2d7945:0x3e8450,.9);addTree(38,z,z%2?0x2d7945:0x3e8450,.9);}
+  // Offset high sight barriers hide both spawns without sealing the side routes.
+  addBox(-16,0,33,58,6.8,1.6,materials.wallDark,{accent:materials.red});addBox(37,0,33,17,6.8,1.6,materials.wallDark,{accent:materials.red});
+  addBox(16,0,-33,58,6.8,1.6,materials.wallDark,{accent:materials.cyan});addBox(-37,0,-33,17,6.8,1.6,materials.wallDark,{accent:materials.cyan});
+}
+function buildCityMap(){
+  materials.floor.color.setHex(0x303943);materials.floor.roughness=.96;materials.floor.metalness=.05;
+  materials.wall.color.setHex(0x57616b);materials.wall.roughness=.75;materials.wall.metalness=.12;
+  materials.wallDark.color.setHex(0x171f29);materials.wallDark.roughness=.8;materials.wallDark.metalness=.22;
+  materials.cyan.color.setHex(0x5cc9d5);materials.cyan.emissive.setHex(0x124751);materials.cyan.emissiveIntensity=.7;
+  materials.red.color.setHex(0xd17d54);materials.red.emissive.setHex(0x462013);materials.red.emissiveIntensity=.5;
+  materials.white.color.setHex(0xd9e1e8);materials.white.metalness=.05;materials.white.roughness=.55;
+  const floor=new THREE.Mesh(new THREE.PlaneGeometry(124,124),materials.floor);floor.rotation.x=-Math.PI/2;floor.position.y=-.05;floor.receiveShadow=true;worldRoot.add(floor);
+  const roadMat=new THREE.MeshStandardMaterial({color:0x1f252d,roughness:.99});const laneMat=new THREE.MeshStandardMaterial({color:0xe4ca7d,emissive:0x30240b,roughness:.9});const glassMat=new THREE.MeshStandardMaterial({color:0x418caa,metalness:.32,roughness:.22,emissive:0x102c36});const shopMat=new THREE.MeshStandardMaterial({color:0xc66c49,roughness:.8});const metroMat=new THREE.MeshStandardMaterial({color:0x213b4a,metalness:.25,roughness:.6});mapScopedMaterials.push(roadMat,laneMat,glassMat,shopMat,metroMat);
+  addBox(0,-.02,0,22,.025,124,roadMat,{collision:false});
+  for(let z=-58;z<=58;z+=7){addBox(0,.01,z, .14,.02,3,laneMat,{collision:false});addBox(-10,.01,z, .12,.02,2,materials.white,{collision:false});addBox(10,.01,z,.12,.02,2,materials.white,{collision:false});}
+  addBoundary(58,7,materials.wallDark);
+  // Tall office blocks; two rooftops are reached by visible stairs and a walkable height ramp.
+  addBox(-31,0,-29,14,7,16,materials.wallDark);addBox(-31,7,-29,14,.2,16,materials.wall,{collision:false});
+  elevatedPlatforms.push({xMin:-38,xMax:-24,zMin:-37,zMax:-20.5,height:7});
+  stairRamps.push({xMin:-33.2,xMax:-28.8,zMin:-20.5,zMax:-8,height:7});
+  for(let i=0;i<12;i++){const h=(i+1)*7/12;addBox(-31,h-.24,-8-(i+.5),3.8,.24,1.04,materials.wall,{collision:false});}
+  // Roof access for a second, lower block on the eastern side.
+  addBox(31,0,18,13,5.5,15,materials.wall);addBox(31,5.5,18,13,.2,15,materials.white,{collision:false});
+  elevatedPlatforms.push({xMin:24.5,xMax:37.5,zMin:10.5,zMax:26.5,height:5.5});
+  stairRamps.push({xMin:29,xMax:33,zMin:26.5,zMax:38,height:5.5});
+  for(let i=0;i<11;i++){const h=(i+1)*5.5/11;addBox(31,h-.22,38-(i+.5)*1.15,4,.22,1.18,materials.wall,{collision:false});}
+  // Small buildings create alleys and crossfire angles.
+  const buildings=[[-43,-6,12,17,8],[-16,-31,9,12,5],[18,-31,15,12,8],[45,-17,10,16,7],[-45,22,13,18,9],[13,40,18,10,6],[43,39,15,13,8],[-12,39,13,11,6]];
+  for(const [x,z,w,d,h] of buildings){
+    addBox(x,0,z,w,h,d,materials.wallDark);
+    addBox(x,Math.max(1,h*.35),z-d/2-.05,w*.72,Math.min(1.4,h*.18),.12,glassMat,{collision:false});
+    addBox(x,Math.max(1,h*.35)+.9,z-d/2-.1,w*.76,.14,.22,materials.red,{collision:false});
+  }
+  // Shops and striped awnings as practical waist-high street cover.
+  for(const [x,z,c] of [[-20,-4,0xc66c49],[20,4,0x3b9c92],[-19,20,0xc7a45b],[19,-19,0x6a82b8]]){
+    addBox(x,0,z,10,3.4,6,materials.wall);
+    addBox(x,1.15,z-3.12,8.8,.6,.55,shopMat,{collision:false});
+    addBox(x,1.9,z-3.13,6.2,1.0,.14,glassMat,{collision:false});
+    addBox(x,3.2,z-3,11,.28,7,materials.red,{collision:false});
+    addBox(x,0,z+4,4,1.2,1.3,materials.wallDark);
+  }
+  // Metro entrance: side walls and canopy make a readable, low cover landmark.
+  addBox(0,0,29,11,1.65,7,metroMat);addBox(-5.1,0,29,1,2.5,9,materials.wall);addBox(5.1,0,29,1,2.5,9,materials.wall);
+  addBox(0,2.7,29,12,.35,9,materials.wallDark,{collision:false});
+  addBox(0,1.9,24.1,7,.12,.2,materials.cyan,{collision:false});
+  for(let z=-48;z<=48;z+=16){addBox(-6,0,z,.25,5,.25,materials.wallDark,{collision:false});addBox(-6,5,z,.5,.35,.5,materials.red,{collision:false});addBox(6,0,z,.25,5,.25,materials.wallDark,{collision:false});addBox(6,5,z,.5,.35,.5,materials.cyan,{collision:false});}
+  // Tall spawn-screen barriers prevent instant cross-map shots; offset gaps create flank routes.
+  addBox(-20,0,43,80,8,1.6,materials.wallDark,{accent:materials.red});addBox(40,0,43,36,8,1.6,materials.wallDark,{accent:materials.red});
+  addBox(20,0,-43,80,8,1.6,materials.wallDark,{accent:materials.cyan});addBox(-40,0,-43,36,8,1.6,materials.wallDark,{accent:materials.cyan});
+  // Street-side barriers and street trees.
+  for(const [x,z] of [[-8,-17],[8,17],[-8,39],[8,-39]])addBox(x,0,z,4,1.35,1.4,materials.wall,{accent:materials.cyan});
+  for(const z of [-47,-30,-10,12,32,48]){addTree(-53,z,0x476d50,.75);addTree(53,z,0x476d50,.75);}
+}
+function buildMap(mapId='arena'){
+  const id=Object.hasOwn(MAP_META,mapId)?mapId:'arena';
+  clearMap();state.mapId=id;state.mapBounds=MAP_META[id].bounds;
+  scene.background.setHex(MAP_META[id].sky);scene.fog=new THREE.FogExp2(MAP_META[id].fog,MAP_META[id].fogDensity);
+  if(id==='arena'){
+    materials.floor.color.setHex(0x111a25);materials.floor.roughness=.82;materials.floor.metalness=.22;materials.wall.color.setHex(0x202e3d);materials.wallDark.color.setHex(0x101a27);materials.cyan.color.setHex(0x4cf4d5);materials.cyan.emissive.setHex(0x167e75);materials.cyan.emissiveIntensity=1.7;materials.red.color.setHex(0xff607b);materials.red.emissive.setHex(0x771d34);materials.red.emissiveIntensity=1.5;materials.white.color.setHex(0xc5d9ec);materials.white.metalness=.7;materials.white.roughness=.35;
+    hemiLight.color.setHex(0x9fc9e8);hemiLight.groundColor.setHex(0x18202d);hemiLight.intensity=1.6;keyLight.color.setHex(0xc7e6ff);keyLight.intensity=2;
+    buildArenaMap();
+  }else if(id==='palace'){
+    hemiLight.color.setHex(0xe2f1ff);hemiLight.groundColor.setHex(0x526844);hemiLight.intensity=2.15;keyLight.color.setHex(0xffe4b6);keyLight.intensity=2.35;buildPalaceMap();
+  }else{
+    hemiLight.color.setHex(0xb8c8e0);hemiLight.groundColor.setHex(0x262b32);hemiLight.intensity=1.45;keyLight.color.setHex(0xe0e6f0);keyLight.intensity=1.6;buildCityMap();
+  }
+  const meta=MAP_META[id];const label=$('selected-map-label');if(label)label.textContent=meta.name;
+  const mapLabel=document.querySelector('.map-label');if(mapLabel){const title=id==='arena'?'MAP 01 / HELIX YARD':id==='palace'?'MAP 02 / PALACE COURT':'MAP 03 / METRO DISTRICT';const live=mapLabel.querySelector('.map-live');mapLabel.childNodes.forEach(n=>{if(n.nodeType===Node.TEXT_NODE&&n.textContent.trim())n.textContent=' '+title+' ';});if(live)live.textContent='LIVE SIMULATION';}
+}
+function selectMap(mapId){if(!Object.hasOwn(MAP_META,mapId))return;state.selectedMap=mapId;document.querySelectorAll('[data-map]').forEach(b=>b.classList.toggle('selected',b.dataset.map===mapId));buildMap(mapId);const mapStatus=$('map-status');if(mapStatus)mapStatus.textContent=`선택된 맵: ${MAP_META[mapId].name}`;const topMap=$('menu-map-name');if(topMap){const number=mapId==='arena'?'01':mapId==='palace'?'02':'03';const title=mapId==='arena'?'HELIX YARD':mapId==='palace'?'GYEONGBOKGUNG COURT':'METRO DISTRICT';topMap.textContent=`MAP ${number} / ${title}`;}}
+function getSpawn(mapId=state.mapId,side=0){const z=MAP_META[mapId]?.spawn??27;return {x:side===0?-3:3,z:side===0?z:-z,yaw:side===0?0:Math.PI};}
+function getGroundHeight(x,z){
+  for(const p of elevatedPlatforms){if(x>=p.xMin&&x<=p.xMax&&z>=p.zMin&&z<=p.zMax)return p.height;}
+  for(const r of stairRamps){if(x>=r.xMin&&x<=r.xMax&&z>=r.zMin&&z<=r.zMax)return THREE.MathUtils.clamp(((r.zMax-z)/(r.zMax-r.zMin))*r.height,0,r.height);}
+  return 0;
+}
 const gunRoot = new THREE.Group(); camera.add(gunRoot); scene.add(camera);
 let muzzleMesh = null;
 function buildGun(id) {
@@ -194,10 +321,10 @@ function updateRemotePlayer(id,data) {
   if(id===state.socket?.id)return;
   let remote=state.remotePlayers.get(id);
   if(!remote){
-    const root=makeCharacter({color:0xff6c85,accent:0x52233a,onlineId:id,name:data.name||'OPPONENT'});root.position.set(data.x||0,0,data.z||0);scene.add(root);registerTarget(root,id);
-    remote={id,root,target:new THREE.Vector3(data.x||0,0,data.z||0),yaw:data.yaw||0,name:data.name||'OPPONENT',hp:data.hp??100};state.remotePlayers.set(id,remote);
+    const root=makeCharacter({color:0xff6c85,accent:0x52233a,onlineId:id,name:data.name||'OPPONENT'});root.position.set(data.x||0,data.y||0,data.z||0);scene.add(root);registerTarget(root,id);
+    remote={id,root,target:new THREE.Vector3(data.x||0,data.y||0,data.z||0),yaw:data.yaw||0,name:data.name||'OPPONENT',hp:data.hp??100};state.remotePlayers.set(id,remote);
   }
-  remote.target.set(data.x||0,0,data.z||0);remote.yaw=data.yaw||0;remote.name=data.name||remote.name;if(data.hp!=null)remote.hp=data.hp;
+  remote.target.set(data.x||0,data.y||0,data.z||0);remote.yaw=data.yaw||0;remote.name=data.name||remote.name;if(data.hp!=null)remote.hp=data.hp;
 }
 function clearRemotePlayers(){ for(const [id,r] of state.remotePlayers){unregisterTarget(id);disposeGroup(r.root);}state.remotePlayers.clear(); }
 
@@ -317,7 +444,7 @@ function buyArmor(tier='light'){
 function openBuy(){if(state.phase!=='buy'||state.paused)return;buyMenu.classList.remove('hidden');updateHUD();}
 function closeBuy(){buyMenu.classList.add('hidden');}
 function startLocalRound(){
-  state.round++;state.phase='buy';state.hp=100;if(state.armor<=0)state.armorTier='none';state.velocityY=0;state.pos.set(0,0,27);state.yaw=0;state.pitch=0;state.phaseEnd=Date.now()+12000;state.roundLimit=state.phaseEnd+90000;
+  state.round++;state.phase='buy';state.hp=100;if(state.armor<=0)state.armorTier='none';state.velocityY=0;const spawn=getSpawn(state.mapId,0);state.pos.set(spawn.x,0,spawn.z);state.yaw=spawn.yaw;state.pitch=0;state.phaseEnd=Date.now()+12000;state.roundLimit=state.phaseEnd+90000;
   state.buyPrimaryThisRound=false;state.armorPurchased=state.armorTier==='heavy';state.reloading=false;state.resultShown=false;state.matchOver=false;setZoom(false);
   makeAmmoFor(state.currentWeapon,true);state.botFireTimers=[];clearBots();setModeUI();$('phase-label').textContent='BUY PHASE';$('buy-countdown').textContent='12초';$('buy-feedback').textContent='라운드 시작 전 장비를 구매하세요.';
   updateHUD();openBuy();showToast(`ROUND ${state.round} — 구매 단계`,1800);
@@ -325,7 +452,7 @@ function startLocalRound(){
 function startAIMatch(){
   if(state.localNextRoundTimer){clearTimeout(state.localNextRoundTimer);state.localNextRoundTimer=null;}
   initAudio();if(state.socket){state.socket.disconnect();state.socket=null;state.socketReady=false;}clearRemotePlayers();
-  state.mode='ai';state.name=($('player-name').value.trim()||'PLAYER').slice(0,16);state.money=450;state.hp=100;state.armor=0;state.armorTier='none';state.selfScore=0;state.enemyScore=0;state.round=0;state.currentWeapon='pistol';state.owned=new Set(['pistol']);state.ammo={};for(const w of WEAPONS)state.ammo[w.id]={mag:w.mag,reserve:w.reserve};buildGun('pistol');state.pos.set(0,0,27);state.yaw=0;state.pitch=0;state.buyPrimaryThisRound=false;state.matchOver=false;
+  state.mode='ai';buildMap(state.selectedMap);state.name=($('player-name').value.trim()||'PLAYER').slice(0,16);state.money=450;state.hp=100;state.armor=0;state.armorTier='none';state.selfScore=0;state.enemyScore=0;state.round=0;state.currentWeapon='pistol';state.owned=new Set(['pistol']);state.ammo={};for(const w of WEAPONS)state.ammo[w.id]={mag:w.mag,reserve:w.reserve};buildGun('pistol');const spawn=getSpawn(state.mapId,0);state.pos.set(spawn.x,0,spawn.z);state.yaw=spawn.yaw;state.pitch=0;state.buyPrimaryThisRound=false;state.matchOver=false;
   startLocalRound();
 }
 function spawnBots(){
@@ -333,7 +460,7 @@ function spawnBots(){
   // A single rival spawns at the far end, making this a true 1v1 round.
   const id='bot-0';
   const root=makeCharacter({color:0xff607b,accent:0x391d33,name:'RIVAL-01'});
-  root.position.set(0,0,-27);scene.add(root);registerTarget(root,id);
+  const spawn=getSpawn(state.mapId,1);root.position.set(spawn.x,0,spawn.z);root.rotation.y=spawn.yaw;scene.add(root);registerTarget(root,id);
   state.botList.push({id,root,hp:100,alive:true,fireAt:Date.now()+1300+Math.random()*500,movePhase:Math.random()*8,name:'RIVAL-01',weapon:'rifle'});
 }
 function clearBots(){for(const b of state.botList){unregisterTarget(b.id);disposeGroup(b.root);}state.botList=[];}
@@ -420,9 +547,9 @@ function doShoot(){
   if(state.mode==='online'&&state.socketReady){state.socket.emit('fire',{weaponId:w.id,origin:{x:origin.x,y:origin.y,z:origin.z},direction:{x:direction.x,y:direction.y,z:direction.z}});}
   updateHUD();
 }
-function collideAt(x,z){
-  const radius=.48;if(Math.abs(x)>31.8||Math.abs(z)>31.8)return true;
-  for(const c of colliders){if(Math.abs(x-c.x)<c.w/2+radius&&Math.abs(z-c.z)<c.d/2+radius)return true;}
+function collideAt(x,z,y=state.pos.y){
+  const radius=.48;if(Math.abs(x)>state.mapBounds||Math.abs(z)>state.mapBounds)return true;
+  for(const c of colliders){if(y>=c.h-.04)continue;if(Math.abs(x-c.x)<c.w/2+radius&&Math.abs(z-c.z)<c.d/2+radius)return true;}
   return false;
 }
 function movePlayer(dt){
@@ -434,10 +561,12 @@ function movePlayer(dt){
   const fx=-Math.sin(state.yaw),fz=-Math.cos(state.yaw);const rx=Math.cos(state.yaw),rz=-Math.sin(state.yaw);
   dx=(fx*forward+rx*strafe);dz=(fz*forward+rz*strafe);const len=Math.hypot(dx,dz);if(len>1){dx/=len;dz/=len;}
   const nx=state.pos.x+dx*speed*dt,nz=state.pos.z+dz*speed*dt;
-  if(!collideAt(nx,state.pos.z))state.pos.x=nx;if(!collideAt(state.pos.x,nz))state.pos.z=nz;
+  if(!collideAt(nx,state.pos.z,state.pos.y))state.pos.x=nx;if(!collideAt(state.pos.x,nz,state.pos.y))state.pos.z=nz;
+  const groundBefore=getGroundHeight(state.pos.x,state.pos.z);
+  if(state.pos.y<=groundBefore+.06&&state.velocityY<=0){state.pos.y=groundBefore;state.velocityY=0;state.canJump=true;}
   if(state.keys.has('Space')&&state.canJump){state.velocityY=5.5;state.canJump=false;}
-  state.velocityY-=14*dt;state.pos.y+=state.velocityY*dt;if(state.pos.y<0){state.pos.y=0;state.velocityY=0;state.canJump=true;}
-  if(state.mode==='online'&&state.socketReady){state._moveAcc=(state._moveAcc||0)+dt;if(state._moveAcc>.05){state._moveAcc=0;state.socket.emit('move',{x:state.pos.x,y:0,z:state.pos.z,yaw:state.yaw,pitch:state.pitch,name:state.name});}}
+  state.velocityY-=14*dt;state.pos.y+=state.velocityY*dt;const groundAfter=getGroundHeight(state.pos.x,state.pos.z);if(state.pos.y<groundAfter){state.pos.y=groundAfter;state.velocityY=0;state.canJump=true;}
+  if(state.mode==='online'&&state.socketReady){state._moveAcc=(state._moveAcc||0)+dt;if(state._moveAcc>.05){state._moveAcc=0;state.socket.emit('move',{x:state.pos.x,y:state.pos.y,z:state.pos.z,yaw:state.yaw,pitch:state.pitch,name:state.name});}}
 }
 function updateAI(dt){
   if(state.mode!=='ai'||state.phase!=='live'||state.paused)return;
@@ -446,7 +575,8 @@ function updateAI(dt){
   for(const bot of state.botList){if(!bot.alive)continue;
     let targetX=state.pos.x,targetZ=state.pos.z;const bz=bot.root.position.z,pz=state.pos.z;
     // Route around the staggered tall barriers instead of walking into them forever.
-    if(bz < -20 && pz > -20){targetX=10;targetZ=Math.abs(bot.root.position.x-10)>1.8?-24:-16;}
+    if(state.mapId!=='arena'){targetX=state.pos.x;targetZ=state.pos.z;}
+    else if(bz < -20 && pz > -20){targetX=10;targetZ=Math.abs(bot.root.position.x-10)>1.8?-24:-16;}
     else if(bz > -18 && bz < 20 && pz > 20){targetX=-11;targetZ=Math.abs(bot.root.position.x+11)>1.8?5:24;}
     else if(bz > 20 && pz < 20){targetX=-11;targetZ=Math.abs(bot.root.position.x+11)>1.8?24:16;}
     else if(bz < 18 && pz < -20){targetX=10;targetZ=Math.abs(bot.root.position.x-10)>1.8?5:-24;}
@@ -467,15 +597,15 @@ function beginOnline(){
   const socket=io({transports:['websocket','polling'],reconnection:true});state.socket=socket;
   socket.on('connect',()=>{state.socketReady=true;updateHUD();});
   socket.on('connect_error',()=>{state.socketReady=false;updateHUD();setMenuStatus('온라인 서버에 연결할 수 없습니다. 서버가 배포되어 있는지 확인하세요.');showToast('온라인 서버 연결 실패. 공개 배포 주소에서 접속했는지 확인하세요.',3200);});
-  socket.on('roomCreated',data=>{state.roomCode=data.code;state.phase='waiting';$('phase-label').textContent='WAITING';$('objective-label').textContent='WAITING FOR OPPONENT';showToast(`방 생성 완료 · 코드 ${data.code} · 친구에게 코드 공유`,4000);showRoomWait(data.code);updateHUD();});
-  socket.on('roomJoined',data=>{state.roomCode=data.code;showRoomWait(data.code);});
+  socket.on('roomCreated',data=>{if(data.map&&state.mapId!==data.map)buildMap(data.map);state.roomCode=data.code;state.phase='waiting';$('phase-label').textContent='WAITING';$('objective-label').textContent='WAITING FOR OPPONENT';showToast(`방 생성 완료 · 코드 ${data.code} · 친구에게 코드 공유`,4000);showRoomWait(data.code);updateHUD();});
+  socket.on('roomJoined',data=>{if(data.map&&state.mapId!==data.map)buildMap(data.map);state.roomCode=data.code;showRoomWait(data.code);});
   socket.on('roomError',data=>{showToast(data.message||'방에 참가하지 못했습니다.',3200);state.phase='waiting';});
   socket.on('playerJoined',data=>{updateRemotePlayer(data.id,data.player);hideRoomWait();showToast(`${data.player.name||'상대'} 접속 · 라운드 준비`,2000);});
   socket.on('playerLeft',data=>{const r=state.remotePlayers.get(data.id);if(r){unregisterTarget(data.id);disposeGroup(r.root);state.remotePlayers.delete(data.id);}showToast('상대 플레이어 연결이 종료됐습니다.',3000);state.phase='waiting';$('phase-label').textContent='WAITING';});
   socket.on('playersSnapshot',data=>{for(const [id,p] of Object.entries(data||{}))updateRemotePlayer(id,p);});
   socket.on('playerMoved',data=>updateRemotePlayer(data.id,data));
   socket.on('roundState',data=>{
-    hideRoomWait();endScreen.classList.add('hidden');state.phase=data.phase;state.round=data.round;state.phaseEnd=data.endsAt;state.roundLimit=data.roundEndsAt||0;state.selfScore=data.scores?.[socket.id]||0;state.enemyScore=Object.entries(data.scores||{}).filter(([id])=>id!==socket.id).reduce((a,[,v])=>a+v,0);state.money=data.self?.money??state.money;state.hp=data.self?.hp??100;state.armor=data.self?.armor??state.armor;state.armorTier=data.self?.armorTier??state.armorTier;state.currentWeapon=data.self?.weapon||state.currentWeapon;state.buyPrimaryThisRound=!!data.self?.boughtPrimary;state.owned=new Set(data.self?.ownedWeapons||['pistol',...(data.self?.weapon&&data.self.weapon!=='pistol'?[data.self.weapon]:[])]);state.pos.set(data.self?.x??0,0,data.self?.z??27);state.yaw=data.self?.yaw??state.yaw;state.pitch=data.self?.pitch??0;state.reloading=false;state.reloadWeaponId=null;makeAmmoFor(state.currentWeapon,true);buildGun(state.currentWeapon);if(data.phase==='buy'){clearRemotePlayers();for(const [id,p]of Object.entries(data.players||{}))if(id!==socket.id)updateRemotePlayer(id,p);$('phase-label').textContent='BUY PHASE';openBuy();}else{$('phase-label').textContent='LIVE';closeBuy();}updateHUD();
+    if(data.map&&state.mapId!==data.map)buildMap(data.map);hideRoomWait();endScreen.classList.add('hidden');state.phase=data.phase;state.round=data.round;state.phaseEnd=data.endsAt;state.roundLimit=data.roundEndsAt||0;state.selfScore=data.scores?.[socket.id]||0;state.enemyScore=Object.entries(data.scores||{}).filter(([id])=>id!==socket.id).reduce((a,[,v])=>a+v,0);state.money=data.self?.money??state.money;state.hp=data.self?.hp??100;state.armor=data.self?.armor??state.armor;state.armorTier=data.self?.armorTier??state.armorTier;state.currentWeapon=data.self?.weapon||state.currentWeapon;state.buyPrimaryThisRound=!!data.self?.boughtPrimary;state.owned=new Set(data.self?.ownedWeapons||['pistol',...(data.self?.weapon&&data.self.weapon!=='pistol'?[data.self.weapon]:[])]);state.pos.set(data.self?.x??0,0,data.self?.z??27);state.yaw=data.self?.yaw??state.yaw;state.pitch=data.self?.pitch??0;state.reloading=false;state.reloadWeaponId=null;makeAmmoFor(state.currentWeapon,true);buildGun(state.currentWeapon);if(data.phase==='buy'){clearRemotePlayers();for(const [id,p]of Object.entries(data.players||{}))if(id!==socket.id)updateRemotePlayer(id,p);$('phase-label').textContent='BUY PHASE';openBuy();}else{$('phase-label').textContent='LIVE';closeBuy();}updateHUD();
   });
   socket.on('equipResult',data=>{if(!data.ok){showToast(data.message||'무기를 장착할 수 없습니다.');return;}state.currentWeapon=data.weapon;if(data.ownedWeapons)state.owned=new Set(data.ownedWeapons);makeAmmoFor(data.weapon);buildGun(data.weapon);updateHUD();showToast(`${WEAPON_BY_ID[data.weapon]?.name||data.weapon} 장착`,900);});
   socket.on('selfState',data=>{if(data.money!=null)state.money=data.money;if(data.hp!=null)state.hp=data.hp;if(data.armor!=null)state.armor=data.armor;if(data.armorTier)state.armorTier=data.armorTier;if(data.ownedWeapons)state.owned=new Set(data.ownedWeapons);if(data.weapon&&data.weapon!==state.currentWeapon){state.currentWeapon=data.weapon;buildGun(data.weapon);}if(data.boughtPrimary!=null)state.buyPrimaryThisRound=data.boughtPrimary;updateHUD();});
@@ -483,33 +613,34 @@ function beginOnline(){
   socket.on('shotFx',data=>{if(data.id===socket.id)return;const from=new THREE.Vector3(data.origin.x,data.origin.y,data.origin.z),to=new THREE.Vector3(data.end.x,data.end.y,data.end.z);addShotFx(from,to,0xff718a);soundShot(data.weaponId);});
   socket.on('damage',data=>{if(data.targetId===socket.id){state.hp=data.hp;if(data.armor!=null)state.armor=data.armor;if(data.armorTier)state.armorTier=data.armorTier;updateHUD();soundHit();if(data.hp<=0){setZoom(false);showToast('라운드 패배 · 다음 라운드를 준비하세요.',1800);}}if(data.attackerId===socket.id&&data.targetId!==socket.id){$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),110);soundHit();}if(data.killed&&data.attackerId===socket.id){soundKill();$('kill-banner').innerHTML=`TARGET ELIMINATED <small>+75 CR</small>`;$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),900);}});
   socket.on('equipResult',data=>{if(!data.ok){showToast(data.message||'무기를 장착할 수 없습니다.');return;}state.currentWeapon=data.weapon;if(data.ownedWeapons)state.owned=new Set(data.ownedWeapons);makeAmmoFor(data.weapon);buildGun(data.weapon);updateHUD();showToast(`${WEAPON_BY_ID[data.weapon]?.name||data.weapon} 장착`,900);});socket.on('buyResult',data=>{if(!data.ok){showToast(data.message||'구매할 수 없습니다.');return;}state.money=data.money;state.armor=data.armor??state.armor;if(data.armorTier)state.armorTier=data.armorTier;if(data.ownedWeapons)state.owned=new Set(data.ownedWeapons);if(data.weapon&&data.weapon!==state.currentWeapon){state.currentWeapon=data.weapon;makeAmmoFor(data.weapon,true);buildGun(data.weapon);}state.buyPrimaryThisRound=!!data.boughtPrimary;state.armorPurchased=!!data.armorPurchased;soundBuy();$('buy-feedback').textContent=data.message||'구매 완료';updateHUD();});
-  socket.on('roundResult',data=>{setZoom(false);state.phase='ended';state.selfScore=data.scores?.[socket.id]||0;state.enemyScore=Object.entries(data.scores||{}).filter(([id])=>id!==socket.id).reduce((a,[,v])=>a+v,0);state.money=data.selfMoney??state.money;state.matchOver=!!data.matchOver;$('result-kicker').textContent=data.matchOver?'MATCH RESULT':'ROUND RESULT';const won=data.winnerId===socket.id;$('result-title').innerHTML=data.matchOver?(won?'MATCH<br/><span>VICTORY.</span>':'MATCH<br/><span>DEFEAT.</span>'):(won?'ROUND<br/><span>WON.</span>':'ROUND<br/><span>LOST.</span>');$('result-copy').textContent=data.matchOver?(data.reason||'6라운드 선취로 매치가 끝났습니다.'):`${data.reason|| (won?'라운드 승리!':'상대가 라운드를 가져갔습니다.')} · 이번 라운드만 종료됐습니다. 매치는 계속됩니다 (${state.selfScore}-${state.enemyScore}). 약 ${Math.ceil((data.nextRoundInMs||5000)/1000)}초 후 다음 라운드가 자동 시작되며, 먼저 6승을 하면 매치가 끝납니다.`;$('result-reward').textContent=`+${(data.reward??0).toLocaleString()} CR`;$('next-round').classList.toggle('hidden',!!data.matchOver||state.mode==='online');$('next-round').textContent='상대가 다음 라운드를 준비 중…';endScreen.classList.remove('hidden');updateHUD();});
+  socket.on('roundResult',data=>{setZoom(false);state.phase='ended';state.selfScore=data.scores?.[socket.id]||0;state.enemyScore=Object.entries(data.scores||{}).filter(([id])=>id!==socket.id).reduce((a,[,v])=>a+v,0);state.money=data.selfMoney??state.money;state.matchOver=!!data.matchOver;$('result-kicker').textContent=data.matchOver?'MATCH RESULT':'ROUND RESULT';const won=data.winnerId===socket.id;$('result-title').innerHTML=data.matchOver?(won?'MATCH<br/><span>VICTORY.</span>':'MATCH<br/><span>DEFEAT.</span>'):(won?'ROUND<br/><span>WON.</span>':'ROUND<br/><span>LOST.</span>');$('result-copy').textContent=data.matchOver?(data.reason||'6라운드 선취로 매치가 끝났습니다.'):`${data.reason|| (won?'라운드 승리!':'상대가 라운드를 가져갔습니다.')} · 이번 라운드만 종료됐습니다. 현재 점수 ${state.selfScore}-${state.enemyScore}. 아래 '다음 라운드 시작' 버튼을 누르면 다음 라운드로 진행하며, 먼저 6승을 하면 매치가 끝납니다.`;$('result-reward').textContent=`+${(data.reward??0).toLocaleString()} CR`;$('next-round').classList.toggle('hidden',!!data.matchOver);$('next-round').disabled=false;$('next-round').textContent='다음 라운드 시작';endScreen.classList.remove('hidden');updateHUD();});
   socket.on('roomMessage',data=>showToast(data.message));
-  socket.emit('createRoom',{name:state.name,device:state.device,rule:state.rule});
+  socket.emit('createRoom',{name:state.name,device:state.device,rule:state.rule,map:state.selectedMap});
   }
 function showRoomWait(code){let panel=$('room-wait');if(!panel){panel=document.createElement('div');panel.id='room-wait';panel.className='room-wait';panel.innerHTML='<div class="room-wait-card"><small>PRIVATE MATCH / INVITE</small><h3>친구를 기다리는 중</h3><p>아래 6자리 코드를 친구에게 공유하세요.</p><strong id="wait-code">------</strong><button id="copy-room-code" class="solid-button">방 코드 복사</button><button id="cancel-room-wait" class="outline-button full-button">메인 메뉴로</button></div>';document.body.append(panel);$('copy-room-code').addEventListener('click',()=>navigator.clipboard?.writeText(state.roomCode).then(()=>showToast('방 코드를 복사했습니다.')).catch(()=>showToast(`방 코드: ${state.roomCode}`)));$('cancel-room-wait').addEventListener('click',backToMenu);}
   $('wait-code').textContent=code||'------';panel.classList.remove('hidden');}
 function hideRoomWait(){const p=$('room-wait');if(p)p.classList.add('hidden');}
 function joinOnline(){const code=$('room-code').value.trim().toUpperCase().replace(/[^A-Z0-9]/g,'');if(code.length!==6){showToast('6자리 방 코드를 입력하세요.');return;}initAudio();state.mode='online';state.name=($('player-name').value.trim()||'PLAYER').slice(0,16);state.rule=state.rule||'crossplay';state.money=450;state.hp=100;state.armor=0;state.armorTier='none';state.selfScore=0;state.enemyScore=0;state.round=0;state.currentWeapon='pistol';state.owned=new Set(['pistol']);state.phase='waiting';state.roomCode='';clearBots();clearRemotePlayers();setModeUI();updateHUD();
-  const socket=io({transports:['websocket','polling'],reconnection:true});state.socket=socket;socket.on('connect',()=>{state.socketReady=true;updateHUD();socket.emit('joinRoom',{code,name:state.name,device:state.device});});socket.on('connect_error',()=>{state.socketReady=false;showToast('온라인 서버 연결 실패. 배포된 게임 주소인지 확인하세요.',3200);});
+  const socket=io({transports:['websocket','polling'],reconnection:true});state.socket=socket;socket.on('connect',()=>{state.socketReady=true;updateHUD();socket.emit('joinRoom',{code,name:state.name,device:state.device,map:state.selectedMap});});socket.on('connect_error',()=>{state.socketReady=false;showToast('온라인 서버 연결 실패. 배포된 게임 주소인지 확인하세요.',3200);});
   // Reuse identical room listeners by registering a lightweight join-mode bridge.
-  socket.on('roomError',d=>showToast(d.message||'방 입장 실패',3200));socket.on('roomJoined',d=>{state.roomCode=d.code;showRoomWait(d.code);});
+  socket.on('roomError',d=>showToast(d.message||'방 입장 실패',3200));socket.on('roomJoined',d=>{if(d.map&&state.mapId!==d.map)buildMap(d.map);state.roomCode=d.code;showRoomWait(d.code);});
   socket.on('playerJoined',d=>{updateRemotePlayer(d.id,d.player);hideRoomWait();});socket.on('playerLeft',d=>{const r=state.remotePlayers.get(d.id);if(r){unregisterTarget(d.id);disposeGroup(r.root);state.remotePlayers.delete(d.id);}state.phase='waiting';});socket.on('playerMoved',d=>updateRemotePlayer(d.id,d));socket.on('playersSnapshot',d=>{for(const[id,p]of Object.entries(d||{}))if(id!==socket.id)updateRemotePlayer(id,p);});
-  socket.on('roundState',d=>{hideRoomWait();endScreen.classList.add('hidden');state.phase=d.phase;state.round=d.round;state.phaseEnd=d.endsAt;state.roundLimit=d.roundEndsAt||0;state.selfScore=d.scores?.[socket.id]||0;state.enemyScore=Object.entries(d.scores||{}).filter(([id])=>id!==socket.id).reduce((a,[,v])=>a+v,0);state.money=d.self?.money??650;state.hp=d.self?.hp??100;state.armor=d.self?.armor??0;state.armorTier=d.self?.armorTier??'none';state.currentWeapon=d.self?.weapon||'pistol';state.owned=new Set(d.self?.ownedWeapons||['pistol',...(state.currentWeapon!=='pistol'?[state.currentWeapon]:[])]);state.buyPrimaryThisRound=!!d.self?.boughtPrimary;state.pos.set(d.self?.x??0,0,d.self?.z??27);state.yaw=d.self?.yaw??state.yaw;state.pitch=d.self?.pitch??0;state.reloading=false;state.reloadWeaponId=null;makeAmmoFor(state.currentWeapon,true);clearRemotePlayers();for(const[id,player]of Object.entries(d.players||{}))if(id!==socket.id)updateRemotePlayer(id,player);buildGun(state.currentWeapon);if(d.phase==='buy')openBuy();else closeBuy();$('phase-label').textContent=d.phase==='buy'?'BUY PHASE':'LIVE';updateHUD();});
+  socket.on('roundState',d=>{if(d.map&&state.mapId!==d.map)buildMap(d.map);hideRoomWait();endScreen.classList.add('hidden');state.phase=d.phase;state.round=d.round;state.phaseEnd=d.endsAt;state.roundLimit=d.roundEndsAt||0;state.selfScore=d.scores?.[socket.id]||0;state.enemyScore=Object.entries(d.scores||{}).filter(([id])=>id!==socket.id).reduce((a,[,v])=>a+v,0);state.money=d.self?.money??650;state.hp=d.self?.hp??100;state.armor=d.self?.armor??0;state.armorTier=d.self?.armorTier??'none';state.currentWeapon=d.self?.weapon||'pistol';state.owned=new Set(d.self?.ownedWeapons||['pistol',...(state.currentWeapon!=='pistol'?[state.currentWeapon]:[])]);state.buyPrimaryThisRound=!!d.self?.boughtPrimary;state.pos.set(d.self?.x??0,0,d.self?.z??27);state.yaw=d.self?.yaw??state.yaw;state.pitch=d.self?.pitch??0;state.reloading=false;state.reloadWeaponId=null;makeAmmoFor(state.currentWeapon,true);clearRemotePlayers();for(const[id,player]of Object.entries(d.players||{}))if(id!==socket.id)updateRemotePlayer(id,player);buildGun(state.currentWeapon);if(d.phase==='buy')openBuy();else closeBuy();$('phase-label').textContent=d.phase==='buy'?'BUY PHASE':'LIVE';updateHUD();});
   socket.on('roundPhase',d=>{state.phase=d.phase;state.phaseEnd=d.endsAt;if(d.phase==='live')state.roundLimit=d.endsAt;$('phase-label').textContent=d.phase==='buy'?'BUY PHASE':'LIVE';if(d.phase==='buy')openBuy();else closeBuy();});socket.on('selfState',d=>{state.money=d.money??state.money;state.hp=d.hp??state.hp;state.armor=d.armor??state.armor;state.armorTier=d.armorTier??state.armorTier;if(d.ownedWeapons)state.owned=new Set(d.ownedWeapons);if(d.weapon&&d.weapon!==state.currentWeapon){state.currentWeapon=d.weapon;buildGun(d.weapon);}state.buyPrimaryThisRound=!!d.boughtPrimary;updateHUD();});
   socket.on('buyResult',d=>{if(!d.ok){showToast(d.message||'구매할 수 없습니다.');return;}state.money=d.money;state.armor=d.armor??state.armor;state.armorTier=d.armorTier??state.armorTier;if(d.ownedWeapons)state.owned=new Set(d.ownedWeapons);if(d.weapon&&d.weapon!==state.currentWeapon){state.currentWeapon=d.weapon;makeAmmoFor(d.weapon,true);buildGun(d.weapon);}state.buyPrimaryThisRound=!!d.boughtPrimary;state.armorPurchased=!!d.armorPurchased;soundBuy();updateHUD();});socket.on('shotFx',d=>{if(d.id!==socket.id){addShotFx(new THREE.Vector3(d.origin.x,d.origin.y,d.origin.z),new THREE.Vector3(d.end.x,d.end.y,d.end.z),0xff718a);soundShot(d.weaponId);}});socket.on('damage',d=>{if(d.targetId===socket.id){state.hp=d.hp;state.armor=d.armor??state.armor;state.armorTier=d.armorTier??state.armorTier;updateHUD();soundHit();}if(d.attackerId===socket.id&&d.targetId!==socket.id){$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),110);soundHit();}if(d.killed&&d.attackerId===socket.id){soundKill();$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),900);}});
-  socket.on('roundResult',d=>{setZoom(false);state.phase='ended';state.selfScore=d.scores?.[socket.id]||0;state.enemyScore=Object.entries(d.scores||{}).filter(([id])=>id!==socket.id).reduce((a,[,v])=>a+v,0);state.money=d.selfMoney??state.money;state.matchOver=!!d.matchOver;const won=d.winnerId===socket.id;$('result-kicker').textContent=d.matchOver?'MATCH RESULT':'ROUND RESULT';$('result-title').innerHTML=d.matchOver?(won?'MATCH<br/><span>VICTORY.</span>':'MATCH<br/><span>DEFEAT.</span>'):(won?'ROUND<br/><span>WON.</span>':'ROUND<br/><span>LOST.</span>');$('result-copy').textContent=d.matchOver?(d.reason||'6라운드 선취로 매치가 끝났습니다.'):`${d.reason||'라운드 종료'} · 이번 라운드만 종료됐습니다. 매치는 계속됩니다 (${state.selfScore}-${state.enemyScore}). 약 ${Math.ceil((d.nextRoundInMs||5000)/1000)}초 후 다음 라운드가 자동 시작되며, 먼저 6승을 하면 매치가 끝납니다.`;$('result-reward').textContent=`+${(d.reward||0).toLocaleString()} CR`;$('next-round').classList.toggle('hidden',!!d.matchOver||state.mode==='online');$('next-round').textContent='다음 라운드는 자동 시작';endScreen.classList.remove('hidden');updateHUD();});
+  socket.on('roundResult',d=>{setZoom(false);state.phase='ended';state.selfScore=d.scores?.[socket.id]||0;state.enemyScore=Object.entries(d.scores||{}).filter(([id])=>id!==socket.id).reduce((a,[,v])=>a+v,0);state.money=d.selfMoney??state.money;state.matchOver=!!d.matchOver;const won=d.winnerId===socket.id;$('result-kicker').textContent=d.matchOver?'MATCH RESULT':'ROUND RESULT';$('result-title').innerHTML=d.matchOver?(won?'MATCH<br/><span>VICTORY.</span>':'MATCH<br/><span>DEFEAT.</span>'):(won?'ROUND<br/><span>WON.</span>':'ROUND<br/><span>LOST.</span>');$('result-copy').textContent=d.matchOver?(d.reason||'6라운드 선취로 매치가 끝났습니다.'):`${d.reason||'라운드 종료'} · 이번 라운드만 종료됐습니다. 현재 점수 ${state.selfScore}-${state.enemyScore}. 아래 '다음 라운드 시작' 버튼을 누르면 다음 라운드로 진행하며, 먼저 6승을 하면 매치가 끝납니다.`;$('result-reward').textContent=`+${(d.reward||0).toLocaleString()} CR`;$('next-round').classList.toggle('hidden',!!d.matchOver);$('next-round').disabled=false;$('next-round').textContent='다음 라운드 시작';endScreen.classList.remove('hidden');updateHUD();});
 }
 
 function setupEvents(){
   document.querySelectorAll('[data-device]').forEach(b=>b.addEventListener('click',()=>setDevice(b.dataset.device)));
+  document.querySelectorAll('[data-map]').forEach(b=>b.addEventListener('click',()=>selectMap(b.dataset.map)));
   document.querySelectorAll('[data-rule]').forEach(b=>b.addEventListener('click',()=>setRule(b.dataset.rule)));
   document.querySelectorAll('[data-difficulty]').forEach(b=>b.addEventListener('click',()=>setDifficulty(b.dataset.difficulty)));
   $('play-ai').addEventListener('click',startAIMatch);$('create-room').addEventListener('click',beginOnline);$('join-room').addEventListener('click',joinOnline);
   $('room-code').addEventListener('input',e=>{e.target.value=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);});
   $('open-buy').addEventListener('click',openBuy);$('touch-buy').addEventListener('click',openBuy);$('close-buy').addEventListener('click',closeBuy);$('buy-start').addEventListener('click',()=>{closeBuy();if(state.mode==='ai')beginLocalLive();});
   $('resume-game').addEventListener('click',()=>{state.paused=false;pauseMenu.classList.add('hidden');if(state.device==='pc'&&state.mode!=='menu')canvas.requestPointerLock?.();});
-  $('leave-game').addEventListener('click',backToMenu);$('end-menu').addEventListener('click',backToMenu);$('next-round').addEventListener('click',()=>{if(state.mode==='ai')nextLocalRound();else if(state.mode==='online')showToast('온라인 매치는 서버가 다음 라운드를 시작합니다.');});
+  $('leave-game').addEventListener('click',backToMenu);$('end-menu').addEventListener('click',backToMenu);$('next-round').addEventListener('click',()=>{if(state.mode==='ai')nextLocalRound();else if(state.mode==='online'&&state.phase==='ended'&&!state.matchOver&&state.socketReady){$('next-round').disabled=true;$('next-round').textContent='다음 라운드로 이동 중…';state.socket.emit('nextRound');}});
   $('quality-select').addEventListener('change',e=>{const q=e.target.value;renderer.shadowMap.enabled=q==='high';renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,q==='low'?.85:q==='medium'?1.25:1.75));renderer.setSize(window.innerWidth,window.innerHeight);});
   window.addEventListener('keydown',e=>{
     if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
@@ -564,6 +695,6 @@ function animate(now){requestAnimationFrame(animate);const dt=Math.min(.05,(now-
   renderer.render(scene,camera);
 }
 
-setDevice(state.device);setRule('crossplay');setDifficulty('normal');buildGun('pistol');setupEvents();updateHUD();requestAnimationFrame(animate);
+buildMap('arena');setDevice(state.device);setRule('crossplay');setDifficulty('normal');selectMap('arena');buildGun('pistol');setupEvents();updateHUD();requestAnimationFrame(animate);
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) { navigator.serviceWorker.register('/sw.js').catch(() => {}); }
