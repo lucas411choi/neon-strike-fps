@@ -1,14 +1,15 @@
-# NEON STRIKE — 라운드 경제형 브라우저 FPS
+# NEON STRIKE v0.6.0 — 라운드 경제형 브라우저 FPS
 
 PC와 모바일 브라우저에서 플레이할 수 있는 Three.js + Express + Socket.IO 전술 FPS 프로토타입입니다. 상용 게임의 음원/모델을 복제하지 않고 절차적으로 만든 맵, 무기 형상, Web Audio 사운드를 사용합니다.
 
 ## 이번 버전의 기능
 
-- 선착순 6승 경기, 라운드 구매 단계와 경제(시작 1,200 CR / 승리 +1,700 / 패배 +1,000 / 처치 +150)
+- AI/온라인 1대1 선착순 6승 경기, 라운드 종료 후 다음 라운드 시작 버튼, 라운드 구매 단계와 경제(시작 450 CR / 승리 +650 / 패배 +400 / 처치 +75)
 - 9종의 무기: 권총, SMG, 산탄총, 돌격소총, DMR, 저격총, LMG, 점사소총
 - 각 무기 별도 3D 1인칭 모델과 반동감, 사격/재장전/피격/킬 사운드(절차 생성)
 - AI 라운드전: AI 상대 1명과 경기, 쉬움/보통/어려움 난이도, 선착순 6승
-- Socket.IO 방 코드 1대1 온라인, PC 전용/모바일 전용/크로스플레이 규칙
+- 맵 선택: 아레나, 경복궁 야외, 넓은 도시(계단으로 옥상에 접근, 지하철·가게 엄폐물)
+- Socket.IO 방 코드 1대1 온라인, 호스트가 선택한 맵 동기화, PC 전용/모바일 전용/크로스플레이 규칙
 - 모바일 가상 조이스틱, 터치 조준, 사격/점프/재장전/구매 단계 무기 교체 UI
 - 모바일 홈 화면 추가를 위한 PWA manifest
 - PC에서 실행할 경우 `START_GAME.bat` 더블 클릭으로 설치 및 실행
@@ -61,12 +62,14 @@ PC: WASD 이동, 마우스 조준, 좌클릭 사격, Shift 달리기, Space 점�
 - 시작 지점 시야를 막는 높은 벽과 낮은 엄폐물 혼합
 
 
-## v0.5.1 update
+## v0.6.0 update
 
-- Online matches and AI matches use first-to-6 round wins; one elimination ends only the current round.
-- Reduced economy: 450 starting CR, +650 for a round win, +400 for a loss, and +75 per elimination.
-- Added stronger Heavy Armor (110 armor, 60% damage absorption) and adjusted weapon prices.
-- Added tall staggered line-of-sight barriers with preserved low cover, a Revolver sidearm, toggleable rifle/DMR/sniper zoom, and a circular sniper scope overlay.
-- Updated the service worker cache name to avoid older cached client files after deployment.
+- Added pre-match map selection: Arena, outdoor Gyeongbokgung-inspired palace grounds, and a wider city map.
+- Added map-specific scene colors, cover layout, and synchronized map selection for online rooms.
+- Added walkable staircase ramps and accessible rooftop platforms on the City map, plus shops and a subway entrance as cover.
+- Online rounds now wait for the players to press the next-round button; first to six round wins takes the match.
+- Bumped the PWA service-worker cache key so browsers fetch the updated interface after deployment.
 
-- v0.5.1: Added two offset interior high walls, tightened the economy and increased shield value, clearer online round-score messaging, and automatic AI next-round start.
+## Previous version notes
+
+- v0.5.1: First-to-six match scoring, reduced economy, heavy armor, Revolver, toggleable weapon zoom, circular sniper scope, and improved spawn-side cover.
