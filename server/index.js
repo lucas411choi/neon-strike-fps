@@ -37,7 +37,11 @@ const PORT = Number(process.env.PORT || 3000);
 const BUY_MS = 12_000;
 const ROUND_MS = 90_000;
 const NEXT_ROUND_MS = 5_000;
-const WINS_TO_MATCH = 5;
+const WINS_TO_MATCH = 6;
+const STARTING_CREDITS = 1200;
+const ROUND_WIN_REWARD = 1700;
+const ROUND_LOSS_REWARD = 1000;
+const KILL_REWARD = 150;
 const rooms = new Map();
 const coverBoxes = [
   {x:0,z:-34,w:70,d:1.4,h:5},{x:0,z:34,w:70,d:1.4,h:5},{x:-34,z:0,w:1.4,d:70,h:5},{x:34,z:0,w:1.4,d:70,h:5},
@@ -109,8 +113,9 @@ function resetPlayerForRound(room, p, index) {
   p.boughtPrimary = false;
   p.armorPurchased = p.armor >= 50;
   p.lastFireAt = 0;
-  p.x = index === 0 ? -4 : 4;
-  p.z = index === 0 ? 20 : -20;
+  // Spawn both players at opposite ends of the arena, out of immediate contact.
+  p.x = index === 0 ? -3 : 3;
+  p.z = index === 0 ? 27 : -27;
   p.yaw = index === 0 ? 0 : Math.PI;
   p.pitch = 0;
 }
@@ -149,7 +154,7 @@ function endRound(room, winnerId, reason='적 처치') {
   if ([...room.players.values()].some(p=>p.score>=WINS_TO_MATCH)) matchOver=true;
   for (const [id,p] of room.players) {
     const won = winnerId===id;
-    const reward = won?3000:1900;
+    const reward = won?ROUND_WIN_REWARD:ROUND_LOSS_REWARD;
     p.money += reward;
     io.to(id).emit('roundResult', {
       winnerId, reason, scores:Object.fromEntries([...room.players.entries()].map(([pid,pl])=>[pid,pl.score])),
@@ -193,7 +198,7 @@ io.on('connection', socket => {
     }
     leaveRoom(socket,false);
     const code=code6();
-    const p={id:socket.id,name,device,x:0,z:0,yaw:0,pitch:0,hp:100,armor:0,money:800,weapon:'pistol',score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0};
+    const p={id:socket.id,name,device,x:0,z:0,yaw:0,pitch:0,hp:100,armor:0,money:STARTING_CREDITS,weapon:'pistol',score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0};
     const room={code,rule:requestedRule,players:new Map([[socket.id,p]]),phase:'waiting',round:0,phaseEndsAt:0,liveEndsAt:0,timer:null};
     rooms.set(code,room);socket.data.roomCode=code;socket.join(code);
     socket.emit('roomCreated',{code,rule:requestedRule,device});
@@ -210,7 +215,7 @@ io.on('connection', socket => {
     }
     leaveRoom(socket,false);
     const name=safeName(payload?.name);
-    const p={id:socket.id,name,device,x:0,z:0,yaw:0,pitch:0,hp:100,armor:0,money:800,weapon:'pistol',score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0};
+    const p={id:socket.id,name,device,x:0,z:0,yaw:0,pitch:0,hp:100,armor:0,money:STARTING_CREDITS,weapon:'pistol',score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0};
     room.players.set(socket.id,p);socket.data.roomCode=code;socket.join(code);
     socket.emit('roomJoined',{code,rule:room.rule,device});
     socket.to(code).emit('playerJoined',{id:socket.id,player:publicPlayer(p)});
@@ -269,7 +274,7 @@ io.on('connection', socket => {
     if(id==='shotgun')damage=48;
     const t=hit.p;let left=damage;if(t.armor>0){const absorbed=Math.min(t.armor,damage*.48);t.armor-=absorbed;left-=absorbed;}t.hp=Math.max(0,t.hp-left);
     const killed=t.hp<=0;
-    if(killed)shooter.money+=200;
+    if(killed)shooter.money+=KILL_REWARD;
     io.to(room.code).emit('damage',{attackerId:socket.id,targetId:hit.id,hp:t.hp,armor:t.armor,killed,damage});
     for(const [pid,p] of room.players)if(pid===hit.id)io.to(pid).emit('selfState',selfPayload(p));
     socket.emit('selfState',selfPayload(shooter));
