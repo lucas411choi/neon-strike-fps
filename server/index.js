@@ -43,21 +43,38 @@ const ROUND_WIN_REWARD = 650;
 const ROUND_LOSS_REWARD = 400;
 const KILL_REWARD = 75;
 const rooms = new Map();
-const coverBoxes = [
-  {x:0,z:-34,w:70,d:1.4,h:5},{x:0,z:34,w:70,d:1.4,h:5},{x:-34,z:0,w:1.4,d:70,h:5},{x:34,z:0,w:1.4,d:70,h:5},
-  {x:-15,z:-12,w:7,d:3,h:2.6},{x:-3,z:-14,w:4,d:4,h:1.5},{x:10,z:-12,w:7,d:3,h:2.8},
-  {x:-19,z:0,w:3,d:8,h:2.2},{x:-8,z:-1,w:5,d:3,h:1.4},{x:6,z:2,w:4,d:5,h:2.4},{x:19,z:0,w:3,d:8,h:2.2},
-  {x:-13,z:15,w:8,d:3,h:2.6},{x:0,z:13,w:5,d:4,h:1.5},{x:13,z:15,w:8,d:3,h:2.6},
-  {x:-2,z:0,w:2,d:2,h:3.6},
-  // High spawn-screen barriers with offset flanking gaps, matching the Three.js arena.
-  {x:-24,z:20,w:20,d:1.8,h:7.2},{x:13,z:20,w:42,d:1.8,h:7.2},
-  {x:-13.5,z:-20,w:41,d:1.8,h:7.2},{x:23.5,z:-20,w:21,d:1.8,h:7.2},
-  {x:-10,z:-8,w:1.6,d:10,h:6.8},{x:10,z:8,w:1.6,d:10,h:6.8},
-  {x:-28,z:-27,w:.7,d:.7,h:4},{x:28,z:27,w:.7,d:.7,h:4},{x:-28,z:27,w:.7,d:.7,h:4},{x:28,z:-27,w:.7,d:.7,h:4}
-];
-function isShotBlocked(origin, direction, maxDistance) {
+const mapCoverBoxes = {
+  arena: [
+    {x:0,z:-34,w:70,d:1.4,h:5},{x:0,z:34,w:70,d:1.4,h:5},{x:-34,z:0,w:1.4,d:70,h:5},{x:34,z:0,w:1.4,d:70,h:5},
+    {x:-15,z:-12,w:7,d:3,h:2.6},{x:-3,z:-14,w:4,d:4,h:1.5},{x:10,z:-12,w:7,d:3,h:2.8},
+    {x:-19,z:0,w:3,d:8,h:2.2},{x:-8,z:-1,w:5,d:3,h:1.4},{x:6,z:2,w:4,d:5,h:2.4},{x:19,z:0,w:3,d:8,h:2.2},
+    {x:-13,z:15,w:8,d:3,h:2.6},{x:0,z:13,w:5,d:4,h:1.5},{x:13,z:15,w:8,d:3,h:2.6},{x:-2,z:0,w:2,d:2,h:3.6},
+    {x:-24,z:20,w:20,d:1.8,h:7.2},{x:13,z:20,w:42,d:1.8,h:7.2},{x:-13.5,z:-20,w:41,d:1.8,h:7.2},{x:23.5,z:-20,w:21,d:1.8,h:7.2},
+    {x:-10,z:-8,w:1.6,d:10,h:6.8},{x:10,z:8,w:1.6,d:10,h:6.8},
+    {x:-28,z:-27,w:.7,d:.7,h:4},{x:28,z:27,w:.7,d:.7,h:4},{x:-28,z:27,w:.7,d:.7,h:4},{x:28,z:-27,w:.7,d:.7,h:4}
+  ],
+  palace: [
+    {x:0,z:-47.3,w:95,d:1.5,h:3.2},{x:0,z:47.3,w:95,d:1.5,h:3.2},{x:-47.3,z:0,w:1.5,d:95,h:3.2},{x:47.3,z:0,w:1.5,d:95,h:3.2},
+    {x:0,z:-27,w:30,d:10,h:4.8},{x:0,z:-21.75,w: .62,d:.72,h:5.9},
+    {x:-24,z:-17,w:9,d:6,h:3.6},{x:24,z:-17,w:9,d:6,h:3.6},
+    ...[-7,4,16,28].flatMap(z=>[{x:-20,z,w:10,d:1.2,h:1.18},{x:20,z,w:10,d:1.2,h:1.18},{x:-8,z:z+2,w:4,d:1.1,h:.92},{x:8,z:z-2,w:4,d:1.1,h:.92}]),
+    {x:-16,z:33,w:58,d:1.6,h:6.8},{x:37,z:33,w:17,d:1.6,h:6.8},{x:16,z:-33,w:58,d:1.6,h:6.8},{x:-37,z:-33,w:17,d:1.6,h:6.8},
+  ],
+  city: [
+    {x:0,z:-59.8,w:120,d:1.5,h:7},{x:0,z:59.8,w:120,d:1.5,h:7},{x:-59.8,z:0,w:1.5,d:120,h:7},{x:59.8,z:0,w:1.5,d:120,h:7},
+    {x:-31,z:-29,w:14,d:16,h:7},{x:31,z:18,w:13,d:15,h:5.5},
+    ...[[-43,-6,12,17,8],[-16,-31,9,12,5],[18,-31,15,12,8],[45,-17,10,16,7],[-45,22,13,18,9],[13,40,18,10,6],[43,39,15,13,8],[-12,39,13,11,6]].map(([x,z,w,d,h])=>({x,z,w,d,h})),
+    ...[[-20,-4],[20,4],[-19,20],[19,-19]].map(([x,z])=>({x,z,w:10,d:6,h:3.4})),
+    {x:0,z:29,w:11,d:7,h:1.65},{x:-5.1,z:29,w:1,d:9,h:2.5},{x:5.1,z:29,w:1,d:9,h:2.5},
+    ...[[-8,-17],[8,17],[-8,39],[8,-39]].map(([x,z])=>({x,z,w:4,d:1.4,h:1.35})),
+    // Tall spawn sight-blockers, broken into offset segments to preserve flanking routes.
+    {x:-20,z:43,w:80,d:1.6,h:8},{x:40,z:43,w:36,d:1.6,h:8},
+    {x:20,z:-43,w:80,d:1.6,h:8},{x:-40,z:-43,w:36,d:1.6,h:8},
+  ]
+};
+function isShotBlocked(origin, direction, maxDistance, mapId='arena') {
   let nearest = maxDistance;
-  for (const box of coverBoxes) {
+  for (const box of mapCoverBoxes[mapId] || mapCoverBoxes.arena) {
     let tMin = 0, tMax = maxDistance;
     for (const axis of ['x','z']) {
       const d = direction[axis], p = origin[axis], half = box[axis === 'x' ? 'w' : 'd'] / 2;
@@ -76,18 +93,8 @@ function isShotBlocked(origin, direction, maxDistance) {
   }
   return nearest < maxDistance - .12;
 }
-
-const weapons = {
-  pistol: { price: 0, damage: 26, range: 55, rate: 280, slot:'sidearm' },
-  revolver: { price: 550, damage: 47, range: 62, rate: 480, slot:'sidearm' },
-  smg: { price: 850, damage: 17, range: 25, rate: 85, slot:'primary' },
-  shotgun: { price: 1100, damage: 48, range: 13, rate: 780, slot:'primary' },
-  rifle: { price: 1950, damage: 32, range: 50, rate: 120, slot:'primary' },
-  dmr: { price: 2200, damage: 44, range: 75, rate: 420, slot:'primary' },
-  sniper: { price: 3000, damage: 78, range: 100, rate: 1050, slot:'primary' },
-  lmg: { price: 2500, damage: 22, range: 42, rate: 105, slot:'primary' },
-  burst: { price: 1600, damage: 23, range: 45, rate: 320, slot:'primary' },
-};
+function mapBounds(mapId){return mapId==='city'?58:mapId==='palace'?45.5:31.8;}
+function mapSpawn(mapId){return mapId==='city'?52:mapId==='palace'?40:27;}
 
 function code6() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -98,15 +105,15 @@ function code6() {
 }
 function safeName(name) { return String(name || 'PLAYER').replace(/[<>\u0000-\u001f]/g, '').trim().slice(0, 16) || 'PLAYER'; }
 function compatible(rule, device) { return rule === 'crossplay' || rule === device; }
-function publicPlayer(p) { return { x:p.x, y:0, z:p.z, yaw:p.yaw, pitch:p.pitch, name:p.name, hp:p.hp, armor:p.armor, weapon:p.weapon, device:p.device, score:p.score }; }
+function publicPlayer(p) { return { x:p.x, y:p.y||0, z:p.z, yaw:p.yaw, pitch:p.pitch, name:p.name, hp:p.hp, armor:p.armor, weapon:p.weapon, device:p.device, score:p.score }; }
 function playerById(room, id) { return room?.players.get(id); }
-function selfPayload(p) { return { money:p.money, hp:p.hp, armor:p.armor, armorTier:p.armorTier, weapon:p.weapon, ownedWeapons:[...(p.ownedWeapons||['pistol'])], boughtPrimary:p.boughtPrimary, armorPurchased:p.armorPurchased, x:p.x, y:0, z:p.z, yaw:p.yaw, pitch:p.pitch }; }
+function selfPayload(p) { return { money:p.money, hp:p.hp, armor:p.armor, armorTier:p.armorTier, weapon:p.weapon, ownedWeapons:[...(p.ownedWeapons||['pistol'])], boughtPrimary:p.boughtPrimary, armorPurchased:p.armorPurchased, x:p.x, y:p.y||0, z:p.z, yaw:p.yaw, pitch:p.pitch }; }
 function playersSnapshot(room) { return Object.fromEntries([...room.players.entries()].map(([id,p])=>[id,publicPlayer(p)])); }
 function emitState(room) {
   const players = playersSnapshot(room);
   for (const [id,p] of room.players) {
     io.to(id).emit('roundState', {
-      code: room.code, phase: room.phase, round: room.round, endsAt: room.phaseEndsAt,
+      code: room.code, map: room.map || 'arena', phase: room.phase, round: room.round, endsAt: room.phaseEndsAt,
       roundEndsAt: room.liveEndsAt, scores: Object.fromEntries([...room.players.entries()].map(([pid,pl])=>[pid,pl.score])),
       self: selfPayload(p), players,
     });
@@ -121,7 +128,8 @@ function resetPlayerForRound(room, p, index) {
   p.lastFireAt = 0;
   // Spawn both players at opposite ends of the arena, out of immediate contact.
   p.x = index === 0 ? -3 : 3;
-  p.z = index === 0 ? 27 : -27;
+  p.y = 0;
+  const spawn=mapSpawn(room.map);p.z = index === 0 ? spawn : -spawn;
   p.yaw = index === 0 ? 0 : Math.PI;
   p.pitch = 0;
 }
@@ -164,14 +172,15 @@ function endRound(room, winnerId, reason='적 처치') {
     p.money += reward;
     io.to(id).emit('roundResult', {
       winnerId, reason, scores:Object.fromEntries([...room.players.entries()].map(([pid,pl])=>[pid,pl.score])),
-      selfMoney:p.money, reward, matchOver, round:room.round, nextRoundInMs:matchOver?0:NEXT_ROUND_MS,
+      selfMoney:p.money, reward, matchOver, round:room.round, nextRoundInMs:0,
     });
   }
   if (matchOver) {
     room.phase='matchover';
     return;
   }
-  room.timer=setTimeout(()=>beginRound(room),NEXT_ROUND_MS);
+  // The next round begins only when a player presses the explicit next-round button.
+  room.timer=null;
 }
 function closeRoom(room) {
   if (room?.timer) clearTimeout(room.timer);
@@ -199,15 +208,16 @@ io.on('connection', socket => {
   socket.on('createRoom', payload => {
     const name=safeName(payload?.name), device=payload?.device==='mobile'?'mobile':'pc';
     const requestedRule=['pc','mobile','crossplay'].includes(payload?.rule)?payload.rule:'crossplay';
+    const requestedMap=['arena','palace','city'].includes(payload?.map)?payload.map:'arena';
     if (!compatible(requestedRule,device)) {
       socket.emit('roomError',{message:requestedRule==='pc'?'PC끼리 모드는 PC를 선택해야 합니다.':'모바일끼리 모드는 모바일을 선택해야 합니다.'});return;
     }
     leaveRoom(socket,false);
     const code=code6();
-    const p={id:socket.id,name,device,x:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0};
-    const room={code,rule:requestedRule,players:new Map([[socket.id,p]]),phase:'waiting',round:0,phaseEndsAt:0,liveEndsAt:0,timer:null};
+    const p={id:socket.id,name,device,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0};
+    const room={code,rule:requestedRule,map:requestedMap,players:new Map([[socket.id,p]]),phase:'waiting',round:0,phaseEndsAt:0,liveEndsAt:0,timer:null};
     rooms.set(code,room);socket.data.roomCode=code;socket.join(code);
-    socket.emit('roomCreated',{code,rule:requestedRule,device});
+    socket.emit('roomCreated',{code,rule:requestedRule,device,map:room.map});
   });
   socket.on('joinRoom', payload => {
     const code=String(payload?.code||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
@@ -221,19 +231,19 @@ io.on('connection', socket => {
     }
     leaveRoom(socket,false);
     const name=safeName(payload?.name);
-    const p={id:socket.id,name,device,x:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0};
+    const p={id:socket.id,name,device,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0};
     room.players.set(socket.id,p);socket.data.roomCode=code;socket.join(code);
-    socket.emit('roomJoined',{code,rule:room.rule,device});
+    socket.emit('roomJoined',{code,rule:room.rule,device,map:room.map});
     socket.to(code).emit('playerJoined',{id:socket.id,player:publicPlayer(p)});
     socket.emit('playersSnapshot',playersSnapshot(room));
     beginRound(room);
   });
   socket.on('move', payload => {
     const room=rooms.get(socket.data.roomCode);const p=playerById(room,socket.id);if(!p||!payload)return;
-    const x=Number(payload.x),z=Number(payload.z),yaw=Number(payload.yaw),pitch=Number(payload.pitch);
-    if (![x,z,yaw,pitch].every(Number.isFinite))return;
-    p.x=Math.max(-31,Math.min(31,x));p.z=Math.max(-31,Math.min(31,z));p.yaw=Math.max(-Math.PI*2,Math.min(Math.PI*2,yaw));p.pitch=Math.max(-1.35,Math.min(1.35,pitch));
-    socket.to(room.code).emit('playerMoved',{id:socket.id,x:p.x,y:0,z:p.z,yaw:p.yaw,pitch:p.pitch,name:p.name,hp:p.hp,weapon:p.weapon,device:p.device});
+    const x=Number(payload.x),y=Number(payload.y??0),z=Number(payload.z),yaw=Number(payload.yaw),pitch=Number(payload.pitch);
+    if (![x,y,z,yaw,pitch].every(Number.isFinite))return;
+    const bound=mapBounds(room.map);p.x=Math.max(-bound,Math.min(bound,x));p.y=Math.max(0,Math.min(8,y));p.z=Math.max(-bound,Math.min(bound,z));p.yaw=Math.max(-Math.PI*2,Math.min(Math.PI*2,yaw));p.pitch=Math.max(-1.35,Math.min(1.35,pitch));
+    socket.to(room.code).emit('playerMoved',{id:socket.id,x:p.x,y:p.y,z:p.z,yaw:p.yaw,pitch:p.pitch,name:p.name,hp:p.hp,weapon:p.weapon,device:p.device});
   });
   socket.on('buy', payload => {
     const room=rooms.get(socket.data.roomCode);const p=playerById(room,socket.id);
@@ -291,11 +301,11 @@ io.on('connection', socket => {
     let end={x:origin.x+direction.x*w.range,y:origin.y+direction.y*w.range,z:origin.z+direction.z*w.range};
     let hit=null;
     if(targetEntry){
-      const [targetId,target]=targetEntry;const center={x:target.x,y:1.13,z:target.z};const vx=center.x-origin.x,vy=center.y-origin.y,vz=center.z-origin.z;
+      const [targetId,target]=targetEntry;const center={x:target.x,y:(target.y||0)+1.13,z:target.z};const vx=center.x-origin.x,vy=center.y-origin.y,vz=center.z-origin.z;
       const distance=Math.hypot(vx,vy,vz);const dot=(vx*direction.x+vy*direction.y+vz*direction.z)/(distance||1);
       // Wide enough to tolerate network jitter, narrow enough to discourage blind map-wide hits.
       const horizontalDistance=Math.hypot(vx,vz);const horizLen=Math.hypot(direction.x,direction.z)||1;const horizontalDot=(vx*direction.x+vz*direction.z)/(horizontalDistance*horizLen||1);
-      if(distance<=w.range&&dot>.945&&horizontalDot>.955&&!isShotBlocked(origin,direction,distance)){
+      if(distance<=w.range&&dot>.945&&horizontalDot>.955&&!isShotBlocked(origin,direction,distance,room.map)){
         hit={id:targetId,p:target};end=center;
       }
     }
@@ -310,6 +320,14 @@ io.on('connection', socket => {
     for(const [pid,p] of room.players)if(pid===hit.id)io.to(pid).emit('selfState',selfPayload(p));
     socket.emit('selfState',selfPayload(shooter));
     if(killed)endRound(room,socket.id,`${shooter.name} 처치 성공`);
+  });
+  socket.on('nextRound',()=>{
+    const room=rooms.get(socket.data.roomCode);
+    if(!room||room.players.size!==2||room.phase!=='ended')return;
+    if([...room.players.values()].some(p=>p.score>=WINS_TO_MATCH))return;
+    if(room.timer)clearTimeout(room.timer);
+    room.timer=null;
+    beginRound(room);
   });
   socket.on('leaveRoom',()=>leaveRoom(socket,true));
   socket.on('disconnect',()=>leaveRoom(socket,true));
