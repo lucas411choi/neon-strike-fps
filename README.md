@@ -5,7 +5,7 @@ PC와 모바일 브라우저에서 플레이할 수 있는 Three.js + Express + 
 ## 이번 버전의 기능
 
 - 선착순 6승 경기, 라운드 구매 단계와 경제(시작 1,200 CR / 승리 +1,700 / 패배 +1,000 / 처치 +150)
-- 8종의 무기: 권총, SMG, 산탄총, 돌격소총, DMR, 저격총, LMG, 점사소총
+- 9종의 무기: 권총, SMG, 산탄총, 돌격소총, DMR, 저격총, LMG, 점사소총
 - 각 무기 별도 3D 1인칭 모델과 반동감, 사격/재장전/피격/킬 사운드(절차 생성)
 - AI 라운드전: AI 상대 1명과 경기, 쉬움/보통/어려움 난이도, 선착순 6승
 - Socket.IO 방 코드 1대1 온라인, PC 전용/모바일 전용/크로스플레이 규칙
@@ -45,10 +45,28 @@ PC와 모바일 브라우저에서 플레이할 수 있는 Three.js + Express + 
 
 ## 조작
 
-PC: WASD 이동, 마우스 조준, 좌클릭 사격, Shift 달리기, Space 점프, R 재장전, 1–8 무기 선택, Esc 메뉴. 구매는 라운드 시작 전 구매 단계에서만 가능합니다.
+PC: WASD 이동, 마우스 조준, 좌클릭 사격, Shift 달리기, Space 점프, R 재장전, 1–9 무기 선택, Esc 메뉴. 구매는 라운드 시작 전 구매 단계에서만 가능합니다.
 
 모바일: 왼쪽 가상 조이스틱 이동, 오른쪽 화면 드래그 조준, FIRE/점프/R/BUY/무기 교체 버튼.
 
 ## 검사
 
 `npm run check`는 Node.js 문법을 검사하고, `npm run build`는 프로덕션 파일을 생성합니다. 실제 온라인 플레이는 공개 서버에 배포하고 2개 이상의 기기로 확인해야 합니다.
+
+
+## v0.4 변경 사항
+- 온라인/AI 선착순 6라운드 승리 매치
+- 경량/중량 보호막, 리볼버, 조준경 가능한 소총·DMR·저격총
+- 저격총 전용 원형 스코프, 모바일 ZOOM 버튼
+- 시작 지점 시야를 막는 높은 벽과 낮은 엄폐물 혼합
+
+
+## v0.5.1 update
+
+- Online matches and AI matches use first-to-6 round wins; one elimination ends only the current round.
+- Reduced economy: 450 starting CR, +650 for a round win, +400 for a loss, and +75 per elimination.
+- Added stronger Heavy Armor (110 armor, 60% damage absorption) and adjusted weapon prices.
+- Added tall staggered line-of-sight barriers with preserved low cover, a Revolver sidearm, toggleable rifle/DMR/sniper zoom, and a circular sniper scope overlay.
+- Updated the service worker cache name to avoid older cached client files after deployment.
+
+- v0.5.1: Added two offset interior high walls, tightened the economy and increased shield value, clearer online round-score messaging, and automatic AI next-round start.
