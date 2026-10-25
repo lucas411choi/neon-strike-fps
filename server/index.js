@@ -18,8 +18,8 @@ app.disable('x-powered-by');
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '8kb' }));
 
-// Persistent accounts use Render Postgres in production. Local development uses a
-// private JSON file so auth can be exercised without installing a database.
+// Persistent accounts use the external PostgreSQL URL in DATABASE_URL (recommended: Neon pooled connection string).
+// Local development uses a private JSON file so auth can be exercised without a database.
 const { Pool } = pg;
 const authPool = process.env.DATABASE_URL ? new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -95,7 +95,7 @@ async function initializeAccountStorage() {
     return;
   }
   if (isProduction) {
-    console.error('[accounts] DATABASE_URL is missing. Configure the Render Postgres Blueprint before enabling durable accounts.');
+    console.error('[accounts] DATABASE_URL is missing. Add the Neon PostgreSQL connection string in the Render service Environment settings before enabling durable accounts.');
     return;
   }
   try {
@@ -194,7 +194,7 @@ async function awardAccountXP(accountId, amount) {
 }
 function apiStorageUnavailable(res) {
   if (authStorageReady) return false;
-  res.status(503).json({ error: '계정 데이터베이스가 준비되지 않았습니다. Render에서 neon-strike-accounts 데이터베이스를 연결한 뒤 다시 시도하세요.' });
+  res.status(503).json({ error: '계정 데이터베이스가 준비되지 않았습니다. Neon PostgreSQL을 만든 뒤 Render 환경변수 DATABASE_URL에 연결 문자열을 설정하세요.' });
   return true;
 }
 app.get('/healthz', (_req, res) => res.json({ ok: true, app: 'NEON STRIKE', time: Date.now(), accounts: authStorageReady ? 'ready' : 'unavailable' }));
