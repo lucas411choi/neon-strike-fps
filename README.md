@@ -1,6 +1,6 @@
 # NEON STRIKE v1.0.0 — 브라우저 전술 FPS
 
-Three.js, Express, Socket.IO로 만든 PC/모바일 브라우저용 FPS 프로토타입. 독자적인 절차 생성 맵, 무기 모델, Web Audio 효과음을 사용합니다.
+Three.js, Express, Socket.IO, PostgreSQL(Neon 권장)으로 만든 PC/모바일 브라우저용 FPS 프로토타입. 독자적인 절차 생성 맵, 무기 모델, Web Audio 효과음을 사용합니다.
 
 ## 현재 기능
 
@@ -31,7 +31,11 @@ Three.js, Express, Socket.IO로 만든 PC/모바일 브라우저용 FPS 프로�
 
 프로덕션 번들은 Vite `dist` 폴더를 서비스합니다. 서버는 Render `PORT` 환경 변수를 사용합니다.
 
-Render Blueprint의 `render.yaml`은 `neon-strike-accounts` PostgreSQL 데이터베이스를 정의합니다. GitHub에 `render.yaml`까지 커밋한 뒤 Render Blueprint의 `Manual sync`로 DB 리소스와 `DATABASE_URL`을 연결해야 계정 API가 활성화됩니다. 무료 Postgres는 영구 보관용이 아니라 기간 만료가 있으므로 XP를 장기간 보관하려면 만료 전에 유료 DB/영구 저장소로 이전해야 합니다.
+## 장기 계정 저장소(Neon PostgreSQL 권장)
+
+계정과 XP는 PostgreSQL에 저장합니다. Render의 무료 PostgreSQL은 생성 30일 후 만료되므로, 장기 저장에는 Neon을 권장합니다. Neon Free는 30일 만료형이 아니며 비활성 시 compute가 일시 정지할 수 있지만 데이터는 저장소에 남습니다. 무료 플랜은 1 GB/project와 100 CU-hours/project/month 등의 한도가 있으므로 한도를 넘으면 DB 작업이 일시 중지될 수 있습니다. 중요한 데이터는 정기적으로 백업하세요.
+
+설치 단계는 `NEON_DATABASE_SETUP_KO.md`를 따르세요. 핵심은 Neon에서 **pooled connection string**을 복사해 Render 서비스의 `Environment`에 `DATABASE_URL`로 등록하는 것입니다. `render.yaml`에서는 `DATABASE_URL`을 `sync: false`로 두어 이후 Blueprint 동기화가 비밀 연결 문자열을 덮어쓰지 않도록 했습니다. 기존 Render Postgres 리소스 정의는 기존 데이터를 실수로 삭제하지 않도록 남겨 두었지만, Neon 연결이 확인되기 전에는 기존 DB를 삭제하지 마세요.
 
 ## 컨트롤
 

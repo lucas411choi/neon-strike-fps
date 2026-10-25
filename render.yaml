@@ -9,11 +9,14 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # Set this manually in Render Dashboard > Service > Environment.
+      # Use the pooled PostgreSQL connection string from Neon. Never commit the secret URL.
       - key: DATABASE_URL
-        fromDatabase:
-          name: neon-strike-accounts
-          property: connectionString
+        sync: false
 
+# Legacy Render Postgres resource retained in the Blueprint to avoid an accidental
+# deletion during sync. Once Neon is verified and any old account data is migrated,
+# you may remove this resource manually. The app uses the DATABASE_URL set above.
 databases:
   - name: neon-strike-accounts
     databaseName: neon_strike
