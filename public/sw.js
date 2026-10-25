@@ -1,4 +1,4 @@
-const CACHE_NAME = 'neon-strike-static-v11';
+const CACHE_NAME = 'neon-strike-static-v12';
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(['/','/manifest.webmanifest','/icon.svg'])).catch(()=>{}));
   self.skipWaiting();
@@ -11,7 +11,7 @@ self.addEventListener('fetch', event => {
   const request = event.request;
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin || url.pathname.startsWith('/socket.io') || url.pathname === '/healthz') return;
+  if (url.origin !== self.location.origin || url.pathname.startsWith('/socket.io') || url.pathname.startsWith('/api/') || url.pathname === '/healthz') return;
   if (request.mode === 'navigate') {
     event.respondWith(fetch(request).then(response => {
       const copy=response.clone();caches.open(CACHE_NAME).then(cache=>cache.put('/',copy));return response;
