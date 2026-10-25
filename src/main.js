@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { io } from 'socket.io-client';
+import { XP_PER_LEVEL, getHitMultiplier } from './shared-rules.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('game-canvas');
@@ -11,6 +12,9 @@ const endScreen = $('end-screen');
 const touchControls = $('touch-controls');
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const SESSION_KEY = 'neon-strike-session-v1';
+const AUTH_TOKEN_KEY = 'neon-strike-auth-token-v1';
+let initialAuthToken = '';
+try { initialAuthToken = localStorage.getItem(AUTH_TOKEN_KEY) || ''; } catch {}
 let CLIENT_SESSION_ID;
 try { CLIENT_SESSION_ID = sessionStorage.getItem(SESSION_KEY); if (!CLIENT_SESSION_ID) { CLIENT_SESSION_ID = (crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`); sessionStorage.setItem(SESSION_KEY, CLIENT_SESSION_ID); } } catch { CLIENT_SESSION_ID = `${Date.now()}-${Math.random().toString(36).slice(2)}`; }
 
@@ -32,6 +36,7 @@ const state = {
   device: matchMedia('(pointer:coarse)').matches ? 'mobile' : 'pc',
   rule:'crossplay', difficulty:'normal', name:'PLAYER', mode:'menu', phase:'menu', playMode:'training', selectedMap:'arena', mapId:'arena', mapBounds:31.8, lobbyPage:'play', lobbyMapCycle:-1, lobbySelectedWeapon:'rifle',
   round:0, selfScore:0, enemyScore:0, money:450, hp:100, armor:0, armorTier:'none',
+  authToken:initialAuthToken, account:null, accountMode:'register', xpLoginNoticeShown:false,
   currentWeapon:'pistol', owned:new Set(['pistol']), ammo:{},
   pos:new THREE.Vector3(0,0,15), velocityY:0, yaw:0, pitch:0,
   keys:new Set(), touchMove:{x:0,y:0}, canJump:true,
@@ -87,10 +92,10 @@ const MAP_META = {
   palace:{name:'경복궁 야외 / PALACE COURT',bounds:45.5,spawn:40,floor:0x71875c,sky:0x9cc8ed,fog:0xb6d8ed,fogDensity:.0034},
   city:{name:'도시 / METRO DISTRICT',bounds:66,spawn:52,floor:0x323b45,sky:0x8797a9,fog:0x8797a9,fogDensity:.0026},
 };
-function addBox(x,y,z,w,h,d,mat,{collision=true,accent=null,rotation=0,rotationX=0,rotationZ=0}={}) {
+function addBox(x,y,z,w,h,d,mat,{collision=true,accent=null,rotation=0,rotationX=0,rotationZ=0,solidTop=false}={}) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat);
   mesh.position.set(x,y+h/2,z); mesh.rotation.set(rotationX,rotation,rotationZ); mesh.castShadow=true; mesh.receiveShadow=true; worldRoot.add(mesh);
-  if (collision) { colliders.push({x,z,w,d,h}); obstacleMeshes.push(mesh); }
+  if (collision) { colliders.push({x,z,w,d,h,solidTop}); obstacleMeshes.push(mesh); }
   if (accent) {
     const line = new THREE.Mesh(new THREE.BoxGeometry(w*0.86,0.035,0.04), accent);
     line.position.set(x,y+h*.82,z-d*.501); line.rotation.y=rotation; worldRoot.add(line);
@@ -200,25 +205,25 @@ function buildCityMap(){
   addBox(-64,-.025,0,7,.025,145,roadMat,{collision:false});
   addBox(64,-.025,0,7,.025,145,roadMat,{collision:false});
   // Tall office blocks; two rooftops are reached by visible stairs and a walkable height ramp.
-  addBox(-31,0,-29,14,7,16,materials.wallDark);addBox(-31,7,-29,14,.2,16,materials.wall,{collision:false});
+  addBox(-31,0,-29,14,7,16,materials.wallDark,{solidTop:true});addBox(-31,7,-29,14,.2,16,materials.wall,{collision:false});
   elevatedPlatforms.push({xMin:-38,xMax:-24,zMin:-37,zMax:-20.5,height:7});
   stairRamps.push({xMin:-33.2,xMax:-28.8,zMin:-20.5,zMax:-8,height:7});
   for(let i=0;i<12;i++){const h=(i+1)*7/12;addBox(-31,h-.24,-8-(i+.5),3.8,.24,1.04,materials.wall,{collision:false});}
   // Roof access for a second, lower block on the eastern side.
-  addBox(31,0,18,13,5.5,15,materials.wall);addBox(31,5.5,18,13,.2,15,materials.white,{collision:false});
+  addBox(31,0,18,13,5.5,15,materials.wall,{solidTop:true});addBox(31,5.5,18,13,.2,15,materials.white,{collision:false});
   elevatedPlatforms.push({xMin:24.5,xMax:37.5,zMin:10.5,zMax:26.5,height:5.5});
   stairRamps.push({xMin:29,xMax:33,zMin:26.5,zMax:38,height:5.5});
   for(let i=0;i<11;i++){const h=(i+1)*5.5/11;addBox(31,h-.22,38-(i+.5)*1.15,4,.22,1.18,materials.wall,{collision:false});}
   // Small buildings create alleys and crossfire angles.
   const buildings=[[-43,-6,12,17,8],[-16,-31,9,12,5],[18,-31,15,12,8],[45,-17,10,16,7],[-45,22,13,18,9],[13,40,18,10,6],[43,39,15,13,8],[-12,39,13,11,6]];
   for(const [x,z,w,d,h] of buildings){
-    addBox(x,0,z,w,h,d,materials.wallDark);
+    addBox(x,0,z,w,h,d,materials.wallDark,{solidTop:true});
     addBox(x,Math.max(1,h*.35),z-d/2-.05,w*.72,Math.min(1.4,h*.18),.12,glassMat,{collision:false});
     addBox(x,Math.max(1,h*.35)+.9,z-d/2-.1,w*.76,.14,.22,materials.red,{collision:false});
   }
   // Shops and striped awnings as practical waist-high street cover.
   for(const [x,z,c] of [[-20,-4,0xc66c49],[20,4,0x3b9c92],[-19,20,0xc7a45b],[19,-19,0x6a82b8]]){
-    addBox(x,0,z,10,3.4,6,materials.wall);
+    addBox(x,0,z,10,3.4,6,materials.wall,{solidTop:true});
     addBox(x,1.15,z-3.12,8.8,.6,.55,shopMat,{collision:false});
     addBox(x,1.9,z-3.13,6.2,1.0,.14,glassMat,{collision:false});
     addBox(x,3.2,z-3,11,.28,7,materials.red,{collision:false});
@@ -273,14 +278,102 @@ function setLobbyPage(page){
   document.querySelectorAll('[data-lobby-tab]').forEach(b=>b.classList.toggle('active',b.dataset.lobbyTab===chosen));
   $('lobby-play-view')?.classList.toggle('hidden',chosen!=='play');
   $('lobby-weapons-view')?.classList.toggle('hidden',chosen!=='weapons');
-  $('lobby-coming-soon-view')?.classList.toggle('hidden',['play','weapons'].includes(chosen));
-  if(['shop','skins','account'].includes(chosen)){
-    const titles={shop:'상점 · 개발 중입니다',skins:'스킨 · 개발 중입니다',account:'계정 · 개발 중입니다'};
+  $('lobby-coming-soon-view')?.classList.toggle('hidden',!['shop','skins'].includes(chosen));
+  $('lobby-account-view')?.classList.toggle('hidden',chosen!=='account');
+  if(['shop','skins'].includes(chosen)){
+    const titles={shop:'상점 · 개발 중입니다',skins:'스킨 · 개발 중입니다'};
     $('coming-soon-title').textContent=titles[chosen];
     $('coming-soon-copy').textContent='이 인터페이스는 다음 업데이트에서 추가될 예정입니다.';
   }
   if(chosen==='weapons')renderLobbyWeapons();
+  if(chosen==='account')renderAccountPanel();
 }
+
+let trainingXpQueue = Promise.resolve();
+function getAuthToken(){return state.authToken||'';}
+function accountMessage(id,message,type=''){const el=$(id);if(!el)return;el.textContent=message||'';el.classList.toggle('error',type==='error');el.classList.toggle('success',type==='success');}
+function renderAccountPanel(){
+  const loggedIn=!!state.account;
+  $('account-auth-panel')?.classList.toggle('hidden',loggedIn);
+  $('account-profile-panel')?.classList.toggle('hidden',!loggedIn);
+  document.querySelectorAll('[data-account-mode]').forEach(button=>button.classList.toggle('selected',button.dataset.accountMode===state.accountMode));
+  const submit=$('account-auth-submit');
+  if(submit){const title=state.accountMode==='register'?'회원가입':'로그인';submit.querySelector('b').textContent=title;submit.querySelector('small').textContent=state.accountMode==='register'?'CREATE PLAYER ID':'SIGN IN TO PLAYER ID';}
+  const password=$('account-password');if(password)password.autocomplete=state.accountMode==='register'?'new-password':'current-password';
+  if(!loggedIn)return;
+  const account=state.account,level=Math.max(1,Number(account.level)||1),xp=Math.max(0,Number(account.xp)||0),needed=level*XP_PER_LEVEL;
+  $('account-profile-name').textContent=account.username;
+  $('account-level').textContent=`LV. ${level}`;
+  $('account-xp').textContent=`${xp} / ${needed} XP`;
+  $('account-next-level').textContent=`다음 레벨까지 ${Math.max(0,needed-xp)} XP`;
+  $('account-xp-fill').style.width=`${Math.min(100,(xp/needed)*100)}%`;
+}
+function setAccountSession(token,account){
+  state.authToken=token||'';state.account=account||null;
+  try{if(state.authToken)localStorage.setItem(AUTH_TOKEN_KEY,state.authToken);else localStorage.removeItem(AUTH_TOKEN_KEY);}catch{}
+  renderAccountPanel();
+}
+async function loadStoredAccount(){
+  const token=state.authToken;
+  if(!token){renderAccountPanel();return;}
+  try{
+    const response=await fetch('/api/account/me',{headers:{Authorization:`Bearer ${token}`},cache:'no-store'});
+    const data=await response.json().catch(()=>({}));
+    // Ignore stale network responses if the player logged in/out while this request was in flight.
+    if(state.authToken!==token)return;
+    if(response.ok&&data.account){state.account=data.account;renderAccountPanel();}
+    else if(response.status===401){setAccountSession('',null);accountMessage('account-auth-message',data.error||'다시 로그인해 주세요.','error');}
+    else if(response.status===503){accountMessage('account-auth-message',data.error||'계정 저장소가 준비되지 않았습니다.','error');}
+    else if(!response.ok){accountMessage('account-auth-message',data.error||'계정 정보를 불러오지 못했습니다.','error');}
+  }catch{if(state.authToken===token)accountMessage('account-auth-message','서버에 연결할 수 없습니다. 인터넷 연결을 확인하세요.','error');}
+}
+async function submitAccountAuth(event){
+  event.preventDefault();
+  const submitButton=$('account-auth-submit');
+  if(submitButton?.disabled)return;
+  if(submitButton)submitButton.disabled=true;
+  const username=$('account-username').value.trim(),password=$('account-password').value;
+  const requestedMode=state.accountMode;
+  accountMessage('account-auth-message','처리 중입니다…');
+  const route=requestedMode==='register'?'/api/account/register':'/api/account/login';
+  try{
+    const response=await fetch(route,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password}),cache:'no-store'});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok||!data.token||!data.account){accountMessage('account-auth-message',data.error||'계정 요청에 실패했습니다.', 'error');return;}
+    setAccountSession(data.token,data.account);state.xpLoginNoticeShown=false;$('account-password').value='';
+    accountMessage('account-profile-message',requestedMode==='register'?'회원가입 완료! 계정과 XP가 저장됩니다.':'로그인 성공! 저장된 레벨과 XP를 불러왔습니다.','success');
+    showToast(`${data.account.username} 로그인 완료 · LV.${data.account.level}`,2200);
+  }catch{accountMessage('account-auth-message','서버에 연결할 수 없습니다. 잠시 후 다시 시도하세요.','error');}
+  finally{if(submitButton)submitButton.disabled=false;}
+}
+async function logoutAccount(){
+  const token=state.authToken;
+  try{if(token)await fetch('/api/account/logout',{method:'POST',headers:{Authorization:`Bearer ${token}`},cache:'no-store'});}catch{}
+  setAccountSession('',null);accountMessage('account-auth-message','로그아웃했습니다. 다시 로그인하면 저장된 진행도를 불러옵니다.','success');showToast('로그아웃했습니다.');
+}
+function awardTrainingXP(){
+  // Capture the owning account at the kill event; queued awards must never leak into a newly logged-in account.
+  const tokenAtKill=getAuthToken();
+  if(!tokenAtKill){if(!state.xpLoginNoticeShown){state.xpLoginNoticeShown=true;showToast('훈련 XP를 저장하려면 계정 탭에서 로그인하세요.',2600);}return Promise.resolve();}
+  // Serialize target awards so fast multi-target practice cannot lose XP to the server cooldown.
+  trainingXpQueue = trainingXpQueue.catch(()=>{}).then(async()=>{
+    for(let attempt=0;attempt<4;attempt++){
+      try{
+        const response=await fetch('/api/account/xp',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${tokenAtKill}`},body:JSON.stringify({reason:'training_hit'}),cache:'no-store'});
+        const data=await response.json().catch(()=>({}));
+        if(response.status===429&&attempt<3){const wait=Math.max(150,Math.min(3000,Number(data.retryAfterMs)||1000));await new Promise(resolve=>setTimeout(resolve,wait));continue;}
+        // If this token is no longer the active login, don't overwrite or clear the new player's session/profile.
+        if(state.authToken!==tokenAtKill)return;
+        if(response.ok&&data.account){state.account=data.account;if(state.lobbyPage==='account')renderAccountPanel();showToast(`훈련 보상 +${data.awardedXP||10} XP · LV.${state.account.level}`,950);}
+        else if(response.status===401){setAccountSession('',null);showToast('로그인 세션이 만료됐어요. 계정 탭에서 다시 로그인하세요.',2400);}
+        else if(!response.ok)console.warn('[xp] training award rejected:',data.error||response.status);
+        return;
+      }catch(error){console.warn('[xp] training award failed',error);return;}
+    }
+  });
+  return trainingXpQueue;
+}
+function applyAccountUpdated(payload){const account=payload?.account||payload;if(account&&account.username&&state.account&&Number(account.id)===Number(state.account.id)){state.account=account;if(state.lobbyPage==='account')renderAccountPanel();}}
 function renderLobbyWeapons(){
   const grid=$('lobby-weapon-cards');if(!grid)return;grid.innerHTML='';
   const selected=WEAPON_BY_ID[state.lobbySelectedWeapon]||WEAPON_BY_ID.rifle;
@@ -343,6 +436,42 @@ function buildGun(id) {
   gunRoot.position.set(0,0,0);
 }
 
+function buildCharacterWeapon(root,weaponId='pistol'){
+  const previous=root.userData.remoteWeaponModel;
+  if(previous){root.remove(previous);previous.traverse(o=>{o.geometry?.dispose();if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material?.dispose();});}
+  const w=WEAPON_BY_ID[weaponId]||WEAPON_BY_ID.pistol;
+  const rig=new THREE.Group();rig.position.set(.20,.99,-.34);
+  const bodyMat=new THREE.MeshStandardMaterial({color:w.color,metalness:.72,roughness:.34});
+  const darkMat=new THREE.MeshStandardMaterial({color:0x101923,metalness:.55,roughness:.42});
+  const detailMat=new THREE.MeshStandardMaterial({color:0x4be6d0,emissive:0x0c5c58,emissiveIntensity:.8,metalness:.35,roughness:.38});
+  const box=(x,y,z,sx,sy,sz,mat)=>{const mesh=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz),mat);mesh.position.set(x,y,z);mesh.castShadow=true;rig.add(mesh);return mesh;};
+  const barrel=(x,y,z,r,len,mat)=>{const mesh=new THREE.Mesh(new THREE.CylinderGeometry(r,r,len,8),mat);mesh.rotation.x=Math.PI/2;mesh.position.set(x,y,z);mesh.castShadow=true;rig.add(mesh);return mesh;};
+  // The character faces local -Z. All weapon families have a distinct silhouette and point forward.
+  if(weaponId==='pistol'||weaponId==='revolver'){
+    box(0,0,-.12,weaponId==='revolver'?.18:.14,.12,.24,bodyMat);
+    box(0,-.105,-.105,.095,.19,.09,darkMat);
+    barrel(0,.012,-.315,weaponId==='revolver'?.035:.026,.20,bodyMat);
+    if(weaponId==='revolver'){const cylinder=new THREE.Mesh(new THREE.CylinderGeometry(.065,.065,.105,10),detailMat);cylinder.rotation.x=Math.PI/2;cylinder.position.set(0,-.015,-.12);rig.add(cylinder);}
+  }else{
+    const long=weaponId==='sniper'||weaponId==='dmr';
+    box(0,0,-.16,weaponId==='lmg'?.24:.19,.15,long?.36:.31,bodyMat);
+    box(0,-.105,-.12,.12,.20,.15,darkMat);
+    barrel(0,.005,long?-.49:-.42,weaponId==='shotgun'?.043:.025,long?.50:.36,bodyMat);
+    if(weaponId==='shotgun')barrel(.075,-.06,-.38,.018,.29,darkMat);
+    if(weaponId==='lmg')box(0,-.17,-.18,.17,.13,.22,detailMat);
+    if(['rifle','dmr','sniper','burst'].includes(weaponId)){
+      box(0,.105,-.19,.11,.06,.16,darkMat);
+      if(weaponId==='sniper'||weaponId==='dmr'){
+        box(0,.155,-.19,.075,.045,.17,detailMat);barrel(0,.155,-.19,.03,.13,darkMat);
+      }
+    }
+    box(0,-.105,-.25,.09,.17,.10,darkMat);
+  }
+  box(-.012,.04,-.13,.012,.024,.18,detailMat);
+  root.add(rig);root.userData.remoteWeaponModel=rig;root.userData.remoteWeaponId=weaponId;
+  return rig;
+}
+
 function makeCharacter({color=0x67c9ff, accent=0x143345, onlineId=null, name='BOT'}={}) {
   const root=new THREE.Group();
   const bodyMat=new THREE.MeshStandardMaterial({color,metalness:.35,roughness:.47});
@@ -356,12 +485,13 @@ function makeCharacter({color=0x67c9ff, accent=0x143345, onlineId=null, name='BO
   part(new THREE.BoxGeometry(.34,.11,.28),dark,0,1.63,-.10,'head');
   const visor=part(new THREE.BoxGeometry(.28,.055,.035),new THREE.MeshStandardMaterial({color:onlineId?0x6ee9ff:0xff5f7c,emissive:onlineId?0x16717f:0x7c1029,emissiveIntensity:1.5}),0,1.68,-.204,'head');
   part(new THREE.BoxGeometry(.24,.18,.27),accentMat,-.49,1.19,0,'body');part(new THREE.BoxGeometry(.24,.18,.27),accentMat,.49,1.19,0,'body');
-  const arm1=part(new THREE.BoxGeometry(.18,.52,.19),bodyMat,-.47,.88,-.04,'body');arm1.rotation.z=-.13;
-  const arm2=part(new THREE.BoxGeometry(.18,.52,.19),bodyMat,.47,.88,-.04,'body');arm2.rotation.z=.13;
-  const leg1=part(new THREE.BoxGeometry(.25,.55,.28),dark,-.19,.35,0,'body');
-  const leg2=part(new THREE.BoxGeometry(.25,.55,.28),dark,.19,.35,0,'body');
+  const arm1=part(new THREE.BoxGeometry(.18,.52,.19),bodyMat,-.39,.94,-.13,'body');arm1.rotation.x=-.62;arm1.rotation.z=-.12;
+  const arm2=part(new THREE.BoxGeometry(.18,.52,.19),bodyMat,.39,.94,-.13,'body');arm2.rotation.x=-.62;arm2.rotation.z=.12;
+  const leg1=part(new THREE.BoxGeometry(.25,.55,.28),dark,-.19,.35,0,'legs');
+  const leg2=part(new THREE.BoxGeometry(.25,.55,.28),dark,.19,.35,0,'legs');
   const pack=part(new THREE.BoxGeometry(.37,.45,.17),accentMat,0,1.1,.23,'body');
   root.userData={onlineId,name,parts:[head,visor],legs:[leg1,leg2],arms:[arm1,arm2],bodyMat,accentMat};
+  buildCharacterWeapon(root,'pistol');
   return root;
 }
 function setTargetId(group,id) { group.traverse(o=>{if(o.isMesh)o.userData.targetId=id;}); }
@@ -375,10 +505,10 @@ function updateRemotePlayer(id,data) {
   if(id===state.socket?.id)return;
   let remote=state.remotePlayers.get(id);
   if(!remote){
-    const root=makeCharacter({color:0xff6c85,accent:0x52233a,onlineId:id,name:data.name||'OPPONENT'});root.position.set(data.x||0,data.y||0,data.z||0);scene.add(root);registerTarget(root,id);
-    remote={id,root,target:new THREE.Vector3(data.x||0,data.y||0,data.z||0),yaw:data.yaw||0,name:data.name||'OPPONENT',hp:data.hp??100};state.remotePlayers.set(id,remote);
+    const root=makeCharacter({color:0xff6c85,accent:0x52233a,onlineId:id,name:data.name||'OPPONENT'});buildCharacterWeapon(root,data.weapon||'pistol');root.position.set(data.x||0,data.y||0,data.z||0);scene.add(root);registerTarget(root,id);
+    remote={id,root,target:new THREE.Vector3(data.x||0,data.y||0,data.z||0),yaw:data.yaw||0,name:data.name||'OPPONENT',hp:data.hp??100,weapon:data.weapon||'pistol'};state.remotePlayers.set(id,remote);
   }
-  remote.target.set(data.x||0,data.y||0,data.z||0);remote.yaw=data.yaw||0;remote.name=data.name||remote.name;if(data.hp!=null)remote.hp=data.hp;
+  remote.target.set(data.x||0,data.y||0,data.z||0);remote.yaw=data.yaw||0;remote.name=data.name||remote.name;if(data.hp!=null)remote.hp=data.hp;if(data.weapon&&data.weapon!==remote.weapon){remote.weapon=data.weapon;buildCharacterWeapon(remote.root,data.weapon);}
 }
 function clearRemotePlayers(){ for(const [id,r] of state.remotePlayers){unregisterTarget(id);disposeGroup(r.root);}state.remotePlayers.clear(); }
 
@@ -623,9 +753,9 @@ function doShoot(){
     if(h){
       hitPoint=h.point;hitOwner=h.object.userData.targetId;
       if(String(hitOwner).startsWith('bot-')){
-        const bot=state.botList.find(b=>b.id===hitOwner);if(bot&&bot.alive){const head=h.object.userData.part==='head';totalDamage+=w.damage*(head?w.head:1);}
+        const bot=state.botList.find(b=>b.id===hitOwner);if(bot&&bot.alive){const part=h.object.userData.part;totalDamage+=w.damage*getHitMultiplier(part);}
       } else if(String(hitOwner).startsWith('practice-')){
-        const target=state.trainingTargets.find(t=>t.id===hitOwner);if(target&&target.alive){const head=h.object.userData.part==='head';totalDamage+=w.damage*(head?w.head:1);}
+        const target=state.trainingTargets.find(t=>t.id===hitOwner);if(target&&target.alive){const part=h.object.userData.part;totalDamage+=w.damage*getHitMultiplier(part);}
       } else if(state.mode==='online'){
         // Online hits are resolved by the room server; the local ray is only for tracer feedback.
         totalDamage=0;
@@ -636,7 +766,7 @@ function doShoot(){
   if(state.mode==='training'&&hitOwner&&String(hitOwner).startsWith('practice-')&&totalDamage>0){
     const target=state.trainingTargets.find(t=>t.id===hitOwner&&t.alive);
     if(target){target.hp-=totalDamage;soundHit();$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),100);showToast(`${target.name} · ${Math.max(0,Math.round(target.hp))} HP`,500);
-      if(target.hp<=0){target.hp=0;target.alive=false;target.respawnAt=Date.now()+3000;target.root.visible=false;unregisterTarget(target.id);soundKill();$('kill-banner').innerHTML=`${target.name.toUpperCase()} RESET <small>RESPAWN 3 SEC</small>`;$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),900);}
+      if(target.hp<=0){target.hp=0;target.alive=false;target.respawnAt=Date.now()+3000;target.root.visible=false;unregisterTarget(target.id);void awardTrainingXP();soundKill();$('kill-banner').innerHTML=`${target.name.toUpperCase()} RESET <small>RESPAWN 3 SEC · +10 XP</small>`;$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),900);}
     }
   }
   if(state.mode==='ai'&&hitOwner&&String(hitOwner).startsWith('bot-')&&totalDamage>0){const bot=state.botList.find(b=>b.id===hitOwner);if(bot&&bot.alive){bot.hp-=totalDamage;soundHit();$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),100);if(bot.hp<=0){bot.hp=0;bot.alive=false;bot.root.visible=false;unregisterTarget(bot.id);state.money+=75;soundKill();$('kill-banner').innerHTML=`${bot.name} ELIMINATED <small>+75 CR</small>`;$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),850);updateHUD();if(state.botList.every(b=>!b.alive))endLocalRound(true,'상대 플레이어를 처치했습니다.');}}}
@@ -645,7 +775,19 @@ function doShoot(){
 }
 function collideAt(x,z,y=state.pos.y){
   const radius=.48;if(Math.abs(x)>state.mapBounds||Math.abs(z)>state.mapBounds)return true;
-  for(const c of colliders){if(y>=c.h-.04)continue;if(Math.abs(x-c.x)<c.w/2+radius&&Math.abs(z-c.z)<c.d/2+radius)return true;}
+  for(const c of colliders){
+    const overlaps=Math.abs(x-c.x)<c.w/2+radius&&Math.abs(z-c.z)<c.d/2+radius;
+    if(!overlaps)continue;
+    if(c.solidTop){
+      if(y<c.h-.04)return true;
+      const walkableRoof=elevatedPlatforms.find(platform=>x>=platform.xMin&&x<=platform.xMax&&z>=platform.zMin&&z<=platform.zMax&&Math.abs(platform.height-c.h)<.25);
+      // Only explicitly authored rooftops can be traversed above their roof height.
+      if(walkableRoof&&y<=c.h+2.1)continue;
+      return true;
+    }
+    if(y>=c.h-.04)continue;
+    return true;
+  }
   return false;
 }
 function movePlayer(dt){
@@ -708,19 +850,20 @@ function beginOnline(){
   socket.on('selfState',data=>{if(data.money!=null)state.money=data.money;if(data.hp!=null)state.hp=data.hp;if(data.armor!=null)state.armor=data.armor;if(data.armorTier)state.armorTier=data.armorTier;if(data.ownedWeapons)state.owned=new Set(data.ownedWeapons);if(data.weapon&&data.weapon!==state.currentWeapon){state.currentWeapon=data.weapon;buildGun(data.weapon);}if(data.boughtPrimary!=null)state.buyPrimaryThisRound=data.boughtPrimary;updateHUD();});
   socket.on('roundPhase',data=>{state.phase=data.phase;state.phaseEnd=data.endsAt;if(data.phase==='live')state.roundLimit=data.endsAt;if(data.phase==='live'){$('phase-label').textContent='LIVE';closeBuy();showToast(`ROUND ${data.round} — FIGHT`,1600);}if(data.phase==='buy'){$('phase-label').textContent='BUY PHASE';openBuy();}updateHUD();});
   socket.on('shotFx',data=>{if(data.id===socket.id)return;const from=new THREE.Vector3(data.origin.x,data.origin.y,data.origin.z),to=new THREE.Vector3(data.end.x,data.end.y,data.end.z);addShotFx(from,to,0xff718a);soundShot(data.weaponId);});
-  socket.on('damage',data=>{if(data.targetId===socket.id){state.hp=data.hp;if(data.armor!=null)state.armor=data.armor;if(data.armorTier)state.armorTier=data.armorTier;updateHUD();soundHit();if(data.hp<=0){setZoom(false);showToast('라운드 패배 · 다음 라운드를 준비하세요.',1800);}}if(data.attackerId===socket.id&&data.targetId!==socket.id){$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),110);soundHit();}if(data.killed&&data.attackerId===socket.id){soundKill();$('kill-banner').innerHTML=`TARGET ELIMINATED <small>+75 CR</small>`;$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),900);}});
+  socket.on('damage',data=>{if(data.targetId===socket.id){state.hp=data.hp;if(data.armor!=null)state.armor=data.armor;if(data.armorTier)state.armorTier=data.armorTier;updateHUD();soundHit();if(data.hp<=0){setZoom(false);showToast('라운드 패배 · 다음 라운드를 준비하세요.',1800);}}if(data.attackerId===socket.id&&data.targetId!==socket.id){$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),110);soundHit();if(data.hitPart==='head')showToast('헤드샷 · 강한 피해',650);else if(data.hitPart==='legs')showToast('다리 명중 · 감소 피해',650);}if(data.killed&&data.attackerId===socket.id){soundKill();$('kill-banner').innerHTML=`TARGET ELIMINATED <small>+75 CR</small>`;$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),900);}});
   socket.on('equipResult',data=>{if(!data.ok){showToast(data.message||'무기를 장착할 수 없습니다.');return;}state.currentWeapon=data.weapon;if(data.ownedWeapons)state.owned=new Set(data.ownedWeapons);makeAmmoFor(data.weapon);buildGun(data.weapon);updateHUD();showToast(`${WEAPON_BY_ID[data.weapon]?.name||data.weapon} 장착`,900);});socket.on('buyResult',data=>{if(!data.ok){showToast(data.message||'구매할 수 없습니다.');return;}state.money=data.money;state.armor=data.armor??state.armor;if(data.armorTier)state.armorTier=data.armorTier;if(data.ownedWeapons)state.owned=new Set(data.ownedWeapons);if(data.weapon&&data.weapon!==state.currentWeapon){state.currentWeapon=data.weapon;makeAmmoFor(data.weapon,true);buildGun(data.weapon);}state.buyPrimaryThisRound=!!data.boughtPrimary;state.armorPurchased=!!data.armorPurchased;soundBuy();$('buy-feedback').textContent=data.message||'구매 완료';updateHUD();});
   socket.on('roundResult',data=>{setZoom(false);state.phase='ended';state.selfScore=data.scores?.[socket.id]||0;state.enemyScore=Object.entries(data.scores||{}).filter(([id])=>id!==socket.id).reduce((a,[,v])=>a+v,0);state.money=data.selfMoney??state.money;state.matchOver=!!data.matchOver;$('result-kicker').textContent=data.matchOver?'MATCH RESULT':'ROUND RESULT';const won=data.winnerId===socket.id;$('result-title').innerHTML=data.matchOver?(won?'MATCH<br/><span>VICTORY.</span>':'MATCH<br/><span>DEFEAT.</span>'):(won?'ROUND<br/><span>WON.</span>':'ROUND<br/><span>LOST.</span>');$('result-copy').textContent=data.matchOver?(data.reason||'6라운드 선취로 매치가 끝났습니다.'):`${data.reason|| (won?'라운드 승리!':'상대가 라운드를 가져갔습니다.')} · 이번 라운드만 종료됐습니다. 현재 점수 ${state.selfScore}-${state.enemyScore}. 아래 '다음 라운드 시작' 버튼을 누르면 다음 라운드로 진행하며, 먼저 6승을 하면 매치가 끝납니다.`;$('result-reward').textContent=`+${(data.reward??0).toLocaleString()} CR`;$('next-round').classList.toggle('hidden',!!data.matchOver);$('next-round').disabled=false;$('next-round').textContent='다음 라운드 시작';endScreen.classList.remove('hidden');updateHUD();});
   socket.on('roomMessage',data=>showToast(data.message));
-  socket.emit('createRoom',{name:state.name,device:state.device,rule:state.rule,map:state.selectedMap,sessionId:CLIENT_SESSION_ID});
+  socket.on('accountUpdated',applyAccountUpdated);
+  socket.emit('createRoom',{name:state.name,device:state.device,rule:state.rule,map:state.selectedMap,sessionId:CLIENT_SESSION_ID,authToken:getAuthToken()});
   }
 function showRoomWait(code){let panel=$('room-wait');if(!panel){panel=document.createElement('div');panel.id='room-wait';panel.className='room-wait';panel.innerHTML='<div class="room-wait-card"><small>PRIVATE MATCH / INVITE</small><h3>친구를 기다리는 중</h3><p>아래 6자리 코드를 친구에게 공유하세요.</p><strong id="wait-code">------</strong><button id="copy-room-code" class="solid-button">방 코드 복사</button><button id="cancel-room-wait" class="outline-button full-button">메인 메뉴로</button></div>';document.body.append(panel);$('copy-room-code').addEventListener('click',()=>navigator.clipboard?.writeText(state.roomCode).then(()=>showToast('방 코드를 복사했습니다.')).catch(()=>showToast(`방 코드: ${state.roomCode}`)));$('cancel-room-wait').addEventListener('click',backToMenu);}
   $('wait-code').textContent=code||'------';panel.classList.remove('hidden');}
 function hideRoomWait(){const p=$('room-wait');if(p)p.classList.add('hidden');}
 function joinOnline(){const code=$('room-code').value.trim().toUpperCase().replace(/[^A-Z0-9]/g,'');if(code.length!==6){showToast('6자리 방 코드를 입력하세요.');return;}initAudio();state.mode='online';state.name=($('player-name').value.trim()||'PLAYER').slice(0,16);state.rule=state.rule||'crossplay';state.money=450;state.hp=100;state.armor=0;state.armorTier='none';state.selfScore=0;state.enemyScore=0;state.round=0;state.currentWeapon='pistol';state.owned=new Set(['pistol']);state.phase='waiting';state.roomCode='';clearBots();clearRemotePlayers();setModeUI();updateHUD();
-  const socket=io({transports:['websocket','polling'],tryAllTransports:true,upgrade:true,reconnection:true,reconnectionAttempts:Infinity,reconnectionDelay:500,reconnectionDelayMax:4000,timeout:20000});state.socket=socket;let connectCount=0;socket.on('connect',()=>{const reconnect=connectCount++>0;state.socketReady=true;updateHUD();if(!reconnect)socket.emit('joinRoom',{code,name:state.name,device:state.device,map:state.selectedMap,sessionId:CLIENT_SESSION_ID});else if(!socket.recovered&&state.roomCode)socket.emit('resumeRoom',{code:state.roomCode,sessionId:CLIENT_SESSION_ID});});socket.on('disconnect',reason=>{state.socketReady=false;updateHUD();if(state.mode==='online'&&reason!=='io client disconnect')showToast('온라인 연결을 복구하는 중입니다…',2600);});socket.on('connect_error',()=>{state.socketReady=false;showToast('온라인 서버 연결 실패. 배포된 게임 주소인지 확인하세요.',3200);});
+  const socket=io({transports:['websocket','polling'],tryAllTransports:true,upgrade:true,reconnection:true,reconnectionAttempts:Infinity,reconnectionDelay:500,reconnectionDelayMax:4000,timeout:20000});state.socket=socket;let connectCount=0;socket.on('connect',()=>{const reconnect=connectCount++>0;state.socketReady=true;updateHUD();if(!reconnect)socket.emit('joinRoom',{code,name:state.name,device:state.device,map:state.selectedMap,sessionId:CLIENT_SESSION_ID,authToken:getAuthToken()});else if(!socket.recovered&&state.roomCode)socket.emit('resumeRoom',{code:state.roomCode,sessionId:CLIENT_SESSION_ID});});socket.on('disconnect',reason=>{state.socketReady=false;updateHUD();if(state.mode==='online'&&reason!=='io client disconnect')showToast('온라인 연결을 복구하는 중입니다…',2600);});socket.on('connect_error',()=>{state.socketReady=false;showToast('온라인 서버 연결 실패. 배포된 게임 주소인지 확인하세요.',3200);});
   // Reuse identical room listeners by registering a lightweight join-mode bridge.
-  socket.on('roomError',d=>showToast(d.message||'방 입장 실패',3200));socket.on('roomJoined',d=>{if(d.map&&state.mapId!==d.map)buildMap(d.map);state.roomCode=d.code;showRoomWait(d.code);});
+  socket.on('roomError',d=>showToast(d.message||'방 입장 실패',3200));socket.on('accountUpdated',applyAccountUpdated);socket.on('roomJoined',d=>{if(d.map&&state.mapId!==d.map)buildMap(d.map);state.roomCode=d.code;showRoomWait(d.code);});
   socket.on('roomResumed',d=>{if(d.map&&state.mapId!==d.map)buildMap(d.map);state.roomCode=d.code;hideRoomWait();showToast('온라인 연결이 복구됐습니다.',1800);updateHUD();});
   socket.on('playerJoined',d=>{updateRemotePlayer(d.id,d.player);hideRoomWait();});socket.on('playerLeft',d=>{const r=state.remotePlayers.get(d.id);if(r){unregisterTarget(d.id);disposeGroup(r.root);state.remotePlayers.delete(d.id);}state.phase='waiting';});socket.on('playerMoved',d=>updateRemotePlayer(d.id,d));socket.on('playersSnapshot',d=>{for(const[id,p]of Object.entries(d||{}))if(id!==socket.id)updateRemotePlayer(id,p);});
   socket.on('roundState',d=>{if(d.map&&state.mapId!==d.map)buildMap(d.map);hideRoomWait();endScreen.classList.add('hidden');state.phase=d.phase;state.round=d.round;state.phaseEnd=d.endsAt;state.roundLimit=d.roundEndsAt||0;state.selfScore=d.scores?.[socket.id]||0;state.enemyScore=Object.entries(d.scores||{}).filter(([id])=>id!==socket.id).reduce((a,[,v])=>a+v,0);state.money=d.self?.money??650;state.hp=d.self?.hp??100;state.armor=d.self?.armor??0;state.armorTier=d.self?.armorTier??'none';state.currentWeapon=d.self?.weapon||'pistol';state.owned=new Set(d.self?.ownedWeapons||['pistol',...(state.currentWeapon!=='pistol'?[state.currentWeapon]:[])]);state.buyPrimaryThisRound=!!d.self?.boughtPrimary;state.pos.set(d.self?.x??0,d.self?.y??0,d.self?.z??27);state.yaw=d.self?.yaw??state.yaw;state.pitch=d.self?.pitch??0;state.reloading=false;state.reloadWeaponId=null;makeAmmoFor(state.currentWeapon,true);clearRemotePlayers();for(const[id,player]of Object.entries(d.players||{}))if(id!==socket.id)updateRemotePlayer(id,player);buildGun(state.currentWeapon);if(d.phase==='buy')openBuy();else closeBuy();$('phase-label').textContent=d.phase==='buy'?'BUY PHASE':'LIVE';updateHUD();});
@@ -734,6 +877,8 @@ function setupEvents(){
   document.querySelectorAll('[data-map]').forEach(b=>b.addEventListener('click',()=>selectMap(b.dataset.map)));
   document.querySelectorAll('[data-rule]').forEach(b=>b.addEventListener('click',()=>setRule(b.dataset.rule)));
   document.querySelectorAll('[data-lobby-tab]').forEach(b=>b.addEventListener('click',()=>setLobbyPage(b.dataset.lobbyTab)));
+  document.querySelectorAll('[data-account-mode]').forEach(b=>b.addEventListener('click',()=>{state.accountMode=b.dataset.accountMode;accountMessage('account-auth-message',state.accountMode==='register'?'아이디와 비밀번호를 입력해 가입하세요.':'가입한 아이디와 비밀번호로 로그인하세요.');renderAccountPanel();}));
+  $('account-auth-form')?.addEventListener('submit',submitAccountAuth);$('account-logout')?.addEventListener('click',logoutAccount);
   document.querySelectorAll('[data-play-mode]').forEach(b=>b.addEventListener('click',()=>setPlayMode(b.dataset.playMode)));
   $('map-prev').addEventListener('click',()=>cycleSelectedMap(-1));$('map-next').addEventListener('click',()=>cycleSelectedMap(1));
   $('start-battle').addEventListener('click',()=>state.playMode==='online'?beginOnline():startTraining());
@@ -808,6 +953,6 @@ function animate(now){requestAnimationFrame(animate);const dt=Math.min(.05,(now-
   renderer.render(scene,camera);
 }
 
-buildMap('arena');setDevice(state.device);setRule('crossplay');selectMap('arena');setPlayMode('training');setLobbyPage('play');buildGun('pistol');setupEvents();renderLobbyWeapons();updateHUD();requestAnimationFrame(animate);
+buildMap('arena');setDevice(state.device);setRule('crossplay');selectMap('arena');setPlayMode('training');setLobbyPage('play');buildGun('pistol');setupEvents();renderLobbyWeapons();updateHUD();void loadStoredAccount();requestAnimationFrame(animate);
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) { navigator.serviceWorker.register('/sw.js').catch(() => {}); }
