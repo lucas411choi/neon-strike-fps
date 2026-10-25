@@ -8,76 +8,83 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/src/style.css" />
-  <title>NEON STRIKE — Tactical FPS</title>
+  <title>NEON STRIKE — Tactical FPS v0.9</title>
 </head>
 <body>
   <canvas id="game-canvas" aria-label="NEON STRIKE 3D 게임"></canvas>
   <div id="vignette"></div>
   <div id="scope-overlay" class="scope-overlay hidden" aria-hidden="true"><div class="scope-lens"><span class="scope-reticle-horizontal"></span><span class="scope-reticle-vertical"></span><i></i></div><div class="precision-reticle"><span></span></div></div>
 
-  <main id="main-menu" class="menu-screen">
+  <main id="main-menu" class="menu-screen lobby-shell">
     <div class="menu-noise"></div>
-    <section class="menu-left">
-      <div class="eyebrow"><span class="status-dot"></span> TACTICAL COMBAT SIMULATION <span class="build-tag">BUILD 0.6.0</span></div>
-      <div class="brand-lockup"><div class="brand-mark"><span></span><span></span><span></span></div><div><div class="brand-kicker">PROTOCOL / 07</div><h1>NEON<span>STRIKE</span></h1></div></div>
-      <p class="tagline">PRECISION IS EVERYTHING.</p>
-      <div class="menu-divider"></div>
+    <header class="lobby-topbar">
+      <div class="lobby-mini-brand"><span class="lobby-brand-mark"><i></i><i></i><i></i></span><span>NEON <b>STRIKE</b></span><small>TACTICAL FPS</small></div>
+      <nav class="lobby-nav" aria-label="메인 메뉴">
+        <button class="lobby-tab" data-lobby-tab="weapons"><span class="tab-glyph">⌁</span><b>총기</b></button>
+        <button class="lobby-tab" data-lobby-tab="shop"><span class="tab-glyph">◈</span><b>상점</b></button>
+        <button class="lobby-tab active" data-lobby-tab="play"><span class="tab-glyph">▶</span><b>플레이</b></button>
+        <button class="lobby-tab" data-lobby-tab="skins"><span class="tab-glyph">◇</span><b>스킨</b></button>
+        <button class="lobby-tab" data-lobby-tab="account"><span class="tab-glyph">◎</span><b>계정</b></button>
+      </nav>
+      <div class="lobby-live"><span></span> LIVE SERVER <em>0.9.0</em></div>
+    </header>
 
-      <label class="field-label" for="player-name">CALLSIGN / 닉네임</label>
-      <input id="player-name" class="text-input" maxlength="16" value="PLAYER" autocomplete="nickname" />
-
-      <div class="setting-block">
-        <div class="setting-heading"><span>01 / 플레이 기기</span><small>처음 시작할 때 선택</small></div>
-        <div class="choice-row" id="device-choice">
-          <button class="choice-button selected" data-device="pc"><span>⌨</span><b>PC</b><small>키보드 · 마우스</small></button>
-          <button class="choice-button" data-device="mobile"><span>▣</span><b>모바일</b><small>터치 조작</small></button>
+    <section id="lobby-play-view" class="lobby-view lobby-play-view">
+      <div class="lobby-bottom-left">
+        <div class="lobby-section-kicker">01 / SELECT DEPLOYMENT ZONE</div>
+        <div class="lobby-map-card">
+          <div id="lobby-map-art" class="lobby-map-art arena-art" aria-hidden="true">
+            <div class="map-art-sky"></div><div class="map-art-sun"></div>
+            <div class="map-art-mountain"></div><div class="map-art-building back"></div><div class="map-art-building front"></div>
+            <div class="map-art-tree tree-one"></div><div class="map-art-tree tree-two"></div><div class="map-art-cover cover-one"></div><div class="map-art-cover cover-two"></div><div class="map-art-ground"></div><div class="map-art-grid"></div>
+            <span class="map-art-chip" id="map-art-chip">MAP 01</span>
+          </div>
+          <div class="lobby-map-copy">
+            <div class="map-card-meta"><span id="map-card-index">01 / 03</span><span class="map-availability"><i></i> AVAILABLE</span></div>
+            <h2 id="selected-map-label">아레나</h2>
+            <p id="map-card-description">네온 전술 구역 · 짧은 고지 엄폐물과 우회 통로</p>
+            <div class="map-card-footer"><small id="map-status">선택된 맵: ARENA / HELIX YARD</small><div class="map-arrows"><button id="map-prev" aria-label="이전 맵">‹</button><button id="map-next" aria-label="다음 맵">›</button></div></div>
+          </div>
         </div>
-      </div>
 
-      <div class="setting-block map-settings">
-        <div class="setting-heading"><span>02 / 전투 맵 선택</span><small id="map-status">선택된 맵: ARENA / HELIX YARD</small></div>
-        <div class="map-choice-row" id="map-choice">
-          <button class="map-choice selected map-arena" data-map="arena"><span class="map-number">01</span><b>아레나</b><small>전술 훈련장 · 엄폐 교전</small></button>
-          <button class="map-choice map-palace" data-map="palace"><span class="map-number">02</span><b>경복궁 야외</b><small>기와 지붕 · 잔디 정원</small></button>
-          <button class="map-choice map-city" data-map="city"><span class="map-number">03</span><b>도시</b><small>넓은 도로 · 빌딩 · 지하철</small></button>
+        <div class="lobby-section-kicker mode-kicker">02 / SELECT GAME MODE</div>
+        <div class="lobby-mode-row">
+          <button class="lobby-mode-card selected" data-play-mode="training"><span class="mode-mini-icon training-icon">◎</span><span><b>훈련장</b><small>정지 과녁 · 무제한 사격 연습</small></span><i class="mode-selected-mark">✓</i></button>
+          <button class="lobby-mode-card" data-play-mode="online"><span class="mode-mini-icon online-icon">⌁</span><span><b>친구와 1 VS 1</b><small>온라인 방 코드 · 6승 선취</small></span><i class="mode-selected-mark">✓</i></button>
         </div>
-      </div>
-
-      <div class="setting-block online-settings">
-        <div class="setting-heading"><span>03 / 온라인 매칭 규칙</span><small>방을 만드는 사람이 설정</small></div>
-        <div class="segmented" id="platform-rule">
-          <button data-rule="pc">PC끼리</button>
-          <button data-rule="mobile">모바일끼리</button>
-          <button data-rule="crossplay" class="selected">크로스플레이</button>
+        <div id="online-join-options" class="online-join-options hidden">
+          <div class="segmented lobby-rule" id="platform-rule"><button data-rule="pc">PC끼리</button><button data-rule="mobile">모바일끼리</button><button data-rule="crossplay" class="selected">크로스플레이</button></div>
+          <div class="join-row"><input id="room-code" class="text-input code-input" maxlength="6" placeholder="6자리 방 코드 입력" aria-label="방 코드"/><button id="join-room" class="outline-button">참가 →</button></div>
         </div>
+        <div class="lobby-launch-row"><button id="start-battle" class="lobby-start-button"><span class="start-button-icon">▶</span><span><b id="start-battle-label">전투 시작</b><small id="start-battle-subtitle">TRAINING RANGE</small></span><span class="start-arrow">↗</span></button><div class="lobby-player-name"><label for="player-name">CALLSIGN</label><input id="player-name" maxlength="16" value="PLAYER" autocomplete="nickname" /></div></div>
+        <div id="menu-status" class="menu-status" role="status">훈련장에서는 총기를 자유롭게 바꿔가며 사격할 수 있어요.</div>
       </div>
 
-      <div class="setting-block ai-settings">
-        <div class="setting-heading"><span>04 / AI 난이도</span><small>1대1 라운드전 · 선착순 6승</small></div>
-        <div class="segmented" id="difficulty-choice">
-          <button data-difficulty="easy">쉬움</button>
-          <button data-difficulty="normal" class="selected">보통</button>
-          <button data-difficulty="hard">어려움</button>
+      <div class="lobby-bottom-right">
+        <div class="lobby-world-tag"><span class="status-dot"></span><span id="lobby-background-name">MAP 01 / HELIX YARD</span><span>WORLD PREVIEW</span></div>
+        <div class="lobby-game-title"><div class="lobby-title-overline">PRECISION IS EVERYTHING.</div><h1>NEON<span>STRIKE</span></h1><p>STAY SHARP. FIND COVER. OWN THE ROUND.</p></div>
+        <div class="lobby-device-label">03 / SELECT YOUR DEVICE</div>
+        <div class="choice-row lobby-device-grid" id="device-choice">
+          <button class="choice-button device-card selected" data-device="pc"><span class="device-illustration pc-illustration"><i></i><b></b></span><b>PC</b><small>키보드 · 마우스</small></button>
+          <button class="choice-button device-card" data-device="mobile"><span class="device-illustration mobile-illustration"><i></i><b></b></span><b>모바일</b><small>터치 조작</small></button>
         </div>
+        <div class="lobby-platform-note"><span>●</span> PC · MOBILE · CROSSPLAY 지원</div>
       </div>
-
-      <div class="mode-grid">
-        <button id="play-ai" class="mode-card primary-mode"><span class="mode-icon">◎</span><span class="mode-copy"><b>AI 라운드전</b><small>1대1 · 6승 선취 · 라운드별 구매</small></span><span class="mode-arrow">↗</span></button>
-        <button id="create-room" class="mode-card"><span class="mode-icon">⌁</span><span class="mode-copy"><b>온라인 1대1 방 만들기</b><small>방 코드로 친구 초대</small></span><span class="mode-arrow">↗</span></button>
-      </div>
-      <div class="join-row"><input id="room-code" class="text-input code-input" maxlength="6" placeholder="6자리 방 코드" aria-label="방 코드"/><button id="join-room" class="outline-button">방 참가 <span>→</span></button></div>
-      <div id="menu-status" class="menu-status" role="status">AI와 1대1 라운드전 · 선착순 6승 · 승리 크레딧으로 다음 장비를 구매하세요.</div>
-      <div class="menu-footer"><span>W A S D <em>이동</em></span><span>MOUSE <em>조준</em></span><span>CLICK <em>발사</em></span></div>
     </section>
 
-    <aside class="menu-right">
-      <div class="map-label"><span class="crosshair-mini">+</span> <span id="menu-map-name">MAP 01 / HELIX YARD</span> <span class="map-live">LIVE SIMULATION</span></div>
-      <div class="map-coordinates">37° 32' N<br/>126° 58' E</div>
-      <div class="hero-reticle"><span></span><i></i></div>
-      <div class="hero-callout"><span>COMBAT REPORT / 01</span><b>BUY SMART.<br/>FIGHT CLEAN.</b><small>라운드 승리로 크레딧을 얻고<br/>다음 전투를 준비하세요.</small></div>
-      <div class="menu-tip"><div class="tip-index">FIELD NOTE / 01</div><p>먼저 보고, 정확하게 쏘세요.<br/><span>엄폐물과 총기 특성을 활용하세요.</span></p></div>
-      <div class="corner-stamp">NS<br/><small>FPS LAB</small></div>
-    </aside>
+    <section id="lobby-weapons-view" class="lobby-view lobby-weapons-view hidden">
+      <div class="weapon-room-heading"><div class="lobby-section-kicker">ARMORY / 09 MODELS</div><h2>무기고 <span>WEAPON COLLECTION</span></h2><p>무기 카드를 선택해 디자인과 전투 특성을 확인하세요.</p></div>
+      <div id="lobby-weapon-showcase" class="lobby-weapon-showcase"><div class="weapon-showcase-model rifle-showcase"><span></span><i></i><b></b><em></em></div><div class="weapon-showcase-copy"><small>FIELD WEAPON / SELECTED</small><h3 id="showcase-weapon-name">VANTAGE AR</h3><p id="showcase-weapon-desc">중거리 균형형 · 정밀 조준 지원</p><div class="showcase-stats"><span>POWER <b id="showcase-power">32</b></span><span>CONTROL <b id="showcase-control">7 / 10</b></span><span>MAG <b id="showcase-mag">30</b></span></div></div></div>
+      <div id="lobby-weapon-cards" class="lobby-weapon-cards"></div>
+      <button class="lobby-back-play" data-lobby-tab="play">‹ 플레이로 돌아가기</button>
+    </section>
+
+    <section id="lobby-coming-soon-view" class="lobby-view lobby-coming-soon hidden">
+      <div class="coming-soon-mark">NS / FUTURE MODULE</div><div class="coming-soon-symbol">◈</div><h2 id="coming-soon-title">개발 중입니다</h2><p id="coming-soon-copy">이 인터페이스는 다음 업데이트에서 공개됩니다.</p><button class="lobby-start-button" data-lobby-tab="play"><span class="start-button-icon">▶</span><span><b>플레이로 돌아가기</b><small>BACK TO LOBBY</small></span><span class="start-arrow">↗</span></button>
+    </section>
+
+    <div class="lobby-corner-note"><span>NS / TACTICAL LAB</span><span>맵 배경은 1 → 2 → 3 순서로 자동 순환합니다.</span></div>
+    <div id="map-choice" class="map-choice-options hidden" aria-hidden="true"><button data-map="arena" class="selected">Arena</button><button data-map="palace">Palace</button><button data-map="city">City</button></div>
   </main>
 
   <section id="hud" class="hud hidden" aria-label="게임 HUD">
@@ -92,7 +99,7 @@
     <div id="kill-banner" class="kill-banner hidden">TARGET ELIMINATED <small>+75 CR</small></div>
     <div class="left-hud"><div class="mini-map"><div class="map-ring"></div><div class="map-grid"></div><i class="map-player"></i><i class="map-enemy"></i><span class="map-n">N</span></div><div class="objective"><span class="objective-bar"></span><div><small>OBJECTIVE</small><b id="objective-label">ELIMINATE OPPONENT</b></div></div></div>
     <div class="right-hud">
-      <div class="net-state"><span id="net-dot" class="net-dot"></span><span id="net-label">LOCAL AI MATCH</span></div>
+      <div class="net-state"><span id="net-dot" class="net-dot"></span><span id="net-label">TRAINING RANGE</span></div>
       <div class="credits-pill"><span>◈</span><b id="money-value">450</b><small>CR</small><button id="open-buy" title="구매 단계에서 총기 선택">BUY</button></div>
       <div class="weapon-panel"><div class="weapon-meta"><span id="weapon-class">SIDEARM</span><span id="weapon-index">01 / 09</span></div><div id="weapon-name" class="weapon-name">ATLAS PISTOL</div><div class="weapon-stats"><span id="weapon-stat-bars"><i></i><i></i><i></i><i></i><i></i></span><small id="weapon-stat">CONTROL / 7.2</small></div><div class="ammo-row"><div><b id="ammo-current">12</b><span class="ammo-slash">/</span><span id="ammo-reserve">48</span></div><span class="ammo-label">AMMO</span></div></div>
     </div>
@@ -102,6 +109,7 @@
       <div class="controls-hint"><kbd>SHIFT</kbd> 달리기 <kbd>SPACE</kbd> 점프 <kbd>R</kbd> 재장전 <kbd>1–9</kbd> 무기 <kbd>우클릭 / Q</kbd> 줌 <kbd>ESC</kbd> 메뉴</div>
     </footer>
     <div id="center-notice" class="center-notice hidden"></div>
+    <button id="training-weapon-button" class="training-weapon-button hidden">▤ 훈련 무기 선택</button>
     <div id="touch-controls" class="touch-controls hidden">
       <div id="move-pad" class="move-pad"><div id="move-stick" class="move-stick"></div><small>MOVE</small></div>
       <div id="look-zone" class="look-zone"><span>DRAG TO AIM</span></div>
@@ -119,6 +127,7 @@
 
   <section id="pause-menu" class="modal-screen hidden"><div class="pause-card"><div class="eyebrow">COMBAT PAUSED</div><h2>잠시<br/><span>숨을 고르세요.</span></h2><p>전투를 재개하거나 메인 메뉴로 돌아갈 수 있습니다.</p><button id="resume-game" class="solid-button">전투 재개 <span>→</span></button><button id="leave-game" class="outline-button full-button">메인 메뉴로</button><div class="quality-row"><label for="quality-select">그래픽 품질</label><select id="quality-select"><option value="high">HIGH / 선명한 그림자</option><option value="medium" selected>MEDIUM / 균형</option><option value="low">LOW / 높은 FPS</option></select></div></div></section>
   <section id="end-screen" class="modal-screen hidden"><div class="pause-card end-card"><div class="eyebrow" id="result-kicker">ROUND RESULT</div><h2 id="result-title">ROUND<br/><span>WON.</span></h2><p id="result-copy">보상을 받았습니다.</p><div class="result-reward" id="result-reward">+650 CR</div><button id="next-round" class="solid-button">다음 라운드 <span>→</span></button><button id="end-menu" class="outline-button full-button">메인 메뉴로</button></div></section>
+  <section id="training-weapon-menu" class="modal-screen hidden" aria-label="훈련장 무기 선택"><div class="training-weapon-card"><header class="modal-head"><div><div class="eyebrow">TRAINING RANGE / FREE LOADOUT</div><h2>훈련 무기 선택 <span>FREE ARMORY</span></h2><p>훈련장에서는 모든 무기를 자유롭게 선택하고 탄약 제한 없이 연습할 수 있습니다.</p></div><button id="close-training-weapons" class="icon-button" aria-label="닫기">×</button></header><div id="training-weapon-grid" class="training-weapon-grid"></div></div></section>
   <div id="toast" class="toast hidden" role="status"></div>
   <script type="module" src="/src/main.js"></script>
 </body>
