@@ -1,75 +1,41 @@
-# NEON STRIKE v0.6.0 — 라운드 경제형 브라우저 FPS
+# NEON STRIKE v0.9.0 — 브라우저 전술 FPS
 
-PC와 모바일 브라우저에서 플레이할 수 있는 Three.js + Express + Socket.IO 전술 FPS 프로토타입입니다. 상용 게임의 음원/모델을 복제하지 않고 절차적으로 만든 맵, 무기 형상, Web Audio 사운드를 사용합니다.
+Three.js, Express, Socket.IO로 만든 PC/모바일 브라우저용 FPS 프로토타입. 독자적인 절차 생성 맵, 무기 모델, Web Audio 효과음을 사용합니다.
 
-## 이번 버전의 기능
+## 현재 기능
 
-- AI/온라인 1대1 선착순 6승 경기, 라운드 종료 후 다음 라운드 시작 버튼, 라운드 구매 단계와 경제(시작 450 CR / 승리 +650 / 패배 +400 / 처치 +75)
-- 9종의 무기: 권총, SMG, 산탄총, 돌격소총, DMR, 저격총, LMG, 점사소총
-- 각 무기 별도 3D 1인칭 모델과 반동감, 사격/재장전/피격/킬 사운드(절차 생성)
-- AI 라운드전: AI 상대 1명과 경기, 쉬움/보통/어려움 난이도, 선착순 6승
-- 맵 선택: 아레나, 경복궁 야외, 넓은 도시(계단으로 옥상에 접근, 지하철·가게 엄폐물)
-- Socket.IO 방 코드 1대1 온라인, 호스트가 선택한 맵 동기화, PC 전용/모바일 전용/크로스플레이 규칙
-- 모바일 가상 조이스틱, 터치 조준, 사격/점프/재장전/구매 단계 무기 교체 UI
-- 모바일 홈 화면 추가를 위한 PWA manifest
-- PC에서 실행할 경우 `START_GAME.bat` 더블 클릭으로 설치 및 실행
+- 새 로비: 총기 / 상점 / 플레이 / 스킨 / 계정 탭. 총기 탭은 사용 가능하며 상점·스킨·계정은 개발 중 화면
+- 시작 전 맵 선택: 아레나, 경복궁 야외, 넓은 도시. 로비 배경은 3개 맵을 순환
+- 훈련장: 정지 과녁과 사람 더미, 각각 누적 100 피해 후 3초 뒤 부활, 모든 무기 무료 선택
+- 친구와 온라인 1대1: 방 코드, PC/모바일/크로스플레이 규칙, 첫 6라운드 승리, 라운드 결과 후 수동 다음 라운드 시작
+- 네트워크 복구: WebSocket/폴링 대체 연결, 자동 재연결, 90초까지 일시 연결 끊김 복구, 전투 중 라운드 상태 보존
+- 9종의 무기, 별도 3D 모델과 사격/재장전/피격/킬 사운드, 리볼버, 조준 가능한 소총/DMR/저격총, 원형 저격 스코프
+- 라운드 경제 및 경량/중량 보호막, 전투 중 상점 비활성화
+- 모바일 가상 조이스틱/터치 조준/사격 및 홈 화면 추가용 PWA 메타데이터
 
 ## PC에서 실행
 
-1. ZIP을 내려받아 압축을 풉니다.
-2. Node.js 20.19 이상(권장: 지원 중인 LTS)을 설치합니다.
-3. `START_GAME.bat`을 더블 클릭합니다.
-4. 브라우저에서 `http://localhost:3000`을 엽니다.
+1. ZIP 압축을 풉니다.
+2. Node.js 20.19 이상을 설치합니다.
+3. `START_GAME.bat`을 더블 클릭하거나 프로젝트 폴더에서 `npm install` 다음 `npm run dev`를 실행합니다.
+4. `http://localhost:3000`을 엽니다.
 
-수동 실행은 프로젝트 폴더에서 `npm install` 후 `npm run dev`입니다.
+## 온라인 배포
 
-## 인터넷 멀티플레이 배포
+모바일과 PC에서 같은 공개 HTTPS 주소를 엽니다. Render Blueprint 설정은 루트의 `render.yaml`을 사용합니다.
 
-모바일/PC 플레이어는 같은 공개 HTTPS 웹 주소로 접속합니다. ZIP만으로 공개 링크가 생기지는 않습니다. Render 같은 Node.js 호스팅에 프로젝트를 배포해야 합니다.
+- Build: `npm install --include=dev && npm run build`
+- Start: `npm start`
+- Health check: `/healthz`
 
-- Build command: `npm install --include=dev && npm run build`
-- Start command: `npm start`
-- Health check path: `/healthz`
-- 프로젝트는 `PORT` 환경 변수를 사용합니다.
-- `render.yaml`은 Blueprint 배포 설정을 포함합니다.
+프로덕션 번들은 Vite `dist` 폴더를 서비스합니다. 서버는 Render `PORT` 환경 변수를 사용합니다.
 
-배포 후 게임을 이용하는 사람들은 압축을 풀지 않습니다. 링크만 열면 됩니다. 모바일 브라우저에서는 메뉴의 `모바일`을 선택하고, 필요하면 브라우저 메뉴의 `홈 화면에 추가`로 바로가기 설치를 할 수 있습니다.
+## 컨트롤
 
-## 온라인 방 진행
+PC: WASD 이동, 마우스 시점/조준, 왼쪽 클릭 사격, Shift 달리기, Space 점프, R 재장전, 1–9 무기 선택, 우클릭 또는 Q 줌 토글, Esc 메뉴. 훈련장은 `훈련 무기 선택` 또는 T로 무료 무기를 변경할 수 있습니다.
 
-1. 공개 URL에서 기기 선택: PC 또는 모바일.
-2. 매칭 규칙 선택: PC끼리, 모바일끼리 또는 크로스플레이.
-3. `온라인 1대1 방 만들기`를 누르고 방 코드를 친구에게 전송.
-4. 친구가 동일한 공개 URL을 열고 같은 기기 유형과 코드로 참가.
+모바일: 가상 조이스틱, 오른쪽 화면 드래그 조준, FIRE/점프/재장전/줌 버튼 및 훈련장 무기 선택.
 
-현재는 방 코드 방식의 1대1이며 자동 매칭/랭크/계정/전적 저장은 구현하지 않았습니다. 서버의 기본 피격 검증은 프로토타입 수준이며 전문 안티치트/지연 보정은 없습니다.
+## 검증 한계
 
-## 조작
-
-PC: WASD 이동, 마우스 조준, 좌클릭 사격, Shift 달리기, Space 점프, R 재장전, 1–9 무기 선택, Esc 메뉴. 구매는 라운드 시작 전 구매 단계에서만 가능합니다.
-
-모바일: 왼쪽 가상 조이스틱 이동, 오른쪽 화면 드래그 조준, FIRE/점프/R/BUY/무기 교체 버튼.
-
-## 검사
-
-`npm run check`는 Node.js 문법을 검사하고, `npm run build`는 프로덕션 파일을 생성합니다. 실제 온라인 플레이는 공개 서버에 배포하고 2개 이상의 기기로 확인해야 합니다.
-
-
-## v0.4 변경 사항
-- 온라인/AI 선착순 6라운드 승리 매치
-- 경량/중량 보호막, 리볼버, 조준경 가능한 소총·DMR·저격총
-- 저격총 전용 원형 스코프, 모바일 ZOOM 버튼
-- 시작 지점 시야를 막는 높은 벽과 낮은 엄폐물 혼합
-
-
-## v0.6.0 update
-
-- Added pre-match map selection: Arena, outdoor Gyeongbokgung-inspired palace grounds, and a wider city map.
-- Added map-specific scene colors, cover layout, and synchronized map selection for online rooms.
-- Added walkable staircase ramps and accessible rooftop platforms on the City map, plus shops and a subway entrance as cover.
-- Online rounds now wait for the players to press the next-round button; first to six round wins takes the match.
-- Bumped the PWA service-worker cache key so browsers fetch the updated interface after deployment.
-
-## Previous version notes
-
-- v0.5.1: First-to-six match scoring, reduced economy, heavy armor, Revolver, toggleable weapon zoom, circular sniper scope, and improved spawn-side cover.
+`npm run check`는 서버·클라이언트 JavaScript 문법 검사를 수행합니다. 실제 브라우저 렌더링과 2개 기기의 온라인 플레이는 배포 후 별도로 확인해야 합니다. 이 프로토타입은 전문 안티치트나 대규모 매칭을 포함하지 않습니다.
