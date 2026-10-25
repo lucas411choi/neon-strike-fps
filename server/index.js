@@ -45,6 +45,20 @@ const STARTING_CREDITS = 450;
 const ROUND_WIN_REWARD = 650;
 const ROUND_LOSS_REWARD = 400;
 const KILL_REWARD = 75;
+// Server-authoritative weapon definitions. Keep IDs and balance in sync with src/main.js.
+// These entries were missing in the previous build, causing ReferenceError inside the
+// buy/equip/fire Socket.IO handlers and making every online shot fail before damage.
+const weapons = Object.freeze({
+  pistol:   { slot: 'sidearm', price: 0,    damage: 26, rate: 0.28,  range: 55 },
+  revolver: { slot: 'sidearm', price: 550,  damage: 47, rate: 0.48,  range: 62 },
+  smg:      { slot: 'primary', price: 850,  damage: 17, rate: 0.085, range: 25 },
+  shotgun:  { slot: 'primary', price: 1100, damage: 10, rate: 0.78,  range: 13 },
+  rifle:    { slot: 'primary', price: 1950, damage: 32, rate: 0.12,  range: 50 },
+  dmr:      { slot: 'primary', price: 2200, damage: 44, rate: 0.42,  range: 75 },
+  sniper:   { slot: 'primary', price: 3000, damage: 78, rate: 1.05,  range: 100 },
+  lmg:      { slot: 'primary', price: 2500, damage: 22, rate: 0.105, range: 42 },
+  burst:    { slot: 'primary', price: 1600, damage: 23, rate: 0.32,  range: 45 },
+});
 const rooms = new Map();
 const mapCoverBoxes = {
   arena: [
@@ -381,7 +395,7 @@ io.on('connection', socket => {
     const room=rooms.get(socket.data.roomCode);const shooter=playerById(room,socket.id);
     if(!room||!shooter||shooter.connected===false||room.phase!=='live'||shooter.hp<=0)return;
     const id=String(payload?.weaponId||'');const w=weapons[id];if(!w||id!==shooter.weapon)return;
-    const now=Date.now();if(now-shooter.lastFireAt < w.rate*.72)return;shooter.lastFireAt=now;
+    const now=Date.now();if(now-shooter.lastFireAt < w.rate*1000*.72)return;shooter.lastFireAt=now;
     const o=payload?.origin,d=payload?.direction;
     if(!o||!d||![o.x,o.y,o.z,d.x,d.y,d.z].every(v=>Number.isFinite(Number(v))))return;
     const dirLen=Math.hypot(Number(d.x),Number(d.y),Number(d.z));if(dirLen<.7||dirLen>1.3)return;
@@ -390,12 +404,20 @@ io.on('connection', socket => {
     let end={x:origin.x+direction.x*w.range,y:origin.y+direction.y*w.range,z:origin.z+direction.z*w.range};
     let hit=null;
     if(targetEntry){
-      const [targetId,target]=targetEntry;const center={x:target.x,y:(target.y||0)+1.13,z:target.z};const vx=center.x-origin.x,vy=center.y-origin.y,vz=center.z-origin.z;
-      const distance=Math.hypot(vx,vy,vz);const dot=(vx*direction.x+vy*direction.y+vz*direction.z)/(distance||1);
-      // Wide enough to tolerate network jitter, narrow enough to discourage blind map-wide hits.
-      const horizontalDistance=Math.hypot(vx,vz);const horizLen=Math.hypot(direction.x,direction.z)||1;const horizontalDot=(vx*direction.x+vz*direction.z)/(horizontalDistance*horizLen||1);
-      if(distance<=w.range&&dot>.91&&(horizontalDistance<0.8||horizontalDot>.88)&&!isShotBlocked(origin,direction,distance,room.map)){
-        hit={id:targetId,p:target};end=center;
+      const [targetId,target]=targetEntry;
+      // Use a forgiving standing-player capsule rather than a tiny center-point test.
+      // Player coordinates are ground-level; the torso center is about 1.05 m above it.
+      const center={x:Number(target.x)||0,y:(Number(target.y)||0)+1.05,z:Number(target.z)||0};
+      const vx=center.x-origin.x,vy=center.y-origin.y,vz=center.z-origin.z;
+      const along=vx*direction.x+vy*direction.y+vz*direction.z;
+      const closest={x:origin.x+direction.x*along,y:origin.y+direction.y*along,z:origin.z+direction.z*along};
+      const miss=Math.hypot(center.x-closest.x,center.y-closest.y,center.z-closest.z);
+      const inFront=along>0&&along<=w.range;
+      const unobstructed=inFront&&!isShotBlocked(origin,direction,along,room.map);
+      // A 0.62 m radius improves hit registration with network movement jitter while
+      // preserving walls as blockers. Clamp the ray length to the target projection.
+      if(unobstructed&&miss<=0.62){
+        hit={id:targetId,p:target};end=closest;
       }
     }
     io.to(room.code).emit('shotFx',{id:socket.id,weaponId:id,origin,end});
