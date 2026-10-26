@@ -307,15 +307,16 @@ const KILL_REWARD = 75;
 // These entries were missing in the previous build, causing ReferenceError inside the
 // buy/equip/fire Socket.IO handlers and making every online shot fail before damage.
 const weapons = Object.freeze({
-  pistol:   { slot: 'sidearm', price: 0,    damage: 26, rate: 0.28,  range: 55 },
-  revolver: { slot: 'sidearm', price: 550,  damage: 47, rate: 0.48,  range: 62 },
-  smg:      { slot: 'primary', price: 850,  damage: 17, rate: 0.085, range: 25 },
-  shotgun:  { slot: 'primary', price: 1100, damage: 10, rate: 0.78,  range: 13 },
-  rifle:    { slot: 'primary', price: 1950, damage: 32, rate: 0.12,  range: 50 },
-  dmr:      { slot: 'primary', price: 2200, damage: 44, rate: 0.42,  range: 75 },
-  sniper:   { slot: 'primary', price: 3000, damage: 78, rate: 1.05,  range: 100 },
-  lmg:      { slot: 'primary', price: 2500, damage: 22, rate: 0.105, range: 42 },
-  burst:    { slot: 'primary', price: 1600, damage: 23, rate: 0.32,  range: 45 },
+  pistol:   { slot: 'sidearm', price: 0,    damage: 22, rate: 0.32, range: 55 },
+  revolver: { slot: 'sidearm', price: 550,  damage: 35, rate: 0.52, range: 62 },
+  smg:      { slot: 'primary', price: 850,  damage: 13, rate: 0.085, range: 25 },
+  shotgun:  { slot: 'primary', price: 1100, damage: 8, rate: 0.82, range: 13 },
+  rifle:    { slot: 'primary', price: 1950, damage: 24, rate: 0.13, range: 50 },
+  dmr:      { slot: 'primary', price: 2200, damage: 34, rate: 0.45, range: 75 },
+  sniper:   { slot: 'primary', price: 3000, damage: 78, rate: 1.12, range: 100 },
+  lmg:      { slot: 'primary', price: 2500, damage: 16, rate: 0.115, range: 42 },
+  burst:    { slot: 'primary', price: 1600, damage: 18, rate: 0.34, range: 45 },
+  knife:    { slot: 'melee', price: 0, damage: 40, rate: 0.48, range: 2.65 },
 });
 const rooms = new Map();
 const mapCoverBoxes = {
@@ -385,7 +386,7 @@ function safeSessionId(value) { return String(value || '').replace(/[^a-zA-Z0-9_
 function compatible(rule, device) { return rule === 'crossplay' || rule === device; }
 function publicPlayer(p) { return { x:p.x, y:p.y||0, z:p.z, yaw:p.yaw, pitch:p.pitch, name:p.name, hp:p.hp, armor:p.armor, weapon:p.weapon, device:p.device, score:p.score }; }
 function playerById(room, id) { return room?.players.get(id); }
-function selfPayload(p) { return { money:p.money, hp:p.hp, armor:p.armor, armorTier:p.armorTier, weapon:p.weapon, ownedWeapons:[...(p.ownedWeapons||['pistol'])], boughtPrimary:p.boughtPrimary, armorPurchased:p.armorPurchased, x:p.x, y:p.y||0, z:p.z, yaw:p.yaw, pitch:p.pitch }; }
+function selfPayload(p) { return { money:p.money, hp:p.hp, armor:p.armor, armorTier:p.armorTier, weapon:p.weapon, ownedWeapons:[...(p.ownedWeapons||['pistol','knife'])], boughtPrimary:p.boughtPrimary, armorPurchased:p.armorPurchased, x:p.x, y:p.y||0, z:p.z, yaw:p.yaw, pitch:p.pitch }; }
 function playersSnapshot(room) { return Object.fromEntries([...room.players.entries()].map(([id,p])=>[id,publicPlayer(p)])); }
 function emitState(room) {
   const players = playersSnapshot(room);
@@ -401,6 +402,9 @@ function resetPlayerForRound(room, p, index) {
   p.hp = 100;
   p.armor = Math.max(0, p.armor); // Retain surviving shield points between rounds.
   if (p.armor <= 0) p.armorTier = 'none';
+  // Bought guns last for this round only. Credits remain cumulative, but each round begins with pistol + knife.
+  p.ownedWeapons = ['pistol','knife'];
+  p.weapon = 'pistol';
   p.boughtPrimary = false;
   p.armorPurchased = p.armorTier === 'heavy';
   p.lastFireAt = 0;
@@ -581,7 +585,7 @@ io.on('connection', socket => {
     }
     leaveRoom(socket,false);
     const code=code6();
-    const p={id:socket.id,sessionId,name,device,accountId:authenticatedAccount?.id??null,connected:true,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0,reconnectTimer:null};
+    const p={id:socket.id,sessionId,name,device,accountId:authenticatedAccount?.id??null,connected:true,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol','knife'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0,reconnectTimer:null};
     const room={code,rule:requestedRule,map:requestedMap,players:new Map([[socket.id,p]]),phase:'waiting',round:0,phaseEndsAt:0,liveEndsAt:0,timer:null};
     rooms.set(code,room);socket.data.roomCode=code;socket.join(code);
     socket.emit('roomCreated',{code,rule:requestedRule,device,map:room.map});
@@ -600,7 +604,7 @@ io.on('connection', socket => {
     }
     leaveRoom(socket,false);
     const name=safeName(payload?.name);
-    const p={id:socket.id,sessionId,name,device,accountId:authenticatedAccount?.id??null,connected:true,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0,reconnectTimer:null};
+    const p={id:socket.id,sessionId,name,device,accountId:authenticatedAccount?.id??null,connected:true,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol','knife'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0,reconnectTimer:null};
     room.players.set(socket.id,p);socket.data.roomCode=code;socket.join(code);
     socket.emit('roomJoined',{code,rule:room.rule,device,map:room.map});
     socket.to(code).emit('playerJoined',{id:socket.id,player:publicPlayer(p)});
@@ -614,6 +618,11 @@ io.on('connection', socket => {
     if (![x,y,z,yaw,pitch].every(Number.isFinite))return;
     const bound=mapBounds(room.map);p.x=Math.max(-bound,Math.min(bound,x));p.y=Math.max(0,Math.min(8,y));p.z=Math.max(-bound,Math.min(bound,z));p.yaw=Math.max(-Math.PI*2,Math.min(Math.PI*2,yaw));p.pitch=Math.max(-1.35,Math.min(1.35,pitch));
     socket.to(room.code).emit('playerMoved',{id:socket.id,x:p.x,y:p.y,z:p.z,yaw:p.yaw,pitch:p.pitch,name:p.name,hp:p.hp,weapon:p.weapon,device:p.device});
+  });
+  socket.on('footstep', () => {
+    const room=rooms.get(socket.data.roomCode);const p=playerById(room,socket.id);if(!room||!p||p.connected===false||room.phase!=='live')return;
+    const now=Date.now();if(now-(p.lastFootstepAt||0)<330)return;p.lastFootstepAt=now;
+    socket.to(room.code).emit('footstep',{id:socket.id,x:p.x,z:p.z});
   });
   socket.on('buy', payload => {
     const room=rooms.get(socket.data.roomCode);const p=playerById(room,socket.id);
@@ -629,8 +638,9 @@ io.on('connection', socket => {
       return;
     }
     const id=String(payload?.weaponId||'');const w=weapons[id];
+    if(id==='knife'){socket.emit('buyResult',{ok:false,message:'칼은 항상 지급됩니다.'});return;}
     if(!w){socket.emit('buyResult',{ok:false,message:'알 수 없는 무기입니다.'});return;}
-    p.ownedWeapons ||= ['pistol'];
+    p.ownedWeapons ||= ['pistol','knife'];
     if(p.ownedWeapons.includes(id)){
       p.weapon=id;
       socket.emit('buyResult',{ok:true,message:`${id.toUpperCase()} 장착`,money:p.money,armor:p.armor,armorTier:p.armorTier,weapon:p.weapon,ownedWeapons:p.ownedWeapons,boughtPrimary:p.boughtPrimary,armorPurchased:p.armorPurchased});
@@ -652,7 +662,7 @@ io.on('connection', socket => {
   socket.on('equipWeapon', payload => {
     const room=rooms.get(socket.data.roomCode);const p=playerById(room,socket.id);const id=String(payload?.weaponId||'');
     if(!room||!p||!['buy','live'].includes(room.phase)){socket.emit('equipResult',{ok:false,message:'현재는 무기를 교체할 수 없습니다.'});return;}
-    p.ownedWeapons ||= ['pistol'];
+    p.ownedWeapons ||= ['pistol','knife'];
     if(!weapons[id]||!p.ownedWeapons.includes(id)){socket.emit('equipResult',{ok:false,message:'구매한 무기만 장착할 수 있습니다.'});return;}
     p.weapon=id;
     socket.emit('equipResult',{ok:true,weapon:id,ownedWeapons:p.ownedWeapons});
@@ -662,7 +672,7 @@ io.on('connection', socket => {
     try {
     const room=rooms.get(socket.data.roomCode);const shooter=playerById(room,socket.id);
     if(!room||!shooter||shooter.connected===false||room.phase!=='live'||shooter.hp<=0)return;
-    const id=String(payload?.weaponId||'');const w=weapons[id];if(!w||id!==shooter.weapon)return;
+    const id=String(payload?.weaponId||'');const w=weapons[id];if(!w||id!==shooter.weapon||!(shooter.ownedWeapons||['pistol','knife']).includes(id))return;
     const now=Date.now();if(now-shooter.lastFireAt < w.rate*1000*.72)return;shooter.lastFireAt=now;
     const o=payload?.origin,d=payload?.direction;
     if(!o||!d||![o.x,o.y,o.z,d.x,d.y,d.z].every(v=>Number.isFinite(Number(v))))return;
@@ -701,10 +711,12 @@ io.on('connection', socket => {
         end={x:origin.x+direction.x*nearestPart.distance,y:origin.y+direction.y*nearestPart.distance,z:origin.z+direction.z*nearestPart.distance};
       }
     }
+    // Reuse the event for remote audio; clients intentionally suppress the tracer for melee swings.
     io.to(room.code).emit('shotFx',{id:socket.id,weaponId:id,origin,end});
     if(!hit)return;
-    let damage=w.damage * (hit.multiplier || 1);
-    if(id==='shotgun')damage=48 * (hit.multiplier || 1);
+    let damage=id==='knife'?40:w.damage * (hit.multiplier || 1);
+    // The server approximates a close-range pellet cluster because a client sends one authoritative aim ray.
+    if(id==='shotgun')damage=25.6 * (hit.multiplier || 1);
     const t=hit.p;let left=damage;if(t.armor>0){const absorbRatio=t.armorTier==='heavy'?.60:.35;const absorbed=Math.min(t.armor,damage*absorbRatio);t.armor-=absorbed;left-=absorbed;if(t.armor<=0){t.armor=0;t.armorTier='none';}}t.hp=Math.max(0,t.hp-left);
     const killed=t.hp<=0;
     if(killed)shooter.money+=KILL_REWARD;
