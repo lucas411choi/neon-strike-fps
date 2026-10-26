@@ -1,18 +1,43 @@
-# NEON STRIKE — 장기 보존 DB 연결 업데이트
+# NEON STRIKE v1.2 업데이트 안내
 
-## 변경 파일
-- `render.yaml`: `DATABASE_URL`을 `sync: false`로 변경. 이후 Blueprint 동기화가 DB 비밀값을 덮어쓰지 않음. 기존 Render DB 정의는 데이터 손실 방지를 위해 유지함.
-- `server/index.js`: 계정 DB 연결 관련 로그/오류 문구를 외부 PostgreSQL(Neon) 기준으로 업데이트. 앱은 이미 `DATABASE_URL`로 PostgreSQL에 연결하므로 DB 드라이버를 추가할 필요가 없음.
-- `README.md`: Neon 장기 저장 방식으로 문서 갱신.
-- `NEON_DATABASE_SETUP_KO.md`: Neon 생성과 Render 환경 변수 설정을 단계별로 설명.
+## GitHub에 올릴 파일
 
-## GitHub에 적용
-압축을 풀고 기존 저장소의 같은 경로에 파일을 올립니다. `render.yaml`, `server/index.js`, `README.md`는 교체하고, `NEON_DATABASE_SETUP_KO.md`는 새 파일로 추가합니다. ZIP 파일 자체는 올리지 마세요.
+업데이트 ZIP을 압축 해제한 다음, 아래 파일을 기존 저장소의 **같은 경로**에 올려 교체하세요. ZIP 자체를 저장소에 업로드하지 마세요. 파일 이름에 `(2)`를 붙이지 마세요.
 
-## 중요: DATABASE_URL은 직접 설정
-1. Neon에서 Pooled connection string을 복사합니다.
-2. Render Dashboard → 실제 `neon-strike-fps` Web Service → Environment → `DATABASE_URL` 값을 새 Neon 연결 문자열로 바꿉니다.
-3. 저장하고 재배포합니다.
-4. `/healthz`에서 `accounts: "ready"`인지 확인합니다.
+- `index.html` → 저장소 최상위
+- `package.json` → 저장소 최상위
+- `README.md` → 저장소 최상위
+- `src/main.js` → `src` 폴더
+- `src/style.css` → `src` 폴더
+- `server/index.js` → `server` 폴더
+- `public/sw.js` → `public` 폴더
+- `tests/weapon-rules.test.js` → 선택 사항. 테스트 파일을 저장소에 보관하려면 업로드하세요. 앱 자체를 실행하는 데 필수인 파일은 아닙니다.
 
-`DATABASE_URL`에는 비밀번호가 들어 있습니다. GitHub, 코드, 스크린샷, 공개 채팅에 게시하지 마세요. 기존 Render DB에 계정 데이터가 있다면 이전 전까지 삭제하지 마세요. 자세한 절차는 `NEON_DATABASE_SETUP_KO.md`를 확인하세요.
+각 폴더에서 `Add file → Upload files`를 이용해 해당 파일을 업로드하고 `Commit changes`를 누르세요. 기존 파일과 이름·경로가 같으면 기존 파일이 교체됩니다.
+
+`src/shared-rules.js`, `render.yaml`, `.gitignore`, `vite.config.js`는 이번 업데이트에서 변경하지 않으므로 기존 파일을 유지하세요. 기존 Neon 데이터베이스 설정과 Render 환경변수도 바꾸지 마세요.
+
+## 이번 업데이트 내용
+
+- 마우스 왼쪽 버튼을 길게 누르면 무기별 발사 속도에 맞춰 연사합니다. 저격총은 한 발마다 줌이 풀리고 버튼을 놓았다가 다시 눌러야 합니다.
+- 데미지 숫자와 부위별 팝업 대신 피격 캐릭터를 잠깐 빨갛게 표시합니다.
+- 각 무기에 서로 다른 절차 생성 SF 타격음을 사용합니다. 외부 오디오 샘플은 사용하지 않습니다.
+- 반동은 조준을 위로 밀어 올리고, 연속 사격할 때 무기별 탄퍼짐이 커집니다.
+- 머리/몸통/다리 피해 배율은 1.45배 / 1.0배 / 0.72배입니다.
+- 구매한 라운드 무기는 다음 라운드에 초기화되고 크레딧은 누적됩니다. 1=주무기, 2=기본 권총, 3=칼(40 피해, 근접 전용, 이동 +10%).
+- Shift는 달리기 대신 느리고 조용한 걷기입니다. 일반 이동에서 발소리를 내고 온라인 상대의 발소리도 거리 기반으로 재생합니다.
+- 훈련장의 산탄총 다중 명중은 맞은 과녁마다 피해를 분배하도록 수정했습니다.
+- 칼은 총알 궤적을 만들지 않고 근접 공격 사운드만 냅니다.
+- 총기 교체 시 오래된 3D 지오메트리와 머티리얼을 정리해 불필요한 자원 누적을 줄였습니다.
+- 무기 선택 화면에서 총기 종류별 실루엣을 더 뚜렷하게 구분했습니다.
+
+## 배포 및 확인
+
+GitHub에서 커밋하면 Render의 자동 배포가 시작됩니다. 자동 배포가 꺼져 있다면 Render 서비스에서 `Manual Deploy → Deploy latest commit`을 선택하세요. `public/sw.js`의 캐시 버전도 변경되어 있으므로 배포 후 브라우저에서 `Ctrl + Shift + R`로 강력 새로고침하세요.
+
+검사 명령:
+
+- `npm run check` — 서버·클라이언트 JavaScript 문법 검사
+- `npm test` — XP 규칙 및 무기 클라이언트/서버 수치, 연사/저격 릴리스, 칼/피격 피드백의 회귀 테스트
+
+이번 작업 환경에는 Vite 의존성이 설치되어 있지 않아 `npm run build`를 실행하지 못했습니다. 배포 후 Render 빌드 로그와 두 기기 간 실제 온라인 사격을 별도로 확인하세요.
