@@ -1,6 +1,6 @@
 {
   "name": "neon-strike-fps",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "description": "NEON STRIKE browser FPS with secure accounts, persistent XP, multi-map combat, and training range.",
