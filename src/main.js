@@ -19,15 +19,16 @@ let CLIENT_SESSION_ID;
 try { CLIENT_SESSION_ID = sessionStorage.getItem(SESSION_KEY); if (!CLIENT_SESSION_ID) { CLIENT_SESSION_ID = (crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`); sessionStorage.setItem(SESSION_KEY, CLIENT_SESSION_ID); } } catch { CLIENT_SESSION_ID = `${Date.now()}-${Math.random().toString(36).slice(2)}`; }
 
 const WEAPONS = [
-  { id:'pistol', name:'ATLAS PISTOL', short:'ATLAS', type:'SIDEARM', slot:'sidearm', price:0, damage:26, head:1.65, rate:0.28, mag:12, reserve:36, reload:1.15, spread:0.006, range:55, control:8, color:0xb8c8d9, desc:'안정적인 기본 권총' },
-  { id:'revolver', name:'IRONCLAD .45', short:'IRONCLAD', type:'HEAVY SIDEARM', slot:'sidearm', price:550, damage:47, head:1.9, rate:0.48, mag:6, reserve:24, reload:1.75, spread:0.0035, range:62, control:8, color:0xd9ac70, desc:'6발 실린더 · 강력한 단발' },
-  { id:'smg', name:'VIPER SMG', short:'VIPER', type:'SMG', slot:'primary', price:850, damage:17, head:1.45, rate:0.085, mag:30, reserve:90, reload:1.45, spread:0.023, range:25, control:5, color:0x55e6d2, desc:'근거리 고연사 · 낮은 피해' },
-  { id:'shotgun', name:'BREACH SG', short:'BREACH', type:'SHOTGUN', slot:'primary', price:1100, damage:10, pellets:7, head:1.2, rate:0.78, mag:7, reserve:21, reload:1.7, spread:0.075, range:13, control:3, color:0xd9a36a, desc:'7발 산탄 · 근거리 제압' },
-  { id:'rifle', name:'VANTAGE AR', short:'VANTAGE', type:'ASSAULT RIFLE', slot:'primary', price:1950, damage:32, head:1.6, rate:0.12, mag:30, reserve:60, reload:1.55, spread:0.012, range:50, control:7, color:0x8aafff, desc:'중거리 균형형 · 우클릭 정밀 조준', scopeFov:54 },
-  { id:'dmr', name:'RAIL DMR', short:'RAIL', type:'MARKSMAN', slot:'primary', price:2200, damage:44, head:1.75, rate:0.42, mag:12, reserve:36, reload:1.65, spread:0.003, range:75, control:9, color:0x9ec4d6, desc:'정밀 단발 · 2배율 조준', scopeFov:38 },
-  { id:'sniper', name:'LONGSHOT SR', short:'LONGSHOT', type:'SNIPER', slot:'primary', price:3000, damage:78, head:1.9, rate:1.05, mag:5, reserve:15, reload:2.0, spread:0.001, range:100, control:10, color:0xdfb5ff, desc:'고배율 원형 스코프 · 장거리 저격', scopeFov:20 },
-  { id:'lmg', name:'TITAN LMG', short:'TITAN', type:'LMG', slot:'primary', price:2500, damage:22, head:1.5, rate:0.105, mag:60, reserve:120, reload:2.4, spread:0.022, range:42, control:4, color:0xe6c36e, desc:'대용량 탄창 · 긴 재장전' },
-  { id:'burst', name:'ION BURST', short:'ION', type:'BURST RIFLE', slot:'primary', price:1600, damage:23, head:1.65, rate:0.32, mag:24, reserve:72, reload:1.5, spread:0.009, range:45, control:8, color:0x85e5ff, desc:'3점사 · 우클릭 정밀 조준', scopeFov:50 },
+  { id:'pistol', name:'ATLAS PISTOL', short:'ATLAS', type:'SIDEARM', slot:'sidearm', price:0, damage:22, head:1.45, rate:0.32, mag:12, reserve:36, reload:1.15, spread:0.007, recoil:0.010, range:55, control:8, color:0xb8c8d9, desc:'안정적인 기본 권총 · 우주 합금 슬라이드' },
+  { id:'revolver', name:'IRONCLAD .45', short:'IRONCLAD', type:'HEAVY SIDEARM', slot:'sidearm', price:550, damage:35, head:1.42, rate:0.52, mag:6, reserve:24, reload:1.75, spread:0.0055, recoil:0.025, range:62, control:8, color:0xd9ac70, desc:'6발 실린더 · 묵직한 고출력 탄' },
+  { id:'smg', name:'VIPER SMG', short:'VIPER', type:'SMG', slot:'primary', price:850, damage:13, head:1.35, rate:0.085, mag:30, reserve:90, reload:1.45, spread:0.022, recoil:0.013, range:25, control:5, color:0x55e6d2, desc:'근거리 고연사 · 빠른 반동 회복' },
+  { id:'shotgun', name:'BREACH SG', short:'BREACH', type:'SHOTGUN', slot:'primary', price:1100, damage:8, pellets:7, head:1.15, rate:0.82, mag:7, reserve:21, reload:1.7, spread:0.075, recoil:0.042, range:13, control:3, color:0xd9a36a, desc:'7발 산탄 · 근거리 충격파' },
+  { id:'rifle', name:'VANTAGE AR', short:'VANTAGE', type:'ASSAULT RIFLE', slot:'primary', price:1950, damage:24, head:1.42, rate:0.13, mag:30, reserve:60, reload:1.55, spread:0.012, recoil:0.018, range:50, control:7, color:0x8aafff, desc:'중거리 균형형 · 우클릭 정밀 조준', scopeFov:54 },
+  { id:'dmr', name:'RAIL DMR', short:'RAIL', type:'MARKSMAN', slot:'primary', price:2200, damage:34, head:1.45, rate:0.45, mag:12, reserve:36, reload:1.65, spread:0.004, recoil:0.027, range:75, control:9, color:0x9ec4d6, desc:'정밀 단발 · 2배율 조준', scopeFov:40 },
+  { id:'sniper', name:'LONGSHOT SR', short:'LONGSHOT', type:'SNIPER', slot:'primary', price:3000, damage:78, head:1.45, rate:1.12, mag:5, reserve:15, reload:2.0, spread:0.001, recoil:0.082, range:100, control:10, color:0xdfb5ff, desc:'원형 스코프 · 발사 후 자동 줌아웃', scopeFov:25 },
+  { id:'lmg', name:'TITAN LMG', short:'TITAN', type:'LMG', slot:'primary', price:2500, damage:16, head:1.35, rate:0.115, mag:60, reserve:120, reload:2.4, spread:0.026, recoil:0.021, range:42, control:4, color:0xe6c36e, desc:'대용량 탄창 · 강한 지속 반동' },
+  { id:'burst', name:'ION BURST', short:'ION', type:'BURST RIFLE', slot:'primary', price:1600, damage:18, head:1.4, rate:0.34, mag:24, reserve:72, reload:1.5, spread:0.010, recoil:0.025, range:45, control:8, color:0x85e5ff, desc:'위상 펄스 사격 · 정밀 조준', scopeFov:50 },
+  { id:'knife', name:'ORBITAL EDGE', short:'ORBITAL', type:'MELEE', slot:'melee', price:0, damage:40, head:1, rate:0.48, mag:Infinity, reserve:Infinity, reload:0, spread:0, recoil:0.002, range:2.65, control:10, color:0x7af9e8, desc:'근접 전용 40 피해 · 이동 속도 +10%' },
 ];
 const WEAPON_BY_ID = Object.fromEntries(WEAPONS.map(w => [w.id, w]));
 const platformName = { pc:'PC', mobile:'MOBILE' };
@@ -37,7 +38,7 @@ const state = {
   rule:'crossplay', difficulty:'normal', name:'PLAYER', mode:'menu', phase:'menu', playMode:'training', selectedMap:'arena', mapId:'arena', mapBounds:31.8, lobbyPage:'play', lobbyMapCycle:-1, lobbySelectedWeapon:'rifle',
   round:0, selfScore:0, enemyScore:0, money:450, hp:100, armor:0, armorTier:'none',
   authToken:initialAuthToken, account:null, accountMode:'register', xpLoginNoticeShown:false,
-  currentWeapon:'pistol', owned:new Set(['pistol']), ammo:{},
+  currentWeapon:'pistol', owned:new Set(['pistol','knife']), ammo:{},
   pos:new THREE.Vector3(0,0,15), velocityY:0, yaw:0, pitch:0,
   keys:new Set(), touchMove:{x:0,y:0}, canJump:true,
   lastShot:0, reloading:false, reloadUntil:0, lastFrame:performance.now(), fpsFrames:0, fpsStamp:0,
@@ -45,6 +46,7 @@ const state = {
   roomCode:'', socket:null, socketReady:false, paused:false, resultShown:false,
   buyPrimaryThisRound:false, armorPurchased:false, matchOver:false, botFireTimers:[],
   pointerLocked:false, mobileLook:null, audio:null, noiseBuffer:null, currentToastTimer:0, zoomed:false, baseFov:76, localNextRoundTimer:null,
+  fireHeld:false, sniperMustRelease:false, lastEmptyToast:0, recoilHeat:0, viewKick:0, walkCycle:0, walkIntensity:0, footstepAccumulator:0, lastFootstepSound:0,
 };
 for (const weapon of WEAPONS) state.ammo[weapon.id] = { mag: weapon.mag, reserve: weapon.reserve };
 
@@ -381,7 +383,7 @@ function renderLobbyWeapons(){
   const model=$('lobby-weapon-showcase')?.querySelector('.weapon-showcase-model');if(model){model.className=`weapon-showcase-model ${selected.id}-showcase`;model.style.setProperty('--showcase-color',`#${selected.color.toString(16).padStart(6,'0')}`);}
   for(const w of WEAPONS){
     const button=document.createElement('button');button.className='lobby-weapon-card'+(state.lobbySelectedWeapon===w.id?' selected':'');
-    button.innerHTML=`<span class="weapon-card-index">${String(WEAPONS.indexOf(w)+1).padStart(2,'0')} / ${w.type}</span><span class="weapon-mini-stage ${w.id}-showcase"><span class="weapon-mini-model" style="--showcase-color:#${w.color.toString(16).padStart(6,'0')}"><i></i><b></b><em></em><span></span></span></span><b>${w.name}</b><small>${w.desc}</small><span class="weapon-card-stats"><em>DMG ${w.damage}</em><em>MAG ${w.mag}</em></span>`;
+    button.innerHTML=`<span class="weapon-card-index">${String(WEAPONS.indexOf(w)+1).padStart(2,'0')} / ${w.type}</span><span class="weapon-mini-stage ${w.id}-showcase"><span class="weapon-mini-model" style="--showcase-color:#${w.color.toString(16).padStart(6,'0')}"><i></i><b></b><em></em><span></span></span></span><b>${w.name}</b><small>${w.desc}</small><span class="weapon-card-stats"><em>DMG ${w.damage}</em><em>${w.slot==='melee'?'MELEE':`MAG ${w.mag}`}</em></span>`;
     button.addEventListener('click',()=>{state.lobbySelectedWeapon=w.id;renderLobbyWeapons();});grid.append(button);
   }
 }
@@ -395,6 +397,7 @@ const gunRoot = new THREE.Group(); camera.add(gunRoot); scene.add(camera);
 let muzzleMesh = null;
 function buildGun(id) {
   if(state.zoomed) setZoom(false);
+  for(const child of [...gunRoot.children])child.traverse(object=>{object.geometry?.dispose();if(Array.isArray(object.material))object.material.forEach(material=>material.dispose());else object.material?.dispose();});
   gunRoot.clear();
   const w=WEAPON_BY_ID[id]||WEAPONS[0];
   const mainMat=new THREE.MeshStandardMaterial({color:w.color,metalness:.7,roughness:.32});
@@ -402,9 +405,13 @@ function buildGun(id) {
   const accentMat=new THREE.MeshStandardMaterial({color:0x4cf4d5,emissive:0x167e75,emissiveIntensity:1.1,metalness:.4,roughness:.35});
   const box=(x,y,z,sx,sy,sz,mat)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz),mat);m.position.set(x,y,z);gunRoot.add(m);return m;};
   const cylinder=(x,y,z,r1,r2,len,mat,axis='z')=>{const m=new THREE.Mesh(new THREE.CylinderGeometry(r1,r2,len,10),mat);m.position.set(x,y,z);if(axis==='z')m.rotation.x=Math.PI/2;else m.rotation.z=Math.PI/2;gunRoot.add(m);return m;};
-  // Silhouette is deliberately different by weapon family.
-  box(.32,-.27,-.60,.20,.17,.56,darkMat);
-  if(id==='pistol'){
+  // Silhouette is deliberately different by weapon family. The knife has its own clean melee silhouette.
+  if(id!=='knife')box(.32,-.27,-.60,.20,.17,.56,darkMat);
+  if(id==='knife'){
+    box(.32,-.29,-.45,.12,.095,.22,darkMat);box(.32,-.235,-.58,.19,.045,.065,accentMat);
+    const blade=new THREE.Mesh(new THREE.ConeGeometry(.075,.48,4),mainMat);blade.rotation.x=-Math.PI/2;blade.position.set(.32,-.215,-.84);blade.scale.set(.72,.72,1.1);gunRoot.add(blade);
+    box(.32,-.21,-.77,.08,.04,.22,mainMat);box(.32,-.18,-.50,.035,.025,.15,accentMat);
+  } else if(id==='pistol'){
     box(.32,-.22,-.47,.17,.13,.30,mainMat);box(.34,-.34,-.52,.13,.19,.12,darkMat);cylinder(.32,-.23,-.76,.035,.035,.28,mainMat);box(.32,-.17,-.54,.08,.035,.09,accentMat);
   } else if(id==='revolver'){
     box(.32,-.22,-.47,.19,.14,.27,mainMat);box(.34,-.34,-.51,.14,.22,.13,darkMat);cylinder(.32,-.22,-.70,.043,.043,.34,mainMat);cylinder(.32,-.22,-.51,.09,.09,.12,accentMat,'x');box(.32,-.15,-.49,.11,.04,.08,darkMat);box(.32,-.29,-.61,.07,.12,.08,darkMat);
@@ -428,11 +435,13 @@ function buildGun(id) {
     cylinder(.32,-.055,-.60,.055,.055,.055,accentMat,'x');
     cylinder(.32,-.055,-.60,.042,.042,.06,mainMat,'x');
   }
-  box(.32,-.30,-.67,.13,.10,.12,darkMat);
-  // Small ejection port and team-status strip.
-  box(.205,-.20,-.58,.012,.035,.11,accentMat);
-  muzzleMesh=new THREE.Mesh(new THREE.SphereGeometry(.075,8,8),new THREE.MeshBasicMaterial({color:0xffe9a5,transparent:true,opacity:.95}));
-  muzzleMesh.position.set(.32,-.23,-1.12);muzzleMesh.visible=false;gunRoot.add(muzzleMesh);
+  if(id!=='knife'){
+    box(.32,-.30,-.67,.13,.10,.12,darkMat);
+    // Small ejection port and team-status strip.
+    box(.205,-.20,-.58,.012,.035,.11,accentMat);
+    muzzleMesh=new THREE.Mesh(new THREE.SphereGeometry(.075,8,8),new THREE.MeshBasicMaterial({color:0xffe9a5,transparent:true,opacity:.95}));
+    muzzleMesh.position.set(.32,-.23,-1.12);muzzleMesh.visible=false;gunRoot.add(muzzleMesh);
+  } else muzzleMesh=null;
   gunRoot.position.set(0,0,0);
 }
 
@@ -447,7 +456,10 @@ function buildCharacterWeapon(root,weaponId='pistol'){
   const box=(x,y,z,sx,sy,sz,mat)=>{const mesh=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz),mat);mesh.position.set(x,y,z);mesh.castShadow=true;rig.add(mesh);return mesh;};
   const barrel=(x,y,z,r,len,mat)=>{const mesh=new THREE.Mesh(new THREE.CylinderGeometry(r,r,len,8),mat);mesh.rotation.x=Math.PI/2;mesh.position.set(x,y,z);mesh.castShadow=true;rig.add(mesh);return mesh;};
   // The character faces local -Z. All weapon families have a distinct silhouette and point forward.
-  if(weaponId==='pistol'||weaponId==='revolver'){
+  if(weaponId==='knife'){
+    box(0,-.015,-.12,.08,.08,.18,darkMat);box(0,.025,-.25,.16,.035,.06,detailMat);
+    const blade=new THREE.Mesh(new THREE.ConeGeometry(.04,.38,4),bodyMat);blade.rotation.x=-Math.PI/2;blade.position.set(0,.025,-.47);rig.add(blade);
+  }else if(weaponId==='pistol'||weaponId==='revolver'){
     box(0,0,-.12,weaponId==='revolver'?.18:.14,.12,.24,bodyMat);
     box(0,-.105,-.105,.095,.19,.09,darkMat);
     barrel(0,.012,-.315,weaponId==='revolver'?.035:.026,.20,bodyMat);
@@ -468,6 +480,7 @@ function buildCharacterWeapon(root,weaponId='pistol'){
     box(0,-.105,-.25,.09,.17,.10,darkMat);
   }
   box(-.012,.04,-.13,.012,.024,.18,detailMat);
+  rig.traverse(object=>{if(object.isMesh)object.userData.noHitbox=true;});
   root.add(rig);root.userData.remoteWeaponModel=rig;root.userData.remoteWeaponId=weaponId;
   return rig;
 }
@@ -490,25 +503,48 @@ function makeCharacter({color=0x67c9ff, accent=0x143345, onlineId=null, name='BO
   const leg1=part(new THREE.BoxGeometry(.25,.55,.28),dark,-.19,.35,0,'legs');
   const leg2=part(new THREE.BoxGeometry(.25,.55,.28),dark,.19,.35,0,'legs');
   const pack=part(new THREE.BoxGeometry(.37,.45,.17),accentMat,0,1.1,.23,'body');
-  root.userData={onlineId,name,parts:[head,visor],legs:[leg1,leg2],arms:[arm1,arm2],bodyMat,accentMat};
+  root.userData={onlineId,name,parts:[head,visor],legs:[leg1,leg2],arms:[arm1,arm2],bodyMat,accentMat,walkPhase:Math.random()*6,baseBodyY:1.05};
   buildCharacterWeapon(root,'pistol');
   return root;
 }
-function setTargetId(group,id) { group.traverse(o=>{if(o.isMesh)o.userData.targetId=id;}); }
-function disposeGroup(group) { group.traverse(o=>{if(o.geometry)o.geometry.dispose();}); scene.remove(group); }
+function setTargetId(group,id) { group.traverse(o=>{if(o.isMesh&&!o.userData.noHitbox)o.userData.targetId=id;}); }
+function disposeGroup(group) { const disposed=new Set();group.traverse(o=>{if(o.geometry)o.geometry.dispose();const mats=Array.isArray(o.material)?o.material:(o.material?[o.material]:[]);for(const mat of mats){if(mat===hitFlashMaterial||disposed.has(mat))continue;disposed.add(mat);mat.dispose?.();}});scene.remove(group); }
 
 const raycaster = new THREE.Raycaster();
 const targetObjects = [];
-function registerTarget(group,id) { setTargetId(group,id); group.traverse(o=>{if(o.isMesh)targetObjects.push(o);}); }
+const hitFlashMaterial = new THREE.MeshStandardMaterial({color:0xff263f, emissive:0xff001f, emissiveIntensity:2.8, metalness:.05, roughness:.48});
+function registerTarget(group,id) { setTargetId(group,id); group.traverse(o=>{if(o.isMesh&&!o.userData.noHitbox)targetObjects.push(o);}); }
+function flashCharacter(root, duration=135) {
+  if (!root) return;
+  if (root.userData.hitFlashTimer) clearTimeout(root.userData.hitFlashTimer);
+  root.traverse(object => {
+    if (!object.isMesh) return;
+    if (!Object.hasOwn(object.userData, 'hitFlashOriginal')) object.userData.hitFlashOriginal = object.material;
+    object.material = Array.isArray(object.material) ? object.material.map(() => hitFlashMaterial) : hitFlashMaterial;
+  });
+  root.userData.hitFlashTimer = setTimeout(() => {
+    root.traverse(object => {
+      if (!object.isMesh || !Object.hasOwn(object.userData, 'hitFlashOriginal')) return;
+      object.material = object.userData.hitFlashOriginal;
+      delete object.userData.hitFlashOriginal;
+    });
+    root.userData.hitFlashTimer = null;
+  }, duration);
+}
 function unregisterTarget(id) { for(let i=targetObjects.length-1;i>=0;i--)if(targetObjects[i].userData.targetId===id)targetObjects.splice(i,1); }
 function updateRemotePlayer(id,data) {
   if(id===state.socket?.id)return;
   let remote=state.remotePlayers.get(id);
   if(!remote){
     const root=makeCharacter({color:0xff6c85,accent:0x52233a,onlineId:id,name:data.name||'OPPONENT'});buildCharacterWeapon(root,data.weapon||'pistol');root.position.set(data.x||0,data.y||0,data.z||0);scene.add(root);registerTarget(root,id);
-    remote={id,root,target:new THREE.Vector3(data.x||0,data.y||0,data.z||0),yaw:data.yaw||0,name:data.name||'OPPONENT',hp:data.hp??100,weapon:data.weapon||'pistol'};state.remotePlayers.set(id,remote);
+    remote={id,root,target:new THREE.Vector3(data.x||0,data.y||0,data.z||0),yaw:data.yaw||0,name:data.name||'OPPONENT',hp:data.hp??100,weapon:data.weapon||'pistol',walkPhase:Math.random()*6,lastX:data.x||0,lastZ:data.z||0};state.remotePlayers.set(id,remote);
   }
   remote.target.set(data.x||0,data.y||0,data.z||0);remote.yaw=data.yaw||0;remote.name=data.name||remote.name;if(data.hp!=null)remote.hp=data.hp;if(data.weapon&&data.weapon!==remote.weapon){remote.weapon=data.weapon;buildCharacterWeapon(remote.root,data.weapon);}
+}
+function updateRemoteWeaponModel(id, weaponId){
+  const remote=state.remotePlayers.get(id);
+  if(!remote||!WEAPON_BY_ID[weaponId]||remote.weapon===weaponId)return;
+  remote.weapon=weaponId;buildCharacterWeapon(remote.root,weaponId);
 }
 function clearRemotePlayers(){ for(const [id,r] of state.remotePlayers){unregisterTarget(id);disposeGroup(r.root);}state.remotePlayers.clear(); }
 
@@ -521,15 +557,49 @@ function initAudio(){
   const ch=state.noiseBuffer.getChannelData(0);for(let i=0;i<length;i++)ch[i]=Math.random()*2-1;
 }
 function soundShot(weaponId){
-  initAudio();const ctx=state.audio;if(!ctx)return;const t=ctx.currentTime;const w=WEAPON_BY_ID[weaponId]||WEAPONS[0];
-  const osc=ctx.createOscillator(),gain=ctx.createGain(),filter=ctx.createBiquadFilter();
-  osc.type=weaponId==='sniper'?'sawtooth':weaponId==='pistol'?'triangle':'square';osc.frequency.setValueAtTime(weaponId==='shotgun'?105:weaponId==='sniper'?75:150+Math.random()*55,t);osc.frequency.exponentialRampToValueAtTime(38,t+.095);
-  filter.type='lowpass';filter.frequency.value=weaponId==='sniper'?950:weaponId==='shotgun'?1700:2400;
-  gain.gain.setValueAtTime(.0001,t);gain.gain.exponentialRampToValueAtTime(weaponId==='sniper'?.62:weaponId==='shotgun'?.38:.24,t+.005);gain.gain.exponentialRampToValueAtTime(.0001,t+(weaponId==='sniper'?.28:.13));
-  osc.connect(filter).connect(gain).connect(ctx.destination);osc.start(t);osc.stop(t+.3);
-  const noise=ctx.createBufferSource(),ng=ctx.createGain(),nf=ctx.createBiquadFilter();noise.buffer=state.noiseBuffer;nf.type='bandpass';nf.frequency.value=weaponId==='shotgun'?750:1800;
-  ng.gain.setValueAtTime(.0001,t);ng.gain.exponentialRampToValueAtTime(weaponId==='sniper'?.33:.17,t+.003);ng.gain.exponentialRampToValueAtTime(.0001,t+.09);noise.connect(nf).connect(ng).connect(ctx.destination);noise.start(t);noise.stop(t+.1);
+  initAudio();const ctx=state.audio;if(!ctx)return;const t=ctx.currentTime;
+  // Each weapon gets a distinct mechanical crack, low-frequency punch, and NEON STRIKE phase-energy tail.
+  const profiles={
+    pistol:{low:138,crack:2350,tail:740,lowpass:4200,noise:.24,sub:.17,duration:.13,glint:.045},
+    revolver:{low:76,crack:1150,tail:420,lowpass:1900,noise:.30,sub:.34,duration:.22,glint:.085},
+    smg:{low:175,crack:3100,tail:1120,lowpass:5200,noise:.19,sub:.12,duration:.095,glint:.025},
+    shotgun:{low:54,crack:780,tail:260,lowpass:1150,noise:.50,sub:.42,duration:.25,glint:.07},
+    rifle:{low:105,crack:2650,tail:880,lowpass:3800,noise:.31,sub:.24,duration:.16,glint:.055},
+    dmr:{low:128,crack:3450,tail:1460,lowpass:5100,noise:.28,sub:.21,duration:.15,glint:.09},
+    sniper:{low:43,crack:620,tail:310,lowpass:900,noise:.55,sub:.48,duration:.38,glint:.16},
+    lmg:{low:68,crack:1780,tail:540,lowpass:2600,noise:.39,sub:.32,duration:.21,glint:.035},
+    burst:{low:205,crack:3900,tail:1850,lowpass:6100,noise:.24,sub:.13,duration:.12,glint:.12},
+    knife:{low:360,crack:2500,tail:1250,lowpass:4500,noise:.09,sub:.035,duration:.10,glint:.11},
+  };
+  const p=profiles[weaponId]||profiles.pistol;
+  const tone=(type,f0,f1,vol,dur,delay=0,filterType='lowpass',cutoff=p.lowpass)=>{
+    const o=ctx.createOscillator(),g=ctx.createGain(),f=ctx.createBiquadFilter();o.type=type;f.type=filterType;f.frequency.setValueAtTime(cutoff,t+delay);
+    o.frequency.setValueAtTime(Math.max(1,f0),t+delay);o.frequency.exponentialRampToValueAtTime(Math.max(1,f1),t+delay+dur*.72);
+    g.gain.setValueAtTime(.0001,t+delay);g.gain.exponentialRampToValueAtTime(Math.max(.0002,vol),t+delay+.004);g.gain.exponentialRampToValueAtTime(.0001,t+delay+dur);
+    o.connect(f).connect(g).connect(ctx.destination);o.start(t+delay);o.stop(t+delay+dur+.01);
+  };
+  const transient=(delay,dur,vol,frequency,q=0.8)=>{
+    const n=ctx.createBufferSource(),g=ctx.createGain(),f=ctx.createBiquadFilter();n.buffer=state.noiseBuffer;f.type='bandpass';f.frequency.setValueAtTime(frequency,t+delay);f.Q.value=q;
+    g.gain.setValueAtTime(.0001,t+delay);g.gain.exponentialRampToValueAtTime(Math.max(.0002,vol),t+delay+.002);g.gain.exponentialRampToValueAtTime(.0001,t+delay+dur);
+    n.connect(f).connect(g).connect(ctx.destination);n.start(t+delay);n.stop(t+delay+dur+.01);
+  };
+  // Low thump + filtered, weapon-specific crack.
+  tone(weaponId==='knife'?'triangle':'sawtooth',p.low,p.low*.42,p.sub,p.duration*.95);
+  transient(0,.045,p.noise,p.crack,weaponId==='shotgun'?0.5:1.25);
+  // A short synthesized energy coil gives the weapons a coherent space-combat identity without making them sound alike.
+  tone(weaponId==='sniper'?'sine':'triangle',p.tail,p.tail*(weaponId==='sniper'?.45:.72),p.glint,weaponId==='sniper'?.24:.095,weaponId==='sniper'?.045:.012,'lowpass',p.tail*2.1);
+  if(['revolver','shotgun','lmg','sniper'].includes(weaponId))transient(.045,.11,p.noise*.32,p.crack*.58,.55);
 }
+function soundFootstep({volume=.12,remote=false}={}){
+  initAudio();const ctx=state.audio;if(!ctx||!state.noiseBuffer)return;const t=ctx.currentTime;
+  const n=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain(),low=ctx.createOscillator(),lg=ctx.createGain();
+  n.buffer=state.noiseBuffer;filter.type='lowpass';filter.frequency.value=remote?380:560;
+  gain.gain.setValueAtTime(.0001,t);gain.gain.exponentialRampToValueAtTime(Math.max(.001,volume),t+.008);gain.gain.exponentialRampToValueAtTime(.0001,t+.075);
+  low.type='sine';low.frequency.setValueAtTime(remote?74:92,t);low.frequency.exponentialRampToValueAtTime(42,t+.06);lg.gain.setValueAtTime(.0001,t);lg.gain.exponentialRampToValueAtTime(volume*.32,t+.005);lg.gain.exponentialRampToValueAtTime(.0001,t+.07);
+  n.connect(filter).connect(gain).connect(ctx.destination);low.connect(lg).connect(ctx.destination);n.start(t);n.stop(t+.08);low.start(t);low.stop(t+.08);
+}
+function soundKnife(){soundShot('knife');}
+
 function soundReload(){initAudio();if(!state.audio)return;const ctx=state.audio,t=ctx.currentTime;[420,250,510].forEach((f,i)=>{const o=ctx.createOscillator(),g=ctx.createGain();o.type='square';o.frequency.value=f;g.gain.setValueAtTime(.0001,t+i*.14);g.gain.exponentialRampToValueAtTime(.055,t+i*.14+.008);g.gain.exponentialRampToValueAtTime(.0001,t+i*.14+.055);o.connect(g).connect(ctx.destination);o.start(t+i*.14);o.stop(t+i*.14+.06);});}
 function soundHit(){initAudio();if(!state.audio)return;const c=state.audio,t=c.currentTime;const o=c.createOscillator(),g=c.createGain();o.type='sine';o.frequency.setValueAtTime(850,t);o.frequency.exponentialRampToValueAtTime(1350,t+.04);g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.12,t+.006);g.gain.exponentialRampToValueAtTime(.0001,t+.09);o.connect(g).connect(c.destination);o.start(t);o.stop(t+.1);}
 function soundKill(){initAudio();if(!state.audio)return;const c=state.audio,t=c.currentTime;[660,990,1320].forEach((f,i)=>{const o=c.createOscillator(),g=c.createGain();o.type='sine';o.frequency.setValueAtTime(f,t+i*.055);o.frequency.exponentialRampToValueAtTime(f*1.25,t+i*.055+.05);g.gain.setValueAtTime(.0001,t+i*.055);g.gain.exponentialRampToValueAtTime(.11,t+i*.055+.008);g.gain.exponentialRampToValueAtTime(.0001,t+i*.055+.17);o.connect(g).connect(c.destination);o.start(t+i*.055);o.stop(t+i*.055+.18);});}
@@ -540,6 +610,7 @@ function showToast(message,ms=2300){const t=$('toast');t.textContent=message;t.c
 function setMenuStatus(text){$('menu-status').textContent=text;}
 function setModeUI(){menu.classList.add('hidden');hud.classList.remove('hidden');buyMenu.classList.add('hidden');pauseMenu.classList.add('hidden');endScreen.classList.add('hidden');state.paused=false;const trainingButton=$('training-weapon-button');if(trainingButton)trainingButton.classList.toggle('hidden',state.mode!=='training');}
 function backToMenu(){
+  state.fireHeld=false;state.sniperMustRelease=false;
   if(state.localNextRoundTimer){clearTimeout(state.localNextRoundTimer);state.localNextRoundTimer=null;}
   setZoom(false);state.mode='menu';state.phase='menu';state.paused=false;state.keys.clear();state.roomCode='';
   if(document.pointerLockElement)document.exitPointerLock();
@@ -556,6 +627,7 @@ function makeAmmoFor(id,full=true){const w=WEAPON_BY_ID[id];if(!state.ammo[id])s
 function currentWeapon(){return WEAPON_BY_ID[state.currentWeapon]||WEAPONS[0];}
 function setWeapon(id,notify=false){
   if(!WEAPON_BY_ID[id])return;
+  state.fireHeld=false;state.sniperMustRelease=false;if(state.zoomed)setZoom(false);
   if(!state.owned.has(id)){if(notify)showToast('구매한 무기만 장착할 수 있어요. 구매 단계에서 구입하세요.');return;}
   if(state.mode==='online'){
     if(!state.socketReady||!state.socket){if(notify)showToast('서버에 연결 중입니다.');return;}
@@ -564,13 +636,18 @@ function setWeapon(id,notify=false){
   }
   state.currentWeapon=id;buildGun(id);updateHUD();if(notify)showToast(`${WEAPON_BY_ID[id].name} 장착`);
 }
+function updateAmmoHUD(){
+  const w=currentWeapon(),a=state.ammo[w.id]||{mag:w.mag,reserve:w.reserve};
+  $('ammo-current').textContent=w.slot==='melee'?'—':a.mag;
+  $('ammo-reserve').textContent=w.slot==='melee'?'—':a.reserve;
+}
 function updateHUD(){
   $('health-value').textContent=Math.max(0,Math.ceil(state.hp));$('health-fill').style.width=`${Math.max(0,state.hp)}%`;$('armor-value').textContent=Math.max(0,Math.ceil(state.armor));const armorLabel=$('armor-tier-label');if(armorLabel)armorLabel.textContent=state.armorTier==='heavy'?'HEAVY':state.armorTier==='light'?'LIGHT':'NONE';
   $('money-value').textContent=state.money.toLocaleString('en-US');$('buy-money').textContent=state.money.toLocaleString('en-US');
   const shopAvailable=state.mode!=='menu'&&state.phase==='buy';$('open-buy').classList.toggle('hidden',!shopAvailable);$('touch-buy').classList.toggle('hidden',!shopAvailable);
-  const w=currentWeapon(),a=state.ammo[w.id]||{mag:w.mag,reserve:w.reserve};
-  $('weapon-class').textContent=w.type;$('weapon-name').textContent=w.name;$('weapon-index').textContent=`${String(WEAPONS.findIndex(x=>x.id===w.id)+1).padStart(2,'0')} / ${String(WEAPONS.length).padStart(2,'0')}`;
-  $('weapon-stat').textContent=`CONTROL / ${w.control.toFixed(1)}`;$('ammo-current').textContent=a.mag;$('ammo-reserve').textContent=a.reserve;
+  const w=currentWeapon();
+  $('weapon-class').textContent=w.type;$('weapon-name').textContent=w.name;$('weapon-index').textContent=w.slot==='melee'?'03 / 03':`${w.slot==='primary'?'01':w.id==='pistol'?'02':String(WEAPONS.findIndex(x=>x.id===w.id)+1).padStart(2,'0')} / ${String(WEAPONS.length).padStart(2,'0')}`;
+  $('weapon-stat').textContent=w.slot==='melee'?'MELEE / 40 DMG':`CONTROL / ${w.control.toFixed(1)}`;updateAmmoHUD();const ammoLabel=document.querySelector('.ammo-label');if(ammoLabel)ammoLabel.textContent=w.slot==='melee'?'MELEE':'AMMO';
   const bars=$('weapon-stat-bars');bars.querySelectorAll('i').forEach((i,index)=>i.classList.toggle('on',index<Math.max(1,Math.round(w.control/2))));
   $('self-score').textContent=state.selfScore;$('enemy-score').textContent=state.enemyScore;$('round-label').textContent=`ROUND ${String(Math.max(1,state.round)).padStart(2,'0')}`;
   $('net-label').textContent=state.mode==='online'?(state.socketReady?'ONLINE / ROOM '+state.roomCode:'RECONNECTING...'):state.mode==='training'?'TRAINING RANGE':'READY';$('net-dot').classList.toggle('offline',state.mode==='online'&&!state.socketReady);
@@ -581,6 +658,7 @@ function updateHUD(){
 function renderBuyList(){
   const list=$('buy-list');if(!list)return;list.innerHTML='';
   for(const w of WEAPONS){
+    if(w.slot==='melee')continue;
     const owned=state.owned.has(w.id),canBuy=w.price===0||state.money>=w.price;
     const card=document.createElement('button');card.className='weapon-card'+(state.currentWeapon===w.id?' equipped':'')+(!canBuy?' cant-afford':'');card.style.setProperty('--gun-color',`#${w.color.toString(16).padStart(6,'0')}`);
     card.innerHTML=`<div class="weapon-art"><div class="weapon-silhouette"></div></div><span class="gun-type">${w.type}</span><strong>${w.name}</strong><div class="gun-price">${w.price===0?'FREE':`◈ ${w.price.toLocaleString('en-US')}`}</div><div class="gun-desc">${w.desc}</div><div class="buy-action">${state.currentWeapon===w.id?'장착 중':owned?'재장착':'구매 / 장착'}</div>`;
@@ -630,7 +708,7 @@ function buyArmor(tier='light'){
 function openBuy(){if(state.phase!=='buy'||state.paused)return;buyMenu.classList.remove('hidden');updateHUD();}
 function closeBuy(){buyMenu.classList.add('hidden');}
 function startLocalRound(){
-  state.round++;state.phase='buy';state.hp=100;if(state.armor<=0)state.armorTier='none';state.velocityY=0;const spawn=getSpawn(state.mapId,0);state.pos.set(spawn.x,0,spawn.z);state.yaw=spawn.yaw;state.pitch=0;state.phaseEnd=Date.now()+12000;state.roundLimit=state.phaseEnd+90000;
+  state.round++;state.phase='buy';state.hp=100;if(state.armor<=0)state.armorTier='none';state.velocityY=0;state.owned=new Set(['pistol','knife']);state.currentWeapon='pistol';buildGun('pistol');const spawn=getSpawn(state.mapId,0);state.pos.set(spawn.x,0,spawn.z);state.yaw=spawn.yaw;state.pitch=0;state.phaseEnd=Date.now()+12000;state.roundLimit=state.phaseEnd+90000;
   state.buyPrimaryThisRound=false;state.armorPurchased=state.armorTier==='heavy';state.reloading=false;state.resultShown=false;state.matchOver=false;setZoom(false);
   makeAmmoFor(state.currentWeapon,true);state.botFireTimers=[];clearBots();setModeUI();$('phase-label').textContent='BUY PHASE';$('buy-countdown').textContent='12초';$('buy-feedback').textContent='라운드 시작 전 장비를 구매하세요.';
   updateHUD();openBuy();showToast(`ROUND ${state.round} — 구매 단계`,1800);
@@ -647,28 +725,32 @@ function clearTrainingTargets(){
 }
 function spawnTrainingTargets(){
   clearTrainingTargets();
-  const z=MAP_META[state.mapId]?.spawn??27;
-  const dummies=[{x:-6,z:z-5},{x:6,z:z-5},{x:-11,z:z-10},{x:11,z:z-10}];
-  dummies.forEach((pt,i)=>{
+  const map=state.mapId;
+  const positions={
+    arena:{dummies:[[-17,8],[-7,3],[7,3],[17,8],[-20,-9],[20,-9],[-12,-23],[12,-23],[0,-5],[0,17]],boards:[[-22,4],[-9,-12],[9,-12],[22,4],[-20,21],[20,21],[0,-25]]},
+    palace:{dummies:[[-29,14],[-17,8],[-5,12],[8,12],[21,8],[30,14],[-28,-6],[27,-6],[-15,30],[15,30]],boards:[[-34,10],[-20,-1],[-7,4],[7,4],[20,-1],[34,10],[0,34]]},
+    city:{dummies:[[-50,-35],[-48,5],[-42,32],[-15,-18],[15,-17],[48,-34],[48,9],[42,35],[-14,50],[18,50],[0,-48],[0,12]],boards:[[-52,-20],[-35,18],[-18,34],[18,34],[35,18],[52,-20],[-4,-46],[4,45]]}
+  };
+  const config=positions[map]||positions.arena;
+  config.dummies.forEach(([x,z],i)=>{
     const id=`practice-dummy-${i+1}`,root=makeCharacter({color:i%2?0xcbd8e0:0x9bb4c4,accent:0x293b4b,name:`DUMMY ${String(i+1).padStart(2,'0')}`});
-    root.position.set(pt.x,0,pt.z);root.rotation.y=Math.PI;scene.add(root);registerTarget(root,id);state.trainingTargets.push({id,root,hp:100,maxHp:100,alive:true,respawnAt:0,name:`사람 더미 ${i+1}`});
+    const y=getGroundHeight(x,z);root.position.set(x,y,z);root.rotation.y=Math.PI;scene.add(root);registerTarget(root,id);state.trainingTargets.push({id,root,hp:100,maxHp:100,alive:true,respawnAt:0,name:`사람 더미 ${i+1}`});
   });
-  // Stationary concentric paper targets at several heights.
-  const boardPositions=[{x:-10,z:z-8,y:1.65},{x:0,z:z-8,y:1.65},{x:10,z:z-8,y:1.65},{x:0,z:z-14,y:2.5}];
-  boardPositions.forEach((pt,i)=>{
-    const id=`practice-board-${i+1}`,root=new THREE.Group();
-    const outer=new THREE.Mesh(new THREE.CircleGeometry(.78,32),new THREE.MeshStandardMaterial({color:0xdce5e9,roughness:.9}));outer.position.set(pt.x,pt.y,pt.z);root.add(outer);
+  config.boards.forEach(([x,z],i)=>{
+    const id=`practice-board-${i+1}`,root=new THREE.Group(),y=getGroundHeight(x,z)+1.65;
+    const outer=new THREE.Mesh(new THREE.CircleGeometry(.78,32),new THREE.MeshStandardMaterial({color:0xdce5e9,roughness:.9}));outer.position.set(x,y,z);root.add(outer);
     const rings=[{r:.58,c:0x327a8b},{r:.39,c:0xdf4f5f},{r:.20,c:0xe2ba61},{r:.075,c:0x202a38}];
-    rings.forEach(({r,c})=>{const m=new THREE.Mesh(new THREE.CircleGeometry(r,28),new THREE.MeshStandardMaterial({color:c,roughness:.85}));m.position.set(pt.x,pt.y,pt.z+.006+(0.006*(.8-r)));root.add(m);});
+    rings.forEach(({r,c})=>{const m=new THREE.Mesh(new THREE.CircleGeometry(r,28),new THREE.MeshStandardMaterial({color:c,roughness:.85}));m.position.set(x,y,z+.006+(0.006*(.8-r)));root.add(m);});
     scene.add(root);registerTarget(root,id);state.trainingTargets.push({id,root,hp:100,maxHp:100,alive:true,respawnAt:0,name:`과녁 ${i+1}`});
   });
 }
+
 function updateTrainingTargets(now=Date.now()){
   for(const target of state.trainingTargets){if(!target.alive&&target.respawnAt&&now>=target.respawnAt){target.hp=target.maxHp;target.alive=true;target.respawnAt=0;target.root.visible=true;registerTarget(target.root,target.id);}}
 }
 function renderTrainingWeapons(){
   const grid=$('training-weapon-grid');if(!grid)return;grid.innerHTML='';
-  for(const w of WEAPONS){const button=document.createElement('button');button.className='training-weapon-option'+(state.currentWeapon===w.id?' selected':'');button.innerHTML=`<div class="weapon-mini-stage ${w.id}-showcase"><div class="weapon-mini-model" style="--showcase-color:#${w.color.toString(16).padStart(6,'0')}"><i></i><b></b><em></em><span></span></div></div><small>${w.type}</small><b>${w.name}</b><span>DMG ${w.damage} · MAG ${w.mag}</span>`;button.addEventListener('click',()=>{state.owned.add(w.id);setWeapon(w.id);makeAmmoFor(w.id,true);$('training-weapon-menu').classList.add('hidden');});grid.append(button);}
+  for(const w of WEAPONS){const button=document.createElement('button');button.className='training-weapon-option'+(state.currentWeapon===w.id?' selected':'');button.innerHTML=`<div class="weapon-mini-stage ${w.id}-showcase"><div class="weapon-mini-model" style="--showcase-color:#${w.color.toString(16).padStart(6,'0')}"><i></i><b></b><em></em><span></span></div></div><small>${w.type}</small><b>${w.name}</b><span>DMG ${w.damage} · ${w.slot==='melee'?'MELEE':'MAG '+w.mag}</span>`;button.addEventListener('click',()=>{state.owned.add(w.id);setWeapon(w.id);makeAmmoFor(w.id,true);$('training-weapon-menu').classList.add('hidden');});grid.append(button);}
 }
 function openTrainingWeapons(){if(state.mode!=='training')return;renderTrainingWeapons();$('training-weapon-menu').classList.remove('hidden');}
 function spawnBots(){
@@ -699,7 +781,7 @@ function endLocalRound(win,reason=''){
 }
 function nextLocalRound(){
   if(state.localNextRoundTimer){clearTimeout(state.localNextRoundTimer);state.localNextRoundTimer=null;}
-  endScreen.classList.add('hidden');if(state.matchOver){state.selfScore=0;state.enemyScore=0;state.money=450;state.armor=0;state.armorTier='none';state.currentWeapon='pistol';state.owned=new Set(['pistol']);for(const w of WEAPONS)state.ammo[w.id]={mag:w.mag,reserve:w.reserve};state.round=0;}
+  endScreen.classList.add('hidden');if(state.matchOver){state.selfScore=0;state.enemyScore=0;state.money=450;state.armor=0;state.armorTier='none';state.currentWeapon='pistol';state.owned=new Set(['pistol','knife']);for(const w of WEAPONS)state.ammo[w.id]={mag:w.mag,reserve:w.reserve};state.round=0;}
   startLocalRound();
 }
 function setZoom(active){
@@ -715,11 +797,18 @@ function setZoom(active){
   if(state.zoomed)showToast(w.id==='sniper'?'저격 스코프 · 우클릭 또는 Q로 해제':'정밀 조준 · 우클릭 또는 Q로 해제',1000);
 }
 function toggleZoom(){if(state.mode==='menu'||state.phase!=='live'||state.paused)return;setZoom(!state.zoomed);}
-function switchWeaponByNumber(n){const w=WEAPONS[n-1];if(w)setWeapon(w.id,true);}
+function switchWeaponByNumber(n){
+  if(n===1){const primary=WEAPONS.find(w=>w.slot==='primary'&&state.owned.has(w.id));if(!primary){showToast('현재 주무기가 없습니다.',1100);return;}const current=WEAPONS.find(w=>w.id===state.currentWeapon);const chosen=current?.slot==='primary'&&state.owned.has(current.id)?current:primary;setWeapon(chosen.id,true);return;}
+  if(n===2){if(state.owned.has('pistol'))setWeapon('pistol',true);return;}
+  if(n===3){if(state.owned.has('knife'))setWeapon('knife',true);return;}
+  // Number keys 4–9 remain as convenience shortcuts for any additional purchased weapons.
+  const candidate=WEAPONS[n-1];if(candidate&&candidate.slot!=='melee'&&state.owned.has(candidate.id))setWeapon(candidate.id,true);
+}
 function reloadWeapon(){
   if(state.phase!=='live'||state.paused||state.reloading)return;
   if(state.mode==='training'){const w=currentWeapon();makeAmmoFor(w.id,true);updateHUD();showToast('훈련장 무한 탄약 · 재장전할 필요가 없습니다.',900);return;}
   const w=currentWeapon(),a=state.ammo[w.id];
+  if(w.slot==='melee'){showToast('칼은 재장전할 필요가 없습니다.',900);return;}
   if(a.mag>=w.mag||a.reserve<=0){showToast(a.mag>=w.mag?'탄창이 이미 가득 찼습니다.':'예비 탄약이 없습니다.',900);return;}
   state.reloading=true;state.reloadWeaponId=w.id;state.reloadUntil=performance.now()+w.reload*1000;soundReload();showToast('재장전 중...',700);
 }
@@ -735,44 +824,45 @@ function addShotFx(from,to,color=0x8ffff0){
 }
 function cameraForward(){const d=new THREE.Vector3();camera.getWorldDirection(d);return d.normalize();}
 function doShoot(){
-  if(state.phase!=='live'||state.paused||state.reloading)return;
-  initAudio();const w=currentWeapon(),ammo=state.ammo[w.id],now=performance.now();if(now-state.lastShot<w.rate*1000)return;
-  if(state.mode!=='training'&&ammo.mag<=0){showToast('탄약이 없습니다. R로 재장전하세요.',850);return;}state.lastShot=now;if(state.mode==='training'){ammo.mag=w.mag;ammo.reserve=w.reserve;}else ammo.mag--;soundShot(w.id);if(muzzleMesh){muzzleMesh.visible=true;state.muzzleUntil=now+55;}
-  const direction=cameraForward();const origin=camera.position.clone();let bestHit=null;const pellets=w.id==='shotgun'?7:1;let totalDamage=0;let hitPoint=origin.clone().add(direction.clone().multiplyScalar(w.range));let hitOwner=null;
+  if(state.phase!=='live'||state.paused||state.reloading)return false;
+  initAudio();const w=currentWeapon(),ammo=state.ammo[w.id],now=performance.now();if(now-state.lastShot<w.rate*1000)return false;
+  if(w.id!=='knife'&&state.mode!=='training'&&ammo.mag<=0){if(now-state.lastEmptyToast>1200){showToast('탄약이 없습니다. R로 재장전하세요.',850);state.lastEmptyToast=now;}return false;}
+  state.lastShot=now;state.recoilHeat=Math.min(2.4,state.recoilHeat+Math.max(.12,w.recoil*18));state.viewKick=Math.min(.14,state.viewKick+(w.recoil||.003));
+  if(state.mode==='training'){ammo.mag=w.mag;ammo.reserve=w.reserve;}else if(w.id!=='knife')ammo.mag--;
+  if(w.id==='knife')soundKnife();else soundShot(w.id);
+  if(muzzleMesh&&w.id!=='knife'){muzzleMesh.visible=true;state.muzzleUntil=now+55;}
+  const direction=cameraForward();const origin=camera.position.clone();let hitPoint=origin.clone().add(direction.clone().multiplyScalar(w.range));let hitOwner=null;
+  const pellets=w.id==='shotgun'?7:1;const localDamageByTarget=new Map();let firstShotDirection=direction.clone();
   for(let i=0;i<pellets;i++){
-    const d=direction.clone();const spread=state.zoomed?w.spread*.35:w.spread;
-    d.x+=(Math.random()-.5)*spread;d.y+=(Math.random()-.5)*spread;d.z+=(Math.random()-.5)*spread;d.normalize();raycaster.set(origin,d);raycaster.far=w.range;
+    const d=direction.clone();const heatFactor=1+state.recoilHeat*(1.25-w.control*.075);const spread=(state.zoomed?w.spread*.34:w.spread)*heatFactor;
+    d.x+=(Math.random()-.5)*spread;d.y+=(Math.random()-.5)*spread;d.z+=(Math.random()-.5)*spread;d.normalize();if(i===0)firstShotDirection.copy(d);raycaster.set(origin,d);raycaster.far=w.range;
     const hits=raycaster.intersectObjects(targetObjects,false);let h=hits.find(x=>{
-      const targetId=x.object.userData.targetId;
-      if(!targetId)return false;
+      const targetId=x.object.userData.targetId;if(!targetId)return false;
       if(String(targetId).startsWith('bot-'))return state.mode==='ai'&&state.botList.some(b=>b.id===targetId&&b.alive);
       if(String(targetId).startsWith('practice-'))return state.mode==='training'&&state.trainingTargets.some(t=>t.id===targetId&&t.alive);
       return state.mode==='online'&&state.remotePlayers.has(targetId);
     });
     if(h){const blockers=raycaster.intersectObjects(obstacleMeshes,false);if(blockers.length&&blockers[0].distance<h.distance-.06)h=null;}
-    if(h){
-      hitPoint=h.point;hitOwner=h.object.userData.targetId;
-      if(String(hitOwner).startsWith('bot-')){
-        const bot=state.botList.find(b=>b.id===hitOwner);if(bot&&bot.alive){const part=h.object.userData.part;totalDamage+=w.damage*getHitMultiplier(part);}
-      } else if(String(hitOwner).startsWith('practice-')){
-        const target=state.trainingTargets.find(t=>t.id===hitOwner);if(target&&target.alive){const part=h.object.userData.part;totalDamage+=w.damage*getHitMultiplier(part);}
-      } else if(state.mode==='online'){
-        // Online hits are resolved by the room server; the local ray is only for tracer feedback.
-        totalDamage=0;
-      }
+    if(h){hitPoint=h.point;hitOwner=h.object.userData.targetId;
+      if(String(hitOwner).startsWith('bot-')){const bot=state.botList.find(b=>b.id===hitOwner);if(bot&&bot.alive){const part=h.object.userData.part;const dealt=w.id==='knife'?40:w.damage*getHitMultiplier(part);localDamageByTarget.set(hitOwner,(localDamageByTarget.get(hitOwner)||0)+dealt);}}
+      else if(String(hitOwner).startsWith('practice-')){const target=state.trainingTargets.find(t=>t.id===hitOwner);if(target&&target.alive){const part=h.object.userData.part;const dealt=w.id==='knife'?40:w.damage*getHitMultiplier(part);localDamageByTarget.set(hitOwner,(localDamageByTarget.get(hitOwner)||0)+dealt);flashCharacter(target.root);}}
+      // Online damage remains server-authoritative; the client only renders prediction and feedback.
     }
   }
-  addShotFx(origin,hitPoint,w.id==='sniper'?0xffdfb5:0x73f8e4);
-  if(state.mode==='training'&&hitOwner&&String(hitOwner).startsWith('practice-')&&totalDamage>0){
-    const target=state.trainingTargets.find(t=>t.id===hitOwner&&t.alive);
-    if(target){target.hp-=totalDamage;soundHit();$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),100);showToast(`${target.name} · ${Math.max(0,Math.round(target.hp))} HP`,500);
+  if(w.id!=='knife')addShotFx(origin,hitPoint,w.id==='sniper'?0xffdfb5:0x73f8e4);
+  if(state.mode==='training'&&localDamageByTarget.size){
+    for(const [targetId,damage] of localDamageByTarget){
+      const target=state.trainingTargets.find(t=>t.id===targetId&&t.alive);if(!target)continue;
+      target.hp-=damage;soundHit();$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),100);
       if(target.hp<=0){target.hp=0;target.alive=false;target.respawnAt=Date.now()+3000;target.root.visible=false;unregisterTarget(target.id);void awardTrainingXP();soundKill();$('kill-banner').innerHTML=`${target.name.toUpperCase()} RESET <small>RESPAWN 3 SEC · +10 XP</small>`;$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),900);}
     }
   }
-  if(state.mode==='ai'&&hitOwner&&String(hitOwner).startsWith('bot-')&&totalDamage>0){const bot=state.botList.find(b=>b.id===hitOwner);if(bot&&bot.alive){bot.hp-=totalDamage;soundHit();$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),100);if(bot.hp<=0){bot.hp=0;bot.alive=false;bot.root.visible=false;unregisterTarget(bot.id);state.money+=75;soundKill();$('kill-banner').innerHTML=`${bot.name} ELIMINATED <small>+75 CR</small>`;$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),850);updateHUD();if(state.botList.every(b=>!b.alive))endLocalRound(true,'상대 플레이어를 처치했습니다.');}}}
-  if(state.mode==='online'&&state.socketReady){state.socket.emit('fire',{weaponId:w.id,origin:{x:origin.x,y:origin.y,z:origin.z},direction:{x:direction.x,y:direction.y,z:direction.z}});}
-  updateHUD();
+  if(state.mode==='ai'&&localDamageByTarget.size){for(const [targetId,damage] of localDamageByTarget){const bot=state.botList.find(b=>b.id===targetId&&b.alive);if(!bot)continue;bot.hp-=damage;flashCharacter(bot.root);soundHit();$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),100);if(bot.hp<=0){bot.hp=0;bot.alive=false;bot.root.visible=false;unregisterTarget(bot.id);state.money+=75;soundKill();$('kill-banner').innerHTML=`${bot.name} ELIMINATED <small>+75 CR</small>`;$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),850);updateHUD();}}if(state.botList.every(b=>!b.alive))endLocalRound(true,'상대 플레이어를 처치했습니다.');}
+  if(state.mode==='online'&&state.socketReady){state.socket.emit('fire',{weaponId:w.id,origin:{x:origin.x,y:origin.y,z:origin.z},direction:{x:firstShotDirection.x,y:firstShotDirection.y,z:firstShotDirection.z}});}
+  if(w.id==='sniper'){state.sniperMustRelease=true;setZoom(false);}
+  updateAmmoHUD();return true;
 }
+
 function collideAt(x,z,y=state.pos.y){
   const radius=.48;if(Math.abs(x)>state.mapBounds||Math.abs(z)>state.mapBounds)return true;
   for(const c of colliders){
@@ -794,18 +884,29 @@ function movePlayer(dt){
   if(state.phase!=='live'||state.paused)return;
   const forward=(state.keys.has('KeyW')?1:0)-(state.keys.has('KeyS')?1:0)-state.touchMove.y;
   const strafe=(state.keys.has('KeyD')?1:0)-(state.keys.has('KeyA')?1:0)+state.touchMove.x;
-  const fast=state.keys.has('ShiftLeft')||state.keys.has('ShiftRight');const speed=fast?8.4:5.2;
+  const slowWalk=state.keys.has('ShiftLeft')||state.keys.has('ShiftRight');
+  const knifeBoost=state.currentWeapon==='knife'?1.1:1;
+  const speed=5.2*knifeBoost*(slowWalk?.58:1);
   let dx=0,dz=0;
   const fx=-Math.sin(state.yaw),fz=-Math.cos(state.yaw);const rx=Math.cos(state.yaw),rz=-Math.sin(state.yaw);
   dx=(fx*forward+rx*strafe);dz=(fz*forward+rz*strafe);const len=Math.hypot(dx,dz);if(len>1){dx/=len;dz/=len;}
+  const moving=len>.12;state.walkIntensity+=( (moving?1:0)-state.walkIntensity )*Math.min(1,dt*11);
+  if(moving)state.walkCycle+=dt*(slowWalk?6.2:10.2)*Math.min(1,len);
   const nx=state.pos.x+dx*speed*dt,nz=state.pos.z+dz*speed*dt;
   if(!collideAt(nx,state.pos.z,state.pos.y))state.pos.x=nx;if(!collideAt(state.pos.x,nz,state.pos.y))state.pos.z=nz;
   const groundBefore=getGroundHeight(state.pos.x,state.pos.z);
   if(state.pos.y<=groundBefore+.06&&state.velocityY<=0){state.pos.y=groundBefore;state.velocityY=0;state.canJump=true;}
   if(state.keys.has('Space')&&state.canJump){state.velocityY=5.5;state.canJump=false;}
   state.velocityY-=14*dt;state.pos.y+=state.velocityY*dt;const groundAfter=getGroundHeight(state.pos.x,state.pos.z);if(state.pos.y<groundAfter){state.pos.y=groundAfter;state.velocityY=0;state.canJump=true;}
+  // Normal movement produces soft boots-on-metal footsteps; holding Shift switches to a slower, silent walk.
+  if(moving&&!slowWalk){
+    state.footstepAccumulator+=dt;
+    const interval=state.currentWeapon==='knife'?.43:.47;
+    if(state.footstepAccumulator>=interval){state.footstepAccumulator%=interval;soundFootstep({volume:.13});if(state.mode==='online'&&state.socketReady)state.socket.volatile.emit('footstep');}
+  }else state.footstepAccumulator=0;
   if(state.mode==='online'&&state.socketReady){state._moveAcc=(state._moveAcc||0)+dt;if(state._moveAcc>.05){state._moveAcc=0;state.socket.volatile.emit('move',{x:state.pos.x,y:state.pos.y,z:state.pos.z,yaw:state.yaw,pitch:state.pitch,name:state.name});}}
 }
+
 function updateAI(dt){
   if(state.mode!=='ai'||state.phase!=='live'||state.paused)return;
   const diff={easy:{speed:1.15,rate:2.1,damage:7,accuracy:.24,range:18},normal:{speed:1.65,rate:1.35,damage:10,accuracy:.43,range:23},hard:{speed:2.05,rate:.88,damage:13,accuracy:.63,range:27}}[state.difficulty]||{speed:1.65,rate:1.35,damage:10,accuracy:.43,range:23};
@@ -831,7 +932,7 @@ function soundBotShot(){initAudio();const c=state.audio;if(!c)return;const t=c.c
 
 function beginOnline(){
   if((state.rule==='pc'&&state.device!=='pc')||(state.rule==='mobile'&&state.device!=='mobile')){showToast(state.rule==='pc'?'PC끼리 모드는 PC를 선택하세요.':'모바일끼리 모드는 모바일을 선택하세요.');return;}
-  initAudio();state.mode='online';state.name=($('player-name').value.trim()||'PLAYER').slice(0,16);state.money=450;state.hp=100;state.armor=0;state.armorTier='none';state.selfScore=0;state.enemyScore=0;state.round=0;state.currentWeapon='pistol';state.owned=new Set(['pistol']);state.ammo={};for(const w of WEAPONS)state.ammo[w.id]={mag:w.mag,reserve:w.reserve};state.pos.set(0,0,27);state.yaw=Math.PI;state.pitch=0;state.buyPrimaryThisRound=false;state.phase='waiting';state.roomCode='';clearBots();clearRemotePlayers();setModeUI();$('phase-label').textContent='CONNECTING';$('objective-label').textContent='WAITING FOR OPPONENT';updateHUD();
+  initAudio();state.mode='online';state.name=($('player-name').value.trim()||'PLAYER').slice(0,16);state.money=450;state.hp=100;state.armor=0;state.armorTier='none';state.selfScore=0;state.enemyScore=0;state.round=0;state.currentWeapon='pistol';state.owned=new Set(['pistol','knife']);state.ammo={};for(const w of WEAPONS)state.ammo[w.id]={mag:w.mag,reserve:w.reserve};state.pos.set(0,0,27);state.yaw=Math.PI;state.pitch=0;state.buyPrimaryThisRound=false;state.phase='waiting';state.roomCode='';clearBots();clearRemotePlayers();setModeUI();$('phase-label').textContent='CONNECTING';$('objective-label').textContent='WAITING FOR OPPONENT';updateHUD();
   const socket=io({transports:['websocket','polling'],tryAllTransports:true,upgrade:true,reconnection:true,reconnectionAttempts:Infinity,reconnectionDelay:500,reconnectionDelayMax:4000,timeout:20000});state.socket=socket;let connectCount=0;
   socket.on('connect',()=>{const reconnect=connectCount++>0;state.socketReady=true;updateHUD();if(reconnect&&!socket.recovered&&state.roomCode)socket.emit('resumeRoom',{code:state.roomCode,sessionId:CLIENT_SESSION_ID});});
   socket.on('disconnect',reason=>{state.socketReady=false;updateHUD();if(state.mode==='online'&&reason!=='io client disconnect')showToast('온라인 연결을 복구하는 중입니다…',2600);});
@@ -844,13 +945,15 @@ function beginOnline(){
   socket.on('playerLeft',data=>{const r=state.remotePlayers.get(data.id);if(r){unregisterTarget(data.id);disposeGroup(r.root);state.remotePlayers.delete(data.id);}showToast('상대 플레이어 연결이 종료됐습니다.',3000);state.phase='waiting';$('phase-label').textContent='WAITING';});
   socket.on('playersSnapshot',data=>{for(const [id,p] of Object.entries(data||{}))updateRemotePlayer(id,p);});
   socket.on('playerMoved',data=>updateRemotePlayer(data.id,data));
+  socket.on('playerWeapon',data=>updateRemoteWeaponModel(data.id,data.weapon));
+  socket.on('footstep',data=>{if(data.id===socket.id)return;const remote=state.remotePlayers.get(data.id);if(!remote)return;const dist=remote.root.position.distanceTo(state.pos);if(dist<23)soundFootstep({volume:Math.max(.015,.11*(1-dist/25)),remote:true});});
   socket.on('roundState',data=>{
     if(data.map&&state.mapId!==data.map)buildMap(data.map);hideRoomWait();endScreen.classList.add('hidden');state.phase=data.phase;state.round=data.round;state.phaseEnd=data.endsAt;state.roundLimit=data.roundEndsAt||0;state.selfScore=data.scores?.[socket.id]||0;state.enemyScore=Object.entries(data.scores||{}).filter(([id])=>id!==socket.id).reduce((a,[,v])=>a+v,0);state.money=data.self?.money??state.money;state.hp=data.self?.hp??100;state.armor=data.self?.armor??state.armor;state.armorTier=data.self?.armorTier??state.armorTier;state.currentWeapon=data.self?.weapon||state.currentWeapon;state.buyPrimaryThisRound=!!data.self?.boughtPrimary;state.owned=new Set(data.self?.ownedWeapons||['pistol',...(data.self?.weapon&&data.self.weapon!=='pistol'?[data.self.weapon]:[])]);state.pos.set(data.self?.x??0,data.self?.y??0,data.self?.z??27);state.yaw=data.self?.yaw??state.yaw;state.pitch=data.self?.pitch??0;state.reloading=false;state.reloadWeaponId=null;makeAmmoFor(state.currentWeapon,true);buildGun(state.currentWeapon);if(data.phase==='buy'){clearRemotePlayers();for(const [id,p]of Object.entries(data.players||{}))if(id!==socket.id)updateRemotePlayer(id,p);$('phase-label').textContent='BUY PHASE';openBuy();}else{$('phase-label').textContent='LIVE';closeBuy();}updateHUD();
   });
   socket.on('selfState',data=>{if(data.money!=null)state.money=data.money;if(data.hp!=null)state.hp=data.hp;if(data.armor!=null)state.armor=data.armor;if(data.armorTier)state.armorTier=data.armorTier;if(data.ownedWeapons)state.owned=new Set(data.ownedWeapons);if(data.weapon&&data.weapon!==state.currentWeapon){state.currentWeapon=data.weapon;buildGun(data.weapon);}if(data.boughtPrimary!=null)state.buyPrimaryThisRound=data.boughtPrimary;updateHUD();});
   socket.on('roundPhase',data=>{state.phase=data.phase;state.phaseEnd=data.endsAt;if(data.phase==='live')state.roundLimit=data.endsAt;if(data.phase==='live'){$('phase-label').textContent='LIVE';closeBuy();showToast(`ROUND ${data.round} — FIGHT`,1600);}if(data.phase==='buy'){$('phase-label').textContent='BUY PHASE';openBuy();}updateHUD();});
-  socket.on('shotFx',data=>{if(data.id===socket.id)return;const from=new THREE.Vector3(data.origin.x,data.origin.y,data.origin.z),to=new THREE.Vector3(data.end.x,data.end.y,data.end.z);addShotFx(from,to,0xff718a);soundShot(data.weaponId);});
-  socket.on('damage',data=>{if(data.targetId===socket.id){state.hp=data.hp;if(data.armor!=null)state.armor=data.armor;if(data.armorTier)state.armorTier=data.armorTier;updateHUD();soundHit();if(data.hp<=0){setZoom(false);showToast('라운드 패배 · 다음 라운드를 준비하세요.',1800);}}if(data.attackerId===socket.id&&data.targetId!==socket.id){$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),110);soundHit();if(data.hitPart==='head')showToast('헤드샷 · 강한 피해',650);else if(data.hitPart==='legs')showToast('다리 명중 · 감소 피해',650);}if(data.killed&&data.attackerId===socket.id){soundKill();$('kill-banner').innerHTML=`TARGET ELIMINATED <small>+75 CR</small>`;$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),900);}});
+  socket.on('shotFx',data=>{if(data.id===socket.id)return;if(data.weaponId!=='knife'){const from=new THREE.Vector3(data.origin.x,data.origin.y,data.origin.z),to=new THREE.Vector3(data.end.x,data.end.y,data.end.z);addShotFx(from,to,0xff718a);}soundShot(data.weaponId);});
+  socket.on('damage',data=>{if(data.targetId===socket.id){state.hp=data.hp;if(data.armor!=null)state.armor=data.armor;if(data.armorTier)state.armorTier=data.armorTier;updateHUD();soundHit();if(data.hp<=0){setZoom(false);showToast('라운드 패배 · 다음 라운드를 준비하세요.',1800);}}if(data.targetId!==socket.id){const target=state.remotePlayers.get(data.targetId);if(target)flashCharacter(target.root);}if(data.attackerId===socket.id&&data.targetId!==socket.id){$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),110);soundHit();}if(data.killed&&data.attackerId===socket.id){soundKill();$('kill-banner').innerHTML=`TARGET ELIMINATED <small>+75 CR</small>`;$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),900);}});
   socket.on('equipResult',data=>{if(!data.ok){showToast(data.message||'무기를 장착할 수 없습니다.');return;}state.currentWeapon=data.weapon;if(data.ownedWeapons)state.owned=new Set(data.ownedWeapons);makeAmmoFor(data.weapon);buildGun(data.weapon);updateHUD();showToast(`${WEAPON_BY_ID[data.weapon]?.name||data.weapon} 장착`,900);});socket.on('buyResult',data=>{if(!data.ok){showToast(data.message||'구매할 수 없습니다.');return;}state.money=data.money;state.armor=data.armor??state.armor;if(data.armorTier)state.armorTier=data.armorTier;if(data.ownedWeapons)state.owned=new Set(data.ownedWeapons);if(data.weapon&&data.weapon!==state.currentWeapon){state.currentWeapon=data.weapon;makeAmmoFor(data.weapon,true);buildGun(data.weapon);}state.buyPrimaryThisRound=!!data.boughtPrimary;state.armorPurchased=!!data.armorPurchased;soundBuy();$('buy-feedback').textContent=data.message||'구매 완료';updateHUD();});
   socket.on('roundResult',data=>{setZoom(false);state.phase='ended';state.selfScore=data.scores?.[socket.id]||0;state.enemyScore=Object.entries(data.scores||{}).filter(([id])=>id!==socket.id).reduce((a,[,v])=>a+v,0);state.money=data.selfMoney??state.money;state.matchOver=!!data.matchOver;$('result-kicker').textContent=data.matchOver?'MATCH RESULT':'ROUND RESULT';const won=data.winnerId===socket.id;$('result-title').innerHTML=data.matchOver?(won?'MATCH<br/><span>VICTORY.</span>':'MATCH<br/><span>DEFEAT.</span>'):(won?'ROUND<br/><span>WON.</span>':'ROUND<br/><span>LOST.</span>');$('result-copy').textContent=data.matchOver?(data.reason||'6라운드 선취로 매치가 끝났습니다.'):`${data.reason|| (won?'라운드 승리!':'상대가 라운드를 가져갔습니다.')} · 이번 라운드만 종료됐습니다. 현재 점수 ${state.selfScore}-${state.enemyScore}. 아래 '다음 라운드 시작' 버튼을 누르면 다음 라운드로 진행하며, 먼저 6승을 하면 매치가 끝납니다.`;$('result-reward').textContent=`+${(data.reward??0).toLocaleString()} CR`;$('next-round').classList.toggle('hidden',!!data.matchOver);$('next-round').disabled=false;$('next-round').textContent='다음 라운드 시작';endScreen.classList.remove('hidden');updateHUD();});
   socket.on('roomMessage',data=>showToast(data.message));
@@ -860,15 +963,15 @@ function beginOnline(){
 function showRoomWait(code){let panel=$('room-wait');if(!panel){panel=document.createElement('div');panel.id='room-wait';panel.className='room-wait';panel.innerHTML='<div class="room-wait-card"><small>PRIVATE MATCH / INVITE</small><h3>친구를 기다리는 중</h3><p>아래 6자리 코드를 친구에게 공유하세요.</p><strong id="wait-code">------</strong><button id="copy-room-code" class="solid-button">방 코드 복사</button><button id="cancel-room-wait" class="outline-button full-button">메인 메뉴로</button></div>';document.body.append(panel);$('copy-room-code').addEventListener('click',()=>navigator.clipboard?.writeText(state.roomCode).then(()=>showToast('방 코드를 복사했습니다.')).catch(()=>showToast(`방 코드: ${state.roomCode}`)));$('cancel-room-wait').addEventListener('click',backToMenu);}
   $('wait-code').textContent=code||'------';panel.classList.remove('hidden');}
 function hideRoomWait(){const p=$('room-wait');if(p)p.classList.add('hidden');}
-function joinOnline(){const code=$('room-code').value.trim().toUpperCase().replace(/[^A-Z0-9]/g,'');if(code.length!==6){showToast('6자리 방 코드를 입력하세요.');return;}initAudio();state.mode='online';state.name=($('player-name').value.trim()||'PLAYER').slice(0,16);state.rule=state.rule||'crossplay';state.money=450;state.hp=100;state.armor=0;state.armorTier='none';state.selfScore=0;state.enemyScore=0;state.round=0;state.currentWeapon='pistol';state.owned=new Set(['pistol']);state.phase='waiting';state.roomCode='';clearBots();clearRemotePlayers();setModeUI();updateHUD();
+function joinOnline(){const code=$('room-code').value.trim().toUpperCase().replace(/[^A-Z0-9]/g,'');if(code.length!==6){showToast('6자리 방 코드를 입력하세요.');return;}initAudio();state.mode='online';state.name=($('player-name').value.trim()||'PLAYER').slice(0,16);state.rule=state.rule||'crossplay';state.money=450;state.hp=100;state.armor=0;state.armorTier='none';state.selfScore=0;state.enemyScore=0;state.round=0;state.currentWeapon='pistol';state.owned=new Set(['pistol','knife']);state.phase='waiting';state.roomCode='';clearBots();clearRemotePlayers();setModeUI();updateHUD();
   const socket=io({transports:['websocket','polling'],tryAllTransports:true,upgrade:true,reconnection:true,reconnectionAttempts:Infinity,reconnectionDelay:500,reconnectionDelayMax:4000,timeout:20000});state.socket=socket;let connectCount=0;socket.on('connect',()=>{const reconnect=connectCount++>0;state.socketReady=true;updateHUD();if(!reconnect)socket.emit('joinRoom',{code,name:state.name,device:state.device,map:state.selectedMap,sessionId:CLIENT_SESSION_ID,authToken:getAuthToken()});else if(!socket.recovered&&state.roomCode)socket.emit('resumeRoom',{code:state.roomCode,sessionId:CLIENT_SESSION_ID});});socket.on('disconnect',reason=>{state.socketReady=false;updateHUD();if(state.mode==='online'&&reason!=='io client disconnect')showToast('온라인 연결을 복구하는 중입니다…',2600);});socket.on('connect_error',()=>{state.socketReady=false;showToast('온라인 서버 연결 실패. 배포된 게임 주소인지 확인하세요.',3200);});
   // Reuse identical room listeners by registering a lightweight join-mode bridge.
   socket.on('roomError',d=>showToast(d.message||'방 입장 실패',3200));socket.on('accountUpdated',applyAccountUpdated);socket.on('roomJoined',d=>{if(d.map&&state.mapId!==d.map)buildMap(d.map);state.roomCode=d.code;showRoomWait(d.code);});
   socket.on('roomResumed',d=>{if(d.map&&state.mapId!==d.map)buildMap(d.map);state.roomCode=d.code;hideRoomWait();showToast('온라인 연결이 복구됐습니다.',1800);updateHUD();});
-  socket.on('playerJoined',d=>{updateRemotePlayer(d.id,d.player);hideRoomWait();});socket.on('playerLeft',d=>{const r=state.remotePlayers.get(d.id);if(r){unregisterTarget(d.id);disposeGroup(r.root);state.remotePlayers.delete(d.id);}state.phase='waiting';});socket.on('playerMoved',d=>updateRemotePlayer(d.id,d));socket.on('playersSnapshot',d=>{for(const[id,p]of Object.entries(d||{}))if(id!==socket.id)updateRemotePlayer(id,p);});
+  socket.on('playerJoined',d=>{updateRemotePlayer(d.id,d.player);hideRoomWait();});socket.on('playerLeft',d=>{const r=state.remotePlayers.get(d.id);if(r){unregisterTarget(d.id);disposeGroup(r.root);state.remotePlayers.delete(d.id);}state.phase='waiting';});socket.on('playerMoved',d=>updateRemotePlayer(d.id,d));socket.on('playerWeapon',d=>updateRemoteWeaponModel(d.id,d.weapon));socket.on('playersSnapshot',d=>{for(const[id,p]of Object.entries(d||{}))if(id!==socket.id)updateRemotePlayer(id,p);});
   socket.on('roundState',d=>{if(d.map&&state.mapId!==d.map)buildMap(d.map);hideRoomWait();endScreen.classList.add('hidden');state.phase=d.phase;state.round=d.round;state.phaseEnd=d.endsAt;state.roundLimit=d.roundEndsAt||0;state.selfScore=d.scores?.[socket.id]||0;state.enemyScore=Object.entries(d.scores||{}).filter(([id])=>id!==socket.id).reduce((a,[,v])=>a+v,0);state.money=d.self?.money??650;state.hp=d.self?.hp??100;state.armor=d.self?.armor??0;state.armorTier=d.self?.armorTier??'none';state.currentWeapon=d.self?.weapon||'pistol';state.owned=new Set(d.self?.ownedWeapons||['pistol',...(state.currentWeapon!=='pistol'?[state.currentWeapon]:[])]);state.buyPrimaryThisRound=!!d.self?.boughtPrimary;state.pos.set(d.self?.x??0,d.self?.y??0,d.self?.z??27);state.yaw=d.self?.yaw??state.yaw;state.pitch=d.self?.pitch??0;state.reloading=false;state.reloadWeaponId=null;makeAmmoFor(state.currentWeapon,true);clearRemotePlayers();for(const[id,player]of Object.entries(d.players||{}))if(id!==socket.id)updateRemotePlayer(id,player);buildGun(state.currentWeapon);if(d.phase==='buy')openBuy();else closeBuy();$('phase-label').textContent=d.phase==='buy'?'BUY PHASE':'LIVE';updateHUD();});
   socket.on('roundPhase',d=>{state.phase=d.phase;state.phaseEnd=d.endsAt;if(d.phase==='live')state.roundLimit=d.endsAt;$('phase-label').textContent=d.phase==='buy'?'BUY PHASE':'LIVE';if(d.phase==='buy')openBuy();else closeBuy();});socket.on('selfState',d=>{state.money=d.money??state.money;state.hp=d.hp??state.hp;state.armor=d.armor??state.armor;state.armorTier=d.armorTier??state.armorTier;if(d.ownedWeapons)state.owned=new Set(d.ownedWeapons);if(d.weapon&&d.weapon!==state.currentWeapon){state.currentWeapon=d.weapon;buildGun(d.weapon);}state.buyPrimaryThisRound=!!d.boughtPrimary;updateHUD();});
-  socket.on('buyResult',d=>{if(!d.ok){showToast(d.message||'구매할 수 없습니다.');return;}state.money=d.money;state.armor=d.armor??state.armor;state.armorTier=d.armorTier??state.armorTier;if(d.ownedWeapons)state.owned=new Set(d.ownedWeapons);if(d.weapon&&d.weapon!==state.currentWeapon){state.currentWeapon=d.weapon;makeAmmoFor(d.weapon,true);buildGun(d.weapon);}state.buyPrimaryThisRound=!!d.boughtPrimary;state.armorPurchased=!!d.armorPurchased;soundBuy();updateHUD();});socket.on('shotFx',d=>{if(d.id!==socket.id){addShotFx(new THREE.Vector3(d.origin.x,d.origin.y,d.origin.z),new THREE.Vector3(d.end.x,d.end.y,d.end.z),0xff718a);soundShot(d.weaponId);}});socket.on('damage',d=>{if(d.targetId===socket.id){state.hp=d.hp;state.armor=d.armor??state.armor;state.armorTier=d.armorTier??state.armorTier;updateHUD();soundHit();}if(d.attackerId===socket.id&&d.targetId!==socket.id){$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),110);soundHit();}if(d.killed&&d.attackerId===socket.id){soundKill();$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),900);}});
+  socket.on('buyResult',d=>{if(!d.ok){showToast(d.message||'구매할 수 없습니다.');return;}state.money=d.money;state.armor=d.armor??state.armor;state.armorTier=d.armorTier??state.armorTier;if(d.ownedWeapons)state.owned=new Set(d.ownedWeapons);if(d.weapon&&d.weapon!==state.currentWeapon){state.currentWeapon=d.weapon;makeAmmoFor(d.weapon,true);buildGun(d.weapon);}state.buyPrimaryThisRound=!!d.boughtPrimary;state.armorPurchased=!!d.armorPurchased;soundBuy();updateHUD();});socket.on('shotFx',d=>{if(d.id!==socket.id){if(d.weaponId!=='knife')addShotFx(new THREE.Vector3(d.origin.x,d.origin.y,d.origin.z),new THREE.Vector3(d.end.x,d.end.y,d.end.z),0xff718a);soundShot(d.weaponId);}});socket.on('damage',d=>{if(d.targetId===socket.id){state.hp=d.hp;state.armor=d.armor??state.armor;state.armorTier=d.armorTier??state.armorTier;updateHUD();soundHit();}if(d.targetId!==socket.id){const target=state.remotePlayers.get(d.targetId);if(target)flashCharacter(target.root);}if(d.attackerId===socket.id&&d.targetId!==socket.id){$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),110);soundHit();}if(d.killed&&d.attackerId===socket.id){soundKill();$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),900);}});socket.on('footstep',d=>{if(d.id===socket.id)return;const remote=state.remotePlayers.get(d.id);if(!remote)return;const dist=remote.root.position.distanceTo(state.pos);if(dist<23)soundFootstep({volume:Math.max(.015,.11*(1-dist/25)),remote:true});});
   socket.on('roundResult',d=>{setZoom(false);state.phase='ended';state.selfScore=d.scores?.[socket.id]||0;state.enemyScore=Object.entries(d.scores||{}).filter(([id])=>id!==socket.id).reduce((a,[,v])=>a+v,0);state.money=d.selfMoney??state.money;state.matchOver=!!d.matchOver;const won=d.winnerId===socket.id;$('result-kicker').textContent=d.matchOver?'MATCH RESULT':'ROUND RESULT';$('result-title').innerHTML=d.matchOver?(won?'MATCH<br/><span>VICTORY.</span>':'MATCH<br/><span>DEFEAT.</span>'):(won?'ROUND<br/><span>WON.</span>':'ROUND<br/><span>LOST.</span>');$('result-copy').textContent=d.matchOver?(d.reason||'6라운드 선취로 매치가 끝났습니다.'):`${d.reason||'라운드 종료'} · 이번 라운드만 종료됐습니다. 현재 점수 ${state.selfScore}-${state.enemyScore}. 아래 '다음 라운드 시작' 버튼을 누르면 다음 라운드로 진행하며, 먼저 6승을 하면 매치가 끝납니다.`;$('result-reward').textContent=`+${(d.reward||0).toLocaleString()} CR`;$('next-round').classList.toggle('hidden',!!d.matchOver);$('next-round').disabled=false;$('next-round').textContent='다음 라운드 시작';endScreen.classList.remove('hidden');updateHUD();});
 }
 
@@ -902,12 +1005,13 @@ function setupEvents(){
     state.keys.add(e.code);
     if(e.code==='KeyR')reloadWeapon();if(e.code==='KeyQ')toggleZoom();if(e.code==='KeyT'&&state.mode==='training')openTrainingWeapons();if(/^Digit[1-9]$/.test(e.code))switchWeaponByNumber(Number(e.code.slice(-1)));
     if(e.code==='KeyB'&&state.phase==='buy')openBuy();
-  });window.addEventListener('keyup',e=>state.keys.delete(e.code));window.addEventListener('blur',()=>state.keys.clear());
-  canvas.addEventListener('pointerdown',e=>{if(state.mode==='menu'||state.device==='mobile'||state.paused)return;initAudio();if(document.pointerLockElement!==canvas){canvas.requestPointerLock?.();}if(e.button===0)doShoot();if(e.button===2)toggleZoom();});
+  });window.addEventListener('keyup',e=>state.keys.delete(e.code));window.addEventListener('blur',()=>{state.keys.clear();state.fireHeld=false;});
+  window.addEventListener('pointerup',()=>{state.fireHeld=false;state.sniperMustRelease=false;});window.addEventListener('pointercancel',()=>{state.fireHeld=false;state.sniperMustRelease=false;});
+  canvas.addEventListener('pointerdown',e=>{if(state.mode==='menu'||state.device==='mobile'||state.paused)return;initAudio();if(document.pointerLockElement!==canvas){canvas.requestPointerLock?.();}if(e.button===0){state.fireHeld=true;state.sniperMustRelease=false;doShoot();}if(e.button===2)toggleZoom();});
   canvas.addEventListener('contextmenu',e=>e.preventDefault());
   document.addEventListener('pointerlockchange',()=>{state.pointerLocked=document.pointerLockElement===canvas;});
   document.addEventListener('mousemove',e=>{if(state.device!=='pc'||document.pointerLockElement!==canvas||state.phase!=='live'||state.paused)return;state.yaw-=e.movementX*.00215;state.pitch-=e.movementY*.00215;state.pitch=THREE.MathUtils.clamp(state.pitch,-1.28,1.28);});
-  $('touch-fire').addEventListener('pointerdown',e=>{e.preventDefault();initAudio();doShoot();});$('touch-scope').addEventListener('pointerdown',e=>{e.preventDefault();toggleZoom();});$('touch-jump').addEventListener('pointerdown',e=>{e.preventDefault();state.keys.add('Space');});$('touch-jump').addEventListener('pointerup',()=>state.keys.delete('Space'));$('touch-reload').addEventListener('pointerdown',e=>{e.preventDefault();reloadWeapon();});$('touch-switch').addEventListener('pointerdown',e=>{e.preventDefault();if(state.mode==='training'){openTrainingWeapons();return;}const current=WEAPONS.findIndex(w=>w.id===state.currentWeapon);for(let i=1;i<=WEAPONS.length;i++){const n=(current+i)%WEAPONS.length;if(state.owned.has(WEAPONS[n].id)){setWeapon(WEAPONS[n].id);break;}}});
+  $('touch-fire').addEventListener('pointerdown',e=>{e.preventDefault();initAudio();state.fireHeld=true;state.sniperMustRelease=false;$('touch-fire').setPointerCapture?.(e.pointerId);doShoot();});$('touch-fire').addEventListener('pointerup',()=>{state.fireHeld=false;state.sniperMustRelease=false;});$('touch-fire').addEventListener('pointercancel',()=>{state.fireHeld=false;state.sniperMustRelease=false;});$('touch-scope').addEventListener('pointerdown',e=>{e.preventDefault();toggleZoom();});$('touch-jump').addEventListener('pointerdown',e=>{e.preventDefault();state.keys.add('Space');});$('touch-jump').addEventListener('pointerup',()=>state.keys.delete('Space'));$('touch-reload').addEventListener('pointerdown',e=>{e.preventDefault();reloadWeapon();});$('touch-switch').addEventListener('pointerdown',e=>{e.preventDefault();if(state.mode==='training'){openTrainingWeapons();return;}const current=WEAPONS.findIndex(w=>w.id===state.currentWeapon);for(let i=1;i<=WEAPONS.length;i++){const n=(current+i)%WEAPONS.length;if(state.owned.has(WEAPONS[n].id)){setWeapon(WEAPONS[n].id);break;}}});
   const pad=$('move-pad'),stick=$('move-stick');let padPointer=null;
   pad.addEventListener('pointerdown',e=>{e.preventDefault();padPointer=e.pointerId;pad.setPointerCapture(e.pointerId);updatePad(e);});pad.addEventListener('pointermove',e=>{if(e.pointerId===padPointer)updatePad(e);});
   const resetPad=()=>{padPointer=null;state.touchMove.x=0;state.touchMove.y=0;stick.style.transform='translate(0px,0px)';};pad.addEventListener('pointerup',resetPad);pad.addEventListener('pointercancel',resetPad);
@@ -928,7 +1032,11 @@ function updateWorld(dt,now){
   }
   if(state.mode==='online'){
     if(state.phase==='live'&&!state.paused)movePlayer(dt);
-    for(const [id,r]of state.remotePlayers){r.root.position.lerp(r.target,Math.min(1,dt*12));r.root.rotation.y=r.yaw;}
+    for(const [id,r]of state.remotePlayers){
+      const beforeX=r.root.position.x,beforeZ=r.root.position.z;r.root.position.lerp(r.target,Math.min(1,dt*12));r.root.rotation.y=r.yaw;
+      const moving=Math.hypot(r.root.position.x-beforeX,r.root.position.z-beforeZ)>.001;
+      const gait=r.root.userData;if(gait?.legs&&gait?.arms){if(moving){gait.walkPhase=(gait.walkPhase||0)+dt*12;const swing=Math.sin(gait.walkPhase)*.52;gait.legs[0].rotation.x=swing;gait.legs[1].rotation.x=-swing;gait.arms[0].rotation.x=-.62-swing*.33;gait.arms[1].rotation.x=-.62+swing*.33;r.root.position.y=(r.target.y||0)+Math.abs(Math.sin(gait.walkPhase*2))*.035;}else{gait.legs[0].rotation.x*=.75;gait.legs[1].rotation.x*=.75;gait.arms[0].rotation.x+=( -.62-gait.arms[0].rotation.x)*.25;gait.arms[1].rotation.x+=( -.62-gait.arms[1].rotation.x)*.25;r.root.position.y+=((r.target.y||0)-r.root.position.y)*.25;}}
+    }
   }else if(state.mode==='training'){
     if(state.phase==='live'&&!state.paused)movePlayer(dt);
     updateTrainingTargets(Date.now());
@@ -936,8 +1044,13 @@ function updateWorld(dt,now){
     if(state.phase==='live'&&!state.paused){movePlayer(dt);updateAI(dt);}
   }
   if(state.mode!=='menu'){
-    camera.position.set(state.pos.x,state.pos.y+1.58,state.pos.z);camera.rotation.order='YXZ';camera.rotation.y=state.yaw;camera.rotation.x=state.pitch;
-    gunRoot.position.x=state.device==='mobile'?.03:0;gunRoot.visible=state.phase==='live'||state.phase==='buy';
+    state.recoilHeat=Math.max(0,state.recoilHeat-dt*2.15);state.viewKick=Math.max(0,state.viewKick-dt*.72);
+    const bob=state.walkIntensity>0?Math.abs(Math.sin(state.walkCycle*2))*.038*state.walkIntensity:0;
+    const sway=state.walkIntensity>0?Math.sin(state.walkCycle)*.022*state.walkIntensity:0;
+    camera.position.set(state.pos.x+sway*.24,state.pos.y+1.58+bob,state.pos.z);camera.rotation.order='YXZ';camera.rotation.y=state.yaw;camera.rotation.x=THREE.MathUtils.clamp(state.pitch+state.viewKick,-1.3,1.3);
+    gunRoot.position.x=(state.device==='mobile'?.03:0)+sway;gunRoot.position.y=bob*.65;gunRoot.position.z=state.viewKick*1.2;gunRoot.visible=state.phase==='live'||state.phase==='buy';
+    // Holding the trigger repeats at each weapon's rate. Sniper requires a release between shots.
+    const activeWeapon=currentWeapon();if(state.fireHeld&&!state.sniperMustRelease&&activeWeapon.id!=='sniper'&&state.phase==='live'&&!state.paused&&now-state.lastShot>=activeWeapon.rate*1000)doShoot();
     completeReload(now);
     if(state.phase==='buy'&&Date.now()>=state.phaseEnd&&state.mode==='ai')beginLocalLive();
     if(state.mode==='ai'&&state.phase==='live'&&Date.now()>=state.roundLimit)endLocalRound(state.hp>0,'시간 종료');
