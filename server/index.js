@@ -8,6 +8,7 @@ import { randomBytes, createHash, scrypt as scryptCallback, timingSafeEqual } fr
 import { promisify } from 'node:util';
 import pg from 'pg';
 import { applyExperienceProgress, getHitMultiplier, isValidPassword, isValidUsername, normalizeUsername } from '../src/shared-rules.js';
+import { STORE_SKINS, STORE_BUNDLES, STORE_ROLL_COST, TRAINING_QUEST_TARGET, TRAINING_QUEST_REWARD, getStoreSkin, getStoreBundle, getDailySkinIds } from '../src/store-catalog.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -40,10 +41,33 @@ const SESSION_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 const XP_TRAINING_TARGET = 10;
 
 function normalizeAccountId(value) { return String(value ?? '').trim().toLowerCase(); }
+function parseJsonValue(value, fallback) {
+  if (value == null) return fallback;
+  if (Array.isArray(value) || (typeof value === 'object' && value !== null)) return value;
+  try { return JSON.parse(String(value)); } catch { return fallback; }
+}
 function normalizeAccountPublic(row) {
   if (!row) return null;
-  return { id: Number(row.id), username: String(row.username), level: Number(row.level || 1), xp: Number(row.xp || 0), nextLevelXp: Number(row.level || 1) * 150 };
+  const level = Math.max(1, Number(row.level) || 1);
+  return {
+    id: Number(row.id), username: String(row.username), level, xp: Number(row.xp || 0), nextLevelXp: level * 150,
+    neonPoints: Math.max(0, Number(row.neon_points ?? row.neonPoints) || 0),
+    ownedSkins: parseJsonValue(row.owned_skins ?? row.ownedSkins, []),
+    equippedSkins: parseJsonValue(row.equipped_skins ?? row.equippedSkins, {}),
+    trainingQuestProgress: Math.max(0, Number(row.training_quest_progress ?? row.trainingQuestProgress) || 0),
+  };
 }
+function accountStoreModel(row) {
+  return {
+    level: Math.max(1, Number(row.level) || 1), xp: Math.max(0, Number(row.xp) || 0),
+    neonPoints: Math.max(0, Number(row.neon_points ?? row.neonPoints) || 0),
+    ownedSkins: parseJsonValue(row.owned_skins ?? row.ownedSkins, []),
+    equippedSkins: parseJsonValue(row.equipped_skins ?? row.equippedSkins, {}),
+    trainingQuestProgress: Math.max(0, Number(row.training_quest_progress ?? row.trainingQuestProgress) || 0),
+    redeemedCodes: parseJsonValue(row.redeemed_codes ?? row.redeemedCodes, []),
+  };
+}
+
 function hashSessionToken(token) { return createHash('sha256').update(String(token || '')).digest('hex'); }
 function accountRateAllowed(req, action, max=8, windowMs=10*60*1000) {
   const now = Date.now();
@@ -74,9 +98,19 @@ async function initializeAccountStorage() {
         password_hash CHAR(128) NOT NULL,
         level INTEGER NOT NULL DEFAULT 1 CHECK (level >= 1),
         xp INTEGER NOT NULL DEFAULT 0 CHECK (xp >= 0),
+        neon_points INTEGER NOT NULL DEFAULT 0 CHECK (neon_points >= 0),
+        owned_skins JSONB NOT NULL DEFAULT '[]'::jsonb,
+        equipped_skins JSONB NOT NULL DEFAULT '{}'::jsonb,
+        training_quest_progress INTEGER NOT NULL DEFAULT 0 CHECK (training_quest_progress >= 0 AND training_quest_progress < 67),
+        redeemed_codes JSONB NOT NULL DEFAULT '[]'::jsonb,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS neon_points INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS owned_skins JSONB NOT NULL DEFAULT '[]'::jsonb;
+      ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS equipped_skins JSONB NOT NULL DEFAULT '{}'::jsonb;
+      ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS training_quest_progress INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS redeemed_codes JSONB NOT NULL DEFAULT '[]'::jsonb;
       CREATE TABLE IF NOT EXISTS ns_sessions (
         token_hash CHAR(64) PRIMARY KEY,
         account_id BIGINT NOT NULL REFERENCES ns_accounts(id) ON DELETE CASCADE,
@@ -104,6 +138,13 @@ async function initializeAccountStorage() {
     if (Array.isArray(parsed.accounts) && Array.isArray(parsed.sessions)) {
       localAuth.accounts = parsed.accounts;
       localAuth.sessions = parsed.sessions;
+      for (const account of localAuth.accounts) {
+        account.neon_points = Math.max(0, Number(account.neon_points ?? account.neonPoints) || 0);
+        account.owned_skins = parseJsonValue(account.owned_skins ?? account.ownedSkins, []);
+        account.equipped_skins = parseJsonValue(account.equipped_skins ?? account.equippedSkins, {});
+        account.training_quest_progress = Math.max(0, Number(account.training_quest_progress ?? account.trainingQuestProgress) || 0) % TRAINING_QUEST_TARGET;
+        account.redeemed_codes = parseJsonValue(account.redeemed_codes ?? account.redeemedCodes, []);
+      }
       localAuth.nextId = Number(parsed.nextId) || (Math.max(0, ...localAuth.accounts.map(a=>Number(a.id)||0)) + 1);
     }
   } catch (error) { if (error?.code !== 'ENOENT') console.warn('[accounts] local data could not be loaded:', error?.message || error); }
@@ -112,7 +153,7 @@ async function initializeAccountStorage() {
 }
 async function findAccountByUsername(username) {
   if (authPool) {
-    const result = await authPool.query('SELECT id, username, password_salt, password_hash, level, xp FROM ns_accounts WHERE username=$1 LIMIT 1', [username]);
+    const result = await authPool.query('SELECT id, username, password_salt, password_hash, level, xp, neon_points, owned_skins, equipped_skins, training_quest_progress, redeemed_codes FROM ns_accounts WHERE username=$1 LIMIT 1', [username]);
     return result.rows[0] || null;
   }
   return localAuth.accounts.find(row => row.username === username) || null;
@@ -120,7 +161,7 @@ async function findAccountByUsername(username) {
 async function insertAccount(username, passwordSalt, passwordHash) {
   if (authPool) {
     const result = await authPool.query(
-      'INSERT INTO ns_accounts (username,password_salt,password_hash,level,xp) VALUES ($1,$2,$3,1,0) RETURNING id,username,level,xp',
+      `INSERT INTO ns_accounts (username,password_salt,password_hash,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,redeemed_codes) VALUES ($1,$2,$3,1,0,0,'[]'::jsonb,'{}'::jsonb,0,'[]'::jsonb) RETURNING id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress`,
       [username,passwordSalt,passwordHash]
     );
     return result.rows[0];
@@ -128,7 +169,7 @@ async function insertAccount(username, passwordSalt, passwordHash) {
   if (localAuth.accounts.some(row => row.username === username)) {
     const error = new Error('duplicate username'); error.code = '23505'; throw error;
   }
-  const account = { id: localAuth.nextId++, username, password_salt: passwordSalt, password_hash: passwordHash, level: 1, xp: 0, created_at: new Date().toISOString() };
+  const account = { id: localAuth.nextId++, username, password_salt: passwordSalt, password_hash: passwordHash, level: 1, xp: 0, neon_points: 0, owned_skins: [], equipped_skins: {}, training_quest_progress: 0, redeemed_codes: [], created_at: new Date().toISOString() };
   localAuth.accounts.push(account); await persistLocalAuth(); return account;
 }
 async function createAuthSession(accountId) {
@@ -144,7 +185,7 @@ async function accountForToken(token) {
   const tokenHash = hashSessionToken(token);
   if (authPool) {
     const result = await authPool.query(
-      `SELECT a.id,a.username,a.level,a.xp FROM ns_sessions s JOIN ns_accounts a ON a.id=s.account_id WHERE s.token_hash=$1 AND s.expires_at>NOW() LIMIT 1`,
+      `SELECT a.id,a.username,a.level,a.xp,a.neon_points,a.owned_skins,a.equipped_skins,a.training_quest_progress FROM ns_sessions s JOIN ns_accounts a ON a.id=s.account_id WHERE s.token_hash=$1 AND s.expires_at>NOW() LIMIT 1`,
       [tokenHash]
     );
     return result.rows[0] || null;
@@ -176,10 +217,10 @@ async function awardAccountXP(accountId, amount) {
     const client = await authPool.connect();
     try {
       await client.query('BEGIN');
-      const result = await client.query('SELECT id,username,level,xp FROM ns_accounts WHERE id=$1 FOR UPDATE', [accountId]);
+      const result = await client.query('SELECT id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress FROM ns_accounts WHERE id=$1 FOR UPDATE', [accountId]);
       if (!result.rows.length) { await client.query('ROLLBACK'); return null; }
       const progression = applyExperienceProgress(result.rows[0].level, result.rows[0].xp, award);
-      const updated = await client.query('UPDATE ns_accounts SET level=$2,xp=$3,updated_at=NOW() WHERE id=$1 RETURNING id,username,level,xp', [accountId,progression.level,progression.xp]);
+      const updated = await client.query('UPDATE ns_accounts SET level=$2,xp=$3,updated_at=NOW() WHERE id=$1 RETURNING id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress', [accountId,progression.level,progression.xp]);
       await client.query('COMMIT');
       return normalizeAccountPublic(updated.rows[0]);
     } catch (error) { try { await client.query('ROLLBACK'); } catch {} throw error; }
@@ -192,10 +233,53 @@ async function awardAccountXP(accountId, amount) {
   await persistLocalAuth();
   return normalizeAccountPublic(account);
 }
+async function mutateAccountState(accountId, mutator) {
+  if (!authStorageReady) return { ok:false, status:503, error:'계정 저장소가 준비되지 않았습니다.' };
+  if (authPool) {
+    const client = await authPool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await client.query(
+        'SELECT id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,redeemed_codes FROM ns_accounts WHERE id=$1 FOR UPDATE',
+        [accountId]
+      );
+      if (!result.rows.length) { await client.query('ROLLBACK'); return { ok:false, status:404, error:'계정을 찾을 수 없습니다.' }; }
+      const model = accountStoreModel(result.rows[0]);
+      const outcome = mutator(model) || { ok:true };
+      if (!outcome.ok) { await client.query('ROLLBACK'); return outcome; }
+      const updated = await client.query(
+        `UPDATE ns_accounts SET level=$2,xp=$3,neon_points=$4,owned_skins=$5::jsonb,equipped_skins=$6::jsonb,training_quest_progress=$7,redeemed_codes=$8::jsonb,updated_at=NOW()
+         WHERE id=$1 RETURNING id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress`,
+        [accountId,model.level,model.xp,model.neonPoints,JSON.stringify(model.ownedSkins),JSON.stringify(model.equippedSkins),model.trainingQuestProgress,JSON.stringify(model.redeemedCodes)]
+      );
+      await client.query('COMMIT');
+      return { ...outcome, ok:true, account:normalizeAccountPublic(updated.rows[0]) };
+    } catch (error) {
+      try { await client.query('ROLLBACK'); } catch {}
+      throw error;
+    } finally { client.release(); }
+  }
+  const row = localAuth.accounts.find(item => Number(item.id) === Number(accountId));
+  if (!row) return { ok:false, status:404, error:'계정을 찾을 수 없습니다.' };
+  const model = accountStoreModel(row);
+  const outcome = mutator(model) || { ok:true };
+  if (!outcome.ok) return outcome;
+  Object.assign(row, {
+    level:model.level, xp:model.xp, neon_points:model.neonPoints,
+    owned_skins:model.ownedSkins, equipped_skins:model.equippedSkins,
+    training_quest_progress:model.trainingQuestProgress, redeemed_codes:model.redeemedCodes,
+    updated_at:new Date().toISOString(),
+  });
+  await persistLocalAuth();
+  return { ...outcome, ok:true, account:normalizeAccountPublic(row) };
+}
 function apiStorageUnavailable(res) {
   if (authStorageReady) return false;
   res.status(503).json({ error: '계정 데이터베이스가 준비되지 않았습니다. Neon PostgreSQL을 만든 뒤 Render 환경변수 DATABASE_URL에 연결 문자열을 설정하세요.' });
   return true;
+}
+function accountRequiredMessage(res) {
+  res.status(401).json({ error:'계정에 로그인해야 이용할 수 있습니다.' });
 }
 app.get('/healthz', (_req, res) => res.json({ ok: true, app: 'NEON STRIKE', time: Date.now(), accounts: authStorageReady ? 'ready' : 'unavailable' }));
 
@@ -264,11 +348,137 @@ app.post('/api/account/xp', async (req, res) => {
     const cooldownMs = 900;
     if (now - last < cooldownMs) return res.status(429).json({ error: 'XP 지급 대기 중입니다.', retryAfterMs: Math.max(100, cooldownMs - (now - last)) });
     trainingAwardAt.set(Number(account.id), now);
-    const updated = await awardAccountXP(account.id, XP_TRAINING_TARGET);
-    if (!updated) return res.status(404).json({ error: '계정을 찾을 수 없습니다.' });
-    res.json({ account: updated, awardedXP: XP_TRAINING_TARGET, reason: 'training_hit' });
-  } catch (error) { console.error('[accounts] training XP failed:', error?.message || error); res.status(500).json({ error: 'XP 저장에 실패했습니다.' }); }
+    const result = await mutateAccountState(account.id, model => {
+      const progression = applyExperienceProgress(model.level, model.xp, XP_TRAINING_TARGET);
+      model.level = progression.level; model.xp = progression.xp;
+      model.trainingQuestProgress += 1;
+      let questReward = 0, questCompletions = 0;
+      while (model.trainingQuestProgress >= TRAINING_QUEST_TARGET) {
+        model.trainingQuestProgress -= TRAINING_QUEST_TARGET;
+        model.neonPoints += TRAINING_QUEST_REWARD;
+        questReward += TRAINING_QUEST_REWARD; questCompletions++;
+      }
+      return { ok:true, awardedXP:XP_TRAINING_TARGET, questProgress:model.trainingQuestProgress, questTarget:TRAINING_QUEST_TARGET, questReward, questCompletions, reason:'training_hit' };
+    });
+    if (!result.ok) return res.status(result.status || 500).json({ error:result.error || '경험치 저장에 실패했습니다.' });
+    res.json({ account:result.account, awardedXP:result.awardedXP, questProgress:result.questProgress, questTarget:result.questTarget, questReward:result.questReward, questCompletions:result.questCompletions, reason:result.reason });
+  } catch (error) { console.error('[accounts] training XP/quest failed:', error?.message || error); res.status(500).json({ error: 'XP 저장에 실패했습니다.' }); }
 });
+
+app.get('/api/store/state', async (req, res) => {
+  if (apiStorageUnavailable(res)) return;
+  try {
+    const token = getRequestToken(req);
+    const account = await accountForToken(token);
+    if (!account) return accountRequiredMessage(res);
+    const today = new Date().toISOString().slice(0, 10);
+    res.set('Cache-Control','no-store');
+    res.json({ account:normalizeAccountPublic(account), dailyDate:today, dailySkinIds:getDailySkinIds(today), rollCost:STORE_ROLL_COST, questTarget:TRAINING_QUEST_TARGET, questReward:TRAINING_QUEST_REWARD });
+  } catch (error) { console.error('[store] state failed:', error?.message || error); res.status(500).json({ error:'상점 정보를 불러오지 못했습니다.' }); }
+});
+
+app.post('/api/store/buy', async (req, res) => {
+  if (apiStorageUnavailable(res)) return;
+  if (!accountRateAllowed(req,'store-buy',18,60_000)) return res.status(429).json({ error:'구매 요청이 너무 많습니다. 잠시 후 다시 시도하세요.' });
+  try {
+    const token = getRequestToken(req);
+    const account = await accountForToken(token);
+    if (!account) return accountRequiredMessage(res);
+    const productType = String(req.body?.productType || '');
+    const productId = String(req.body?.productId || '');
+    let cost = 0, skinIds = [], productName = '';
+    if (productType === 'bundle') {
+      const bundle = getStoreBundle(productId);
+      if (!bundle) return res.status(400).json({ error:'존재하지 않는 번들입니다.' });
+      cost = bundle.price; skinIds = bundle.skinIds; productName = bundle.displayName;
+    } else if (productType === 'daily') {
+      const today = new Date().toISOString().slice(0, 10);
+      if (!getDailySkinIds(today).includes(productId)) return res.status(409).json({ error:'오늘의 스킨 목록이 갱신됐습니다. 상점을 새로고침하세요.' });
+      const skin = getStoreSkin(productId);
+      if (!skin) return res.status(400).json({ error:'존재하지 않는 스킨입니다.' });
+      cost = skin.price; skinIds = [skin.id]; productName = skin.displayName;
+    } else return res.status(400).json({ error:'구매 유형이 올바르지 않습니다.' });
+    const result = await mutateAccountState(account.id, model => {
+      const owned = new Set(model.ownedSkins);
+      const missing = skinIds.filter(id => !owned.has(id));
+      if (!missing.length) return { ok:false, status:409, error:'이미 보유한 상품입니다.' };
+      if (model.neonPoints < cost) return { ok:false, status:400, error:`네온 포인트가 부족합니다. ${cost} NP가 필요합니다.` };
+      model.neonPoints -= cost;
+      model.ownedSkins = [...owned, ...missing];
+      return { ok:true, productName, purchasedSkinIds:missing, cost };
+    });
+    if (!result.ok) return res.status(result.status || 500).json({ error:result.error || '구매에 실패했습니다.' });
+    res.json({ account:result.account, productName:result.productName, purchasedSkinIds:result.purchasedSkinIds, cost:result.cost });
+  } catch (error) { console.error('[store] purchase failed:', error?.message || error); res.status(500).json({ error:'구매 처리 중 오류가 발생했습니다.' }); }
+});
+
+app.post('/api/store/roll', async (req, res) => {
+  if (apiStorageUnavailable(res)) return;
+  if (!accountRateAllowed(req,'store-roll',10,60_000)) return res.status(429).json({ error:'뽑기 요청이 너무 많습니다. 잠시 후 다시 시도하세요.' });
+  try {
+    const token = getRequestToken(req);
+    const account = await accountForToken(token);
+    if (!account) return accountRequiredMessage(res);
+    const result = await mutateAccountState(account.id, model => {
+      if (model.neonPoints < STORE_ROLL_COST) return { ok:false, status:400, error:`네온 포인트가 부족합니다. ${STORE_ROLL_COST} NP가 필요합니다.` };
+      const unowned = STORE_SKINS.filter(skin => !model.ownedSkins.includes(skin.id));
+      if (!unowned.length) return { ok:false, status:409, error:'현재 스킨을 모두 보유하고 있습니다.' };
+      const roll = Math.random();
+      const rarity = roll < .68 ? 'normal' : roll < .94 ? 'rare' : 'premium';
+      const pool = unowned.filter(skin => skin.rarity === rarity);
+      const choices = pool.length ? pool : unowned;
+      const skin = choices[Math.floor(Math.random() * choices.length)];
+      model.neonPoints -= STORE_ROLL_COST;
+      model.ownedSkins = [...model.ownedSkins, skin.id];
+      return { ok:true, skin, cost:STORE_ROLL_COST };
+    });
+    if (!result.ok) return res.status(result.status || 500).json({ error:result.error || '뽑기에 실패했습니다.' });
+    res.json({ account:result.account, skin:result.skin, cost:result.cost });
+  } catch (error) { console.error('[store] roll failed:', error?.message || error); res.status(500).json({ error:'스킨 뽑기 중 오류가 발생했습니다.' }); }
+});
+
+app.post('/api/store/redeem', async (req, res) => {
+  if (apiStorageUnavailable(res)) return;
+  if (!accountRateAllowed(req,'store-redeem',8,60_000)) return res.status(429).json({ error:'코드 입력이 너무 많습니다. 잠시 후 다시 시도하세요.' });
+  try {
+    const token = getRequestToken(req);
+    const account = await accountForToken(token);
+    if (!account) return accountRequiredMessage(res);
+    const code = String(req.body?.code || '').trim().toLowerCase();
+    if (code !== 'test_neon_strike') return res.status(400).json({ error:'유효하지 않은 코드입니다.' });
+    const result = await mutateAccountState(account.id, model => {
+      if (model.redeemedCodes.includes(code)) return { ok:false, status:409, error:'이 코드는 이미 사용했습니다.' };
+      model.redeemedCodes = [...model.redeemedCodes, code];
+      model.neonPoints += 10000;
+      return { ok:true, reward:10000 };
+    });
+    if (!result.ok) return res.status(result.status || 500).json({ error:result.error || '코드를 사용할 수 없습니다.' });
+    res.json({ account:result.account, reward:result.reward, message:'10,000 네온 포인트를 지급했습니다.' });
+  } catch (error) { console.error('[store] redeem failed:', error?.message || error); res.status(500).json({ error:'코드 처리 중 오류가 발생했습니다.' }); }
+});
+
+app.post('/api/store/equip', async (req, res) => {
+  if (apiStorageUnavailable(res)) return;
+  try {
+    const token = getRequestToken(req);
+    const account = await accountForToken(token);
+    if (!account) return accountRequiredMessage(res);
+    const weaponId = String(req.body?.weaponId || '');
+    const skinId = String(req.body?.skinId || '');
+    if (!['pistol','revolver','smg','shotgun','rifle','dmr','sniper','lmg','burst','knife'].includes(weaponId)) return res.status(400).json({ error:'무기 종류가 올바르지 않습니다.' });
+    const result = await mutateAccountState(account.id, model => {
+      if (!skinId) { delete model.equippedSkins[weaponId]; return { ok:true, equippedSkinId:null, weaponId }; }
+      const skin = getStoreSkin(skinId);
+      if (!skin || skin.weaponId !== weaponId) return { ok:false, status:400, error:'이 무기에 사용할 수 없는 스킨입니다.' };
+      if (!model.ownedSkins.includes(skinId)) return { ok:false, status:403, error:'보유한 스킨만 장착할 수 있습니다.' };
+      model.equippedSkins = { ...model.equippedSkins, [weaponId]:skinId };
+      return { ok:true, equippedSkinId:skinId, weaponId };
+    });
+    if (!result.ok) return res.status(result.status || 500).json({ error:result.error || '스킨 장착에 실패했습니다.' });
+    res.json({ account:result.account, weaponId:result.weaponId, equippedSkinId:result.equippedSkinId });
+  } catch (error) { console.error('[store] equip failed:', error?.message || error); res.status(500).json({ error:'스킨 장착 중 오류가 발생했습니다.' }); }
+});
+
 
 if (isProduction) {
   app.use(express.static(distDir, { maxAge: '1h', etag: true }));
@@ -300,9 +510,13 @@ const ROUND_MS = 90_000;
 const NEXT_ROUND_MS = 5_000;
 const WINS_TO_MATCH = 6;
 const STARTING_CREDITS = 450;
-const ROUND_WIN_REWARD = 650;
-const ROUND_LOSS_REWARD = 400;
-const KILL_REWARD = 75;
+// Generous, cumulative round economy: later rounds fund more expensive loadouts and shields.
+const ROUND_WIN_REWARD = 1800;
+const ROUND_LOSS_REWARD = 1200;
+const KILL_REWARD = 200;
+const ROUND_WIN_STEP = 300;
+const ROUND_LOSS_STEP = 200;
+const KILL_REWARD_STEP = 40;
 // Server-authoritative weapon definitions. Keep IDs and balance in sync with src/main.js.
 // These entries were missing in the previous build, causing ReferenceError inside the
 // buy/equip/fire Socket.IO handlers and making every online shot fail before damage.
@@ -384,9 +598,9 @@ function code6() {
 function safeName(name) { return String(name || 'PLAYER').replace(/[<>\u0000-\u001f]/g, '').trim().slice(0, 16) || 'PLAYER'; }
 function safeSessionId(value) { return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100); }
 function compatible(rule, device) { return rule === 'crossplay' || rule === device; }
-function publicPlayer(p) { return { x:p.x, y:p.y||0, z:p.z, yaw:p.yaw, pitch:p.pitch, name:p.name, hp:p.hp, armor:p.armor, weapon:p.weapon, device:p.device, score:p.score }; }
+function publicPlayer(p) { return { x:p.x, y:p.y||0, z:p.z, yaw:p.yaw, pitch:p.pitch, name:p.name, hp:p.hp, armor:p.armor, weapon:p.weapon, skinId:p.equippedSkins?.[p.weapon]||null, equippedSkins:p.equippedSkins||{}, device:p.device, score:p.score }; }
 function playerById(room, id) { return room?.players.get(id); }
-function selfPayload(p) { return { money:p.money, hp:p.hp, armor:p.armor, armorTier:p.armorTier, weapon:p.weapon, ownedWeapons:[...(p.ownedWeapons||['pistol','knife'])], boughtPrimary:p.boughtPrimary, armorPurchased:p.armorPurchased, x:p.x, y:p.y||0, z:p.z, yaw:p.yaw, pitch:p.pitch }; }
+function selfPayload(p) { return { money:p.money, hp:p.hp, armor:p.armor, armorTier:p.armorTier, weapon:p.weapon, skinId:p.equippedSkins?.[p.weapon]||null, ownedWeapons:[...(p.ownedWeapons||['pistol','knife'])], boughtPrimary:p.boughtPrimary, armorPurchased:p.armorPurchased, x:p.x, y:p.y||0, z:p.z, yaw:p.yaw, pitch:p.pitch }; }
 function playersSnapshot(room) { return Object.fromEntries([...room.players.entries()].map(([id,p])=>[id,publicPlayer(p)])); }
 function emitState(room) {
   const players = playersSnapshot(room);
@@ -463,7 +677,7 @@ function restoreRoomPhaseAfterDisconnect(room) {
     room.liveEndsAt = 0;
   }
 }
-function endRound(room, winnerId, reason='적 처치') {
+function endRound(room, winnerId, reason='적 처치', killInfo=null) {
   if (!room || room.phase !== 'live') return;
   if (room.timer) clearTimeout(room.timer);
   room.phase='ended';room.lastWinnerId=winnerId;room.lastReason=reason;
@@ -471,6 +685,10 @@ function endRound(room, winnerId, reason='적 처치') {
   if (winnerId && room.players.has(winnerId)) room.players.get(winnerId).score += 1;
   if ([...room.players.values()].some(p=>p.score>=WINS_TO_MATCH)) matchOver=true;
   const winner = winnerId ? room.players.get(winnerId) : null;
+  if (killInfo && winner && killInfo.victimId && room.players.has(killInfo.victimId)) {
+    const victim=room.players.get(killInfo.victimId);
+    io.to(room.code).emit('killCamStart',{killerId:winnerId,victimId:killInfo.victimId,durationMs:5000,skinId:killInfo.skinId||winner.equippedSkins?.[winner.weapon]||null,killer:{x:winner.x,y:winner.y||0,z:winner.z,yaw:winner.yaw,pitch:winner.pitch,weapon:winner.weapon,name:winner.name},victim:{x:victim.x,y:victim.y||0,z:victim.z,yaw:victim.yaw,pitch:victim.pitch,name:victim.name}});
+  }
   if (winner?.accountId) {
     void (async () => {
       let profile = await awardAccountXP(winner.accountId, 50); // 50 XP for each round won.
@@ -480,11 +698,12 @@ function endRound(room, winnerId, reason='적 처치') {
   }
   for (const [id,p] of room.players) {
     const won = winnerId===id;
-    const reward = won?ROUND_WIN_REWARD:ROUND_LOSS_REWARD;
+    const roundBonus=Math.max(0,room.round-1);
+    const reward = won?(ROUND_WIN_REWARD+roundBonus*ROUND_WIN_STEP):(ROUND_LOSS_REWARD+roundBonus*ROUND_LOSS_STEP);
     p.money += reward;
     io.to(id).emit('roundResult', {
       winnerId, reason, scores:Object.fromEntries([...room.players.entries()].map(([pid,pl])=>[pid,pl.score])),
-      selfMoney:p.money, reward, matchOver, round:room.round, nextRoundInMs:0,
+      selfMoney:p.money, reward, matchOver, round:room.round, nextRoundInMs:0, killCamMs:killInfo?5000:0,
     });
   }
   if (matchOver) {
@@ -585,7 +804,7 @@ io.on('connection', socket => {
     }
     leaveRoom(socket,false);
     const code=code6();
-    const p={id:socket.id,sessionId,name,device,accountId:authenticatedAccount?.id??null,connected:true,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol','knife'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0,activeBurstId:null,burstNextSeq:1,burstStartedAt:0,reconnectTimer:null};
+    const p={id:socket.id,sessionId,name,device,accountId:authenticatedAccount?.id??null,equippedSkins:parseJsonValue(authenticatedAccount?.equipped_skins??authenticatedAccount?.equippedSkins,{}),connected:true,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol','knife'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0,activeBurstId:null,burstNextSeq:1,burstStartedAt:0,reconnectTimer:null};
     const room={code,rule:requestedRule,map:requestedMap,players:new Map([[socket.id,p]]),phase:'waiting',round:0,phaseEndsAt:0,liveEndsAt:0,timer:null};
     rooms.set(code,room);socket.data.roomCode=code;socket.join(code);
     socket.emit('roomCreated',{code,rule:requestedRule,device,map:room.map});
@@ -604,7 +823,7 @@ io.on('connection', socket => {
     }
     leaveRoom(socket,false);
     const name=safeName(payload?.name);
-    const p={id:socket.id,sessionId,name,device,accountId:authenticatedAccount?.id??null,connected:true,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol','knife'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0,activeBurstId:null,burstNextSeq:1,burstStartedAt:0,reconnectTimer:null};
+    const p={id:socket.id,sessionId,name,device,accountId:authenticatedAccount?.id??null,equippedSkins:parseJsonValue(authenticatedAccount?.equipped_skins??authenticatedAccount?.equippedSkins,{}),connected:true,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol','knife'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0,activeBurstId:null,burstNextSeq:1,burstStartedAt:0,reconnectTimer:null};
     room.players.set(socket.id,p);socket.data.roomCode=code;socket.join(code);
     socket.emit('roomJoined',{code,rule:room.rule,device,map:room.map});
     socket.to(code).emit('playerJoined',{id:socket.id,player:publicPlayer(p)});
@@ -617,7 +836,7 @@ io.on('connection', socket => {
     const x=Number(payload.x),y=Number(payload.y??0),z=Number(payload.z),yaw=Number(payload.yaw),pitch=Number(payload.pitch);
     if (![x,y,z,yaw,pitch].every(Number.isFinite))return;
     const bound=mapBounds(room.map);p.x=Math.max(-bound,Math.min(bound,x));p.y=Math.max(0,Math.min(8,y));p.z=Math.max(-bound,Math.min(bound,z));p.yaw=Math.max(-Math.PI*2,Math.min(Math.PI*2,yaw));p.pitch=Math.max(-1.35,Math.min(1.35,pitch));
-    socket.to(room.code).emit('playerMoved',{id:socket.id,x:p.x,y:p.y,z:p.z,yaw:p.yaw,pitch:p.pitch,name:p.name,hp:p.hp,weapon:p.weapon,device:p.device});
+    socket.to(room.code).emit('playerMoved',{id:socket.id,x:p.x,y:p.y,z:p.z,yaw:p.yaw,pitch:p.pitch,name:p.name,hp:p.hp,weapon:p.weapon,skinId:p.equippedSkins?.[p.weapon]||null,equippedSkins:p.equippedSkins||{},device:p.device});
   });
   socket.on('footstep', () => {
     const room=rooms.get(socket.data.roomCode);const p=playerById(room,socket.id);if(!room||!p||p.connected===false||room.phase!=='live')return;
@@ -666,7 +885,7 @@ io.on('connection', socket => {
     if(!weapons[id]||!p.ownedWeapons.includes(id)){socket.emit('equipResult',{ok:false,message:'구매한 무기만 장착할 수 있습니다.'});return;}
     p.weapon=id;
     socket.emit('equipResult',{ok:true,weapon:id,ownedWeapons:p.ownedWeapons});
-    socket.to(room.code).emit('playerWeapon',{id:socket.id,weapon:id});
+    socket.to(room.code).emit('playerWeapon',{id:socket.id,weapon:id,skinId:p.equippedSkins?.[id]||null});
   });
   socket.on('fire', payload => {
     try {
@@ -729,11 +948,11 @@ io.on('connection', socket => {
     const damage=totalDamage;
     const t=hit.p;let left=damage;if(t.armor>0){const absorbRatio=t.armorTier==='heavy'?.60:.35;const absorbed=Math.min(t.armor,damage*absorbRatio);t.armor-=absorbed;left-=absorbed;if(t.armor<=0){t.armor=0;t.armorTier='none';}}t.hp=Math.max(0,t.hp-left);
     const killed=t.hp<=0;
-    if(killed)shooter.money+=KILL_REWARD;
+    if(killed)shooter.money+=KILL_REWARD+Math.max(0,room.round-1)*KILL_REWARD_STEP;
     io.to(room.code).emit('damage',{attackerId:socket.id,targetId:hit.id,hp:t.hp,armor:t.armor,armorTier:t.armorTier,killed,damage,hitPart:hit.part||'torso',pelletsHit:id==='shotgun'?Math.max(1,Math.round(damage/Math.max(1,w.damage))):1});
     for(const [pid,p] of room.players)if(pid===hit.id)io.to(pid).emit('selfState',selfPayload(p));
     socket.emit('selfState',selfPayload(shooter));
-    if(killed)endRound(room,socket.id,`${shooter.name} 처치 성공`);
+    if(killed)endRound(room,socket.id,`${shooter.name} 처치 성공`,{victimId:hit.id,skinId:shooter.equippedSkins?.[shooter.weapon]||null});
     } catch (error) {
       console.error('[NEON STRIKE] fire handler error:', error?.stack || error);
       socket.emit('roomMessage',{message:'사격 처리 중 오류가 발생했습니다. 연결은 유지됩니다.'});
