@@ -1,0 +1,21 @@
+# NEON STRIKE Weapon Models
+
+게임에서 사용하는 우주풍 3D 무기 모델입니다.
+
+## Models
+- pistol.glb
+- revolver.glb
+- smg.glb
+- shotgun.glb
+- rifle.glb
+- dmr.glb
+- sniper.glb
+- lmg.glb
+- burst.glb
+- knife.glb
+
+## Format
+glTF Binary (.glb)
+
+## Usage
+Three.js GLTFLoader를 사용해 게임에서 불러옵니다.
