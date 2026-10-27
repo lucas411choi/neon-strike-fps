@@ -1,9 +1,9 @@
 {
   "name": "neon-strike-fps",
-  "version": "1.2.0",
+  "version": "1.3.1",
   "private": true,
   "type": "module",
-  "description": "NEON STRIKE browser FPS with secure accounts, persistent XP, multi-map combat, and training range.",
+  "description": "NEON STRIKE browser FPS with improved reload animations and online shotgun spread.",
   "engines": {
     "node": ">=20.19.0"
   },

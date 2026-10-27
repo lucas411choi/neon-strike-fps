@@ -1,4 +1,4 @@
-# NEON STRIKE v1.2.0 — 브라우저 전술 FPS
+# NEON STRIKE v1.3.0 — 브라우저 전술 FPS
 
 Three.js, Express, Socket.IO, PostgreSQL(Neon 권장)으로 만든 PC/모바일 브라우저용 FPS 프로토타입. 독자적인 절차 생성 맵, 무기 모델, Web Audio 효과음을 사용합니다.
 
@@ -52,3 +52,22 @@ PC: WASD 이동, 마우스 시점/조준, 왼쪽 클릭 누르고 있기 사격(
 ## 검증 한계
 
 이 작업 환경은 npm 의존성 설치가 시간 초과되어 프로덕션 번드 및 브라우저 렌더링 빌드를 실행하지 못했습니다. 실제 브라우저 렌더링과 2개 기기의 온라인 플레이는 배포 후 별도로 확인해야 합니다. 이 프로토타입은 전문 안티치트나 대규모 매칭을 포함하지 않습니다.
+
+
+## v1.3.0 weapon patch
+
+- Atlas Pistol 10 damage; Ironclad .45 30; Viper SMG 7 with slower fire cadence; Vantage AR 15; Rail DMR 20 with faster follow-up. Titan LMG and Longshot SR base damage remain unchanged.
+- Breach SG fires 10 independently sampled pellets and damage falls off over distance.
+- Ion Burst sends three paced, server-validated shots per trigger; sniper requires trigger release and has inaccurate hip-fire but precise scope aim.
+- Added procedural draw, inspection (Enter), reload, recoil, hand/forearm and knife-swing animations; removed the minimap.
+- The `rate` field is the interval in seconds between shots, so it is not a direct RPM/number-of-shots stat. Viper is slowed to 0.12 s per shot; Rail DMR is sped up to 0.32 s.
+
+
+## v1.3.1 follow-up fix
+- Online shotgun now sends center aim to the server; server creates its own pellet spread.
+- Removed the overlapping cone blade from the first-person knife model.
+- Added a clearer magazine-out / magazine-in sequence and support-hand movement during reload.
+- Added weapon-specific mechanical return clicks to the procedural NEON firing audio.
+- Service-worker cache bumped to v16.
+
+The Viper SMG and Rail DMR rate values are shot intervals in seconds in this codebase, not numeric RPM. Viper uses 0.12s between shots; Rail DMR uses 0.32s between shots.
