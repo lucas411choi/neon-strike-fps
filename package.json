@@ -1,9 +1,9 @@
 {
   "name": "neon-strike-fps",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "private": true,
   "type": "module",
-  "description": "NEON STRIKE browser FPS with improved reload animations and online shotgun spread.",
+  "description": "NEON STRIKE browser FPS with original low-poly sci-fi weapon GLB models and animated weapon reloads.",
   "engines": {
     "node": ">=20.19.0"
   },

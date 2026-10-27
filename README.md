@@ -1,4 +1,4 @@
-# NEON STRIKE v1.3.0 — 브라우저 전술 FPS
+# NEON STRIKE v1.4.0 — 브라우저 전술 FPS
 
 Three.js, Express, Socket.IO, PostgreSQL(Neon 권장)으로 만든 PC/모바일 브라우저용 FPS 프로토타입. 독자적인 절차 생성 맵, 무기 모델, Web Audio 효과음을 사용합니다.
 
@@ -10,7 +10,7 @@ Three.js, Express, Socket.IO, PostgreSQL(Neon 권장)으로 만든 PC/모바일 
 - 훈련장: 정지 과녁과 사람 더미, 각각 누적 100 피해 후 3초 뒤 부활, 모든 무기 무료 선택
 - 친구와 온라인 1대1: 방 코드, PC/모바일/크로스플레이 규칙, 첫 6라운드 승리, 라운드 결과 후 수동 다음 라운드 시작
 - 네트워크 복구: WebSocket/폴링 대체 연결, 자동 재연결, 90초까지 일시 연결 끊김 복구, 전투 중 라운드 상태 보존
-- 9종의 총기와 근접 칼, 구분되는 3D 모델 및 무기별 사격 사운드, 리볼버, 연사/반동/탄퍼짐, 소총/DMR 줌과 발사 후 자동 줌아웃 저격 스코프
+- 9종의 총기와 근접 칼, 총기별 오리지널 GLB 3D 모델(세부 파츠·재질), 무기별 사격 사운드, 리볼버, 연사/반동/탄퍼짐, 소총/DMR 줌과 발사 후 자동 줌아웃 저격 스코프
 - 사격 시 반동 방향 카메라 킥, 무기별 연사 제한, Shift로 조용히 걷기와 3D 보행 사운드
 - 온라인 상대 피격 시 잠깐 붉게 번쩍이는 피드백과 hit marker; 데미지 숫자 팝업은 표시하지 않음
 - 라운드 경제 및 경량/중량 보호막, 전투 중 상점 비활성화
@@ -71,3 +71,12 @@ PC: WASD 이동, 마우스 시점/조준, 왼쪽 클릭 누르고 있기 사격(
 - Service-worker cache bumped to v16.
 
 The Viper SMG and Rail DMR rate values are shot intervals in seconds in this codebase, not numeric RPM. Viper uses 0.12s between shots; Rail DMR uses 0.32s between shots.
+
+
+## v1.4.0 original 3D weapon upgrade
+
+- Added ten original lightweight GLB models under `public/models/weapons/`: pistol, revolver, SMG, shotgun, rifle, DMR, sniper, LMG, burst rifle, and knife.
+- Both first-person weapon viewmodels and remote players load the matching GLB. If an individual asset is missing or fails to load, the procedural weapon remains available as a fallback.
+- Named magazine components animate out and back in during reload for weapons with detachable magazines.
+- Service-worker cache bumped to v20 so the browser requests the updated JavaScript and models.
+- Added automated GLB integrity and loader/fallback tests.
