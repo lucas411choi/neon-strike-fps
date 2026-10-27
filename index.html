@@ -8,7 +8,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/src/style.css" />
-  <title>NEON STRIKE — Tactical FPS v1.0</title>
+  <title>NEON STRIKE — Tactical FPS v1.5.1</title>
 </head>
 <body>
   <canvas id="game-canvas" aria-label="NEON STRIKE 3D 게임"></canvas>
@@ -20,13 +20,13 @@
     <header class="lobby-topbar">
       <div class="lobby-mini-brand"><span class="lobby-brand-mark"><i></i><i></i><i></i></span><span>NEON <b>STRIKE</b></span><small>TACTICAL FPS</small></div>
       <nav class="lobby-nav" aria-label="메인 메뉴">
-        <button class="lobby-tab" data-lobby-tab="weapons"><span class="tab-glyph">⌁</span><b>총기</b></button>
+        <button class="lobby-tab" data-lobby-tab="quests"><span class="tab-glyph">✦</span><b>퀘스트</b></button>
         <button class="lobby-tab" data-lobby-tab="shop"><span class="tab-glyph">◈</span><b>상점</b></button>
         <button class="lobby-tab active" data-lobby-tab="play"><span class="tab-glyph">▶</span><b>플레이</b></button>
         <button class="lobby-tab" data-lobby-tab="skins"><span class="tab-glyph">◇</span><b>스킨</b></button>
         <button class="lobby-tab" data-lobby-tab="account"><span class="tab-glyph">◎</span><b>계정</b></button>
       </nav>
-      <div class="lobby-live"><span></span> LIVE SERVER <em>1.0.0</em></div>
+      <div class="lobby-live"><span></span> LIVE SERVER <em>1.5.1</em></div>
     </header>
 
     <section id="lobby-play-view" class="lobby-view lobby-play-view">
@@ -79,6 +79,27 @@
       <button class="lobby-back-play" data-lobby-tab="play">‹ 플레이로 돌아가기</button>
     </section>
 
+    <section id="lobby-shop-view" class="lobby-view lobby-store-view hidden">
+      <header class="store-heading"><div><div class="lobby-section-kicker">NEON MARKET / LIMITED DROPS</div><h2>상점 <span>STORE & COLLECTIONS</span></h2><p>기간 한정 번들, 오늘의 스킨, 우주 보급선 뽑기.</p></div><div class="store-wallet"><small>NEON POINTS</small><b id="store-neon-points">0 NP</b></div></header>
+      <section class="store-bundle-section"><div class="store-section-title"><div><small>LIMITED-TIME BUNDLES</small><h3>기간 한정 번들</h3></div><span class="store-live-tag">LIMITED DROP</span></div><div id="store-bundle-grid" class="store-bundle-grid"></div></section>
+      <div class="store-lower-grid">
+        <section class="store-daily-section"><div class="store-section-title"><div><small>ROTATES DAILY / UTC</small><h3>오늘의 스킨</h3></div><span id="store-daily-date" class="store-date"></span></div><div id="store-daily-grid" class="store-daily-grid"></div></section>
+        <aside class="store-roll-card"><div class="roll-card-orbit"><span class="roll-planet"></span><span class="roll-satellite">✦</span><span class="roll-crate">▣</span></div><small>DEEP SPACE SUPPLY DROP</small><h3>우주 보급 상자</h3><p>지구의 신호를 받은 궤도 수송선이 무작위 스킨 보급품을 투하합니다.</p><div class="roll-price">150 <small>NP / 1회</small></div><button id="store-roll-button" class="store-primary-button">보급 상자 뽑기 <span>↗</span></button><small class="roll-footnote">노말 68% · 레어 26% · 프리미엄 6%</small></aside>
+      </div>
+      <section class="store-code-section"><div><small>REDEEM TRANSMISSION</small><h3>보급 코드</h3><p>공식 코드를 입력하면 네온 포인트를 받을 수 있습니다.</p></div><form id="store-code-form" class="store-code-form"><input id="store-code-input" maxlength="64" placeholder="코드 입력" aria-label="보급 코드" autocomplete="off"/><button type="submit">사용하기</button></form><div id="store-feedback" class="store-feedback" role="status">상점을 이용하려면 계정에 로그인하세요.</div></section>
+    </section>
+
+    <section id="lobby-skins-view" class="lobby-view lobby-skins-view hidden">
+      <header class="store-heading"><div><div class="lobby-section-kicker">PLAYER INVENTORY / EQUIPMENT</div><h2>스킨 <span>YOUR COLLECTION</span></h2><p>보유한 스킨만 장착할 수 있습니다. 장착 정보는 계정에 저장됩니다.</p></div><div class="store-wallet"><small>NEON POINTS</small><b id="skins-neon-points">0 NP</b></div></header>
+      <div id="owned-skins-grid" class="owned-skins-grid"></div>
+      <div id="skins-empty-state" class="skins-empty-state hidden"><div class="coming-soon-symbol">◇</div><h3>아직 보유한 스킨이 없습니다</h3><p>상점에서 번들을 구매하거나 보급 상자를 열어 첫 스킨을 획득하세요.</p><button class="store-primary-button" data-lobby-tab="shop">상점 열기 ↗</button></div>
+    </section>
+
+    <section id="lobby-quests-view" class="lobby-view lobby-quests-view hidden">
+      <div class="quest-hero"><div class="lobby-section-kicker">FIELD CONTRACT / REPEATABLE</div><h2>훈련 계약 <span>DAILY PRACTICE</span></h2><p>훈련장에서 과녁 또는 더미를 파괴하고 네온 포인트를 모으세요.</p><div class="quest-reward-pill">+22 <small>NEON POINTS</small></div></div>
+      <article class="quest-card"><div class="quest-card-icon">◎</div><div class="quest-card-main"><div class="quest-card-meta"><span>무한 반복 퀘스트</span><span id="quest-progress-label">0 / 67</span></div><h3>정밀 사격 훈련</h3><p>훈련장에서 과녁이나 사람 더미 67개를 파괴하세요. 완료하면 22 네온 포인트를 받고 진행도가 초기화됩니다.</p><div class="quest-progress-track"><span id="quest-progress-fill"></span></div><small id="quest-progress-copy">로그인하면 계정에 진행도가 저장됩니다.</small></div><button id="quest-go-training" class="store-primary-button">훈련장 시작 ↗</button></article>
+    </section>
+
     <section id="lobby-coming-soon-view" class="lobby-view lobby-coming-soon hidden">
       <div class="coming-soon-mark">NS / FUTURE MODULE</div><div class="coming-soon-symbol">◈</div><h2 id="coming-soon-title">개발 중입니다</h2><p id="coming-soon-copy">이 인터페이스는 다음 업데이트에서 공개됩니다.</p><button class="lobby-start-button" data-lobby-tab="play"><span class="start-button-icon">▶</span><span><b>플레이로 돌아가기</b><small>BACK TO LOBBY</small></span><span class="start-arrow">↗</span></button>
     </section>
@@ -87,7 +108,7 @@
       <div class="account-shell">
         <div class="account-eyebrow">NEON STRIKE / PLAYER ID</div>
         <h2>계정 <span>PLAYER PROFILE</span></h2>
-        <p class="account-intro">계정에 로그인하면 레벨과 경험치가 서버에 저장되어 다른 기기에서도 이어집니다.</p>
+        <p class="account-intro">계정에 로그인하면 레벨, 경험치, 네온 포인트, 스킨이 서버에 저장되어 다른 기기에서도 이어집니다.</p>
         <div id="account-auth-panel" class="account-panel">
           <div class="account-mode-switch" role="tablist" aria-label="계정 모드">
             <button type="button" data-account-mode="register" class="selected">회원가입</button>
@@ -106,6 +127,7 @@
           <div class="account-profile-head"><div class="account-avatar">NS</div><div><small>AUTHENTICATED PLAYER</small><h3 id="account-profile-name">PLAYER</h3><p>계정 데이터는 온라인 서버에 저장됩니다.</p></div></div>
           <div class="account-level-row"><div><small>CURRENT LEVEL</small><b id="account-level">LV. 1</b></div><div class="account-xp-count"><b id="account-xp">0 / 150 XP</b><small id="account-next-level">다음 레벨까지 150 XP</small></div></div>
           <div class="account-xp-track"><span id="account-xp-fill"></span></div>
+          <div class="account-neon-currency"><span>NEON POINTS</span><b id="account-neon-points">0 NP</b></div>
           <div class="account-xp-notes"><span>훈련장 과녁/더미 +10 XP</span><span>라운드 승리 +50 XP</span><span>매치 승리 +200 XP</span></div>
           <div class="account-profile-actions"><button id="account-logout" type="button" class="outline-button">로그아웃</button><button type="button" class="lobby-start-button" data-lobby-tab="play"><span class="start-button-icon">▶</span><span><b>플레이로 돌아가기</b><small>BACK TO LOBBY</small></span><span class="start-arrow">↗</span></button></div>
           <div id="account-profile-message" class="account-message" role="status"></div>
@@ -126,7 +148,7 @@
     </header>
     <div id="crosshair" class="crosshair"><span class="ch top"></span><span class="ch right"></span><span class="ch bottom"></span><span class="ch left"></span><span class="ch center"></span></div>
     <div id="hit-marker" class="hit-marker hidden">×</div>
-    <div id="kill-banner" class="kill-banner hidden">TARGET ELIMINATED <small>+75 CR</small></div>
+    <div id="kill-banner" class="kill-banner hidden">TARGET ELIMINATED <small>ROUND BONUS · CR</small></div>
     <div class="left-hud"><div class="mini-map"><div class="map-ring"></div><div class="map-grid"></div><i class="map-player"></i><i class="map-enemy"></i><span class="map-n">N</span></div><div class="objective"><span class="objective-bar"></span><div><small>OBJECTIVE</small><b id="objective-label">ELIMINATE OPPONENT</b></div></div></div>
     <div class="right-hud">
       <div class="net-state"><span id="net-dot" class="net-dot"></span><span id="net-label">TRAINING RANGE</span></div>
@@ -138,7 +160,7 @@
       <div class="armor-readout"><div class="armor-icon">⬡</div><div><small id="armor-tier-label">NONE</small><b id="armor-value">0</b></div></div>
       <div class="controls-hint"><kbd>SHIFT</kbd> 조용히 걷기 <kbd>SPACE</kbd> 점프 <kbd>R</kbd> 재장전 <kbd>ENTER</kbd> 무기 관찰 <kbd>1</kbd> 주무기 <kbd>2</kbd> 권총 <kbd>3</kbd> 칼 <kbd>우클릭 / Q</kbd> 줌 <kbd>ESC</kbd> 메뉴</div>
     </footer>
-    <div id="center-notice" class="center-notice hidden"></div>
+    <div id="center-notice" class="center-notice hidden"></div><div id="killcam-label" class="killcam-label hidden"><small>NEON STRIKE / ELIMINATION REPLAY</small><b>킬캠 재생 중</b><span>시점 고정 · 5초</span></div>
     <button id="training-weapon-button" class="training-weapon-button hidden">▤ 훈련 무기 선택</button>
     <div id="touch-controls" class="touch-controls hidden">
       <div id="move-pad" class="move-pad"><div id="move-stick" class="move-stick"></div><small>MOVE</small></div>
@@ -148,7 +170,7 @@
   </section>
 
   <section id="buy-menu" class="modal-screen hidden" aria-label="총기 구매">
-    <div class="buy-card"><header class="modal-head"><div><div class="eyebrow">PRE-ROUND PHASE / ARMORY</div><h2>장비 구매 <span>SHOP</span></h2><p>전투 전 구매 단계에서만 장비를 선택하세요. 처치 +75 CR · 승리 +650 CR · 패배 +400 CR · 시작 450 CR</p></div><button id="close-buy" class="icon-button" aria-label="닫기">×</button></header>
+    <div class="buy-card"><header class="modal-head"><div><div class="eyebrow">PRE-ROUND PHASE / ARMORY</div><h2>장비 구매 <span>SHOP</span></h2><p>전투 전 구매 단계에서만 장비를 선택하세요. 처치 +200 CR부터 · 승리 +1,800 CR부터 · 패배 +1,200 CR부터 · 라운드별 증가</p></div><button id="close-buy" class="icon-button" aria-label="닫기">×</button></header>
       <div class="shop-toolbar"><div class="shop-money"><small>보유 크레딧</small><b>◈ <span id="buy-money">450</span> CR</b></div><div class="shop-time"><small>구매 가능 시간</small><b id="buy-countdown">12초</b></div></div>
       <div id="buy-list" class="buy-grid"></div>
       <div class="shop-bottom"><div id="buy-feedback">무기를 선택해 구매하세요.</div><button id="buy-start" class="solid-button">전투 준비 완료 <span>→</span></button></div>
@@ -158,6 +180,12 @@
   <section id="pause-menu" class="modal-screen hidden"><div class="pause-card"><div class="eyebrow">COMBAT PAUSED</div><h2>잠시<br/><span>숨을 고르세요.</span></h2><p>전투를 재개하거나 메인 메뉴로 돌아갈 수 있습니다.</p><button id="resume-game" class="solid-button">전투 재개 <span>→</span></button><button id="leave-game" class="outline-button full-button">메인 메뉴로</button><div class="quality-row"><label for="quality-select">그래픽 품질</label><select id="quality-select"><option value="high">HIGH / 선명한 그림자</option><option value="medium" selected>MEDIUM / 균형</option><option value="low">LOW / 높은 FPS</option></select></div></div></section>
   <section id="end-screen" class="modal-screen hidden"><div class="pause-card end-card"><div class="eyebrow" id="result-kicker">ROUND RESULT</div><h2 id="result-title">ROUND<br/><span>WON.</span></h2><p id="result-copy">보상을 받았습니다.</p><div class="result-reward" id="result-reward">+650 CR</div><button id="next-round" class="solid-button">다음 라운드 <span>→</span></button><button id="end-menu" class="outline-button full-button">메인 메뉴로</button></div></section>
   <section id="training-weapon-menu" class="modal-screen hidden" aria-label="훈련장 무기 선택"><div class="training-weapon-card"><header class="modal-head"><div><div class="eyebrow">TRAINING RANGE / FREE LOADOUT</div><h2>훈련 무기 선택 <span>FREE ARMORY</span></h2><p>훈련장에서는 모든 무기를 자유롭게 선택하고 탄약 제한 없이 연습할 수 있습니다.</p></div><button id="close-training-weapons" class="icon-button" aria-label="닫기">×</button></header><div id="training-weapon-grid" class="training-weapon-grid"></div></div></section>
+  <section id="gacha-overlay" class="gacha-overlay hidden" role="dialog" aria-modal="true" aria-label="우주 보급 상자 뽑기">
+    <div class="gacha-window"><button id="gacha-close" class="icon-button gacha-close" aria-label="닫기">×</button><div class="gacha-eyebrow">ORBITAL SUPPLY / SECURE DROP</div><div id="gacha-phase-label" class="gacha-phase-label">지구에서 보급 신호를 전송합니다</div>
+      <div id="gacha-stage" class="gacha-stage"><div class="gacha-stars"></div><div class="gacha-earth"><i></i><b></b><em></em></div><div class="gacha-signal"></div><div class="gacha-ship"><i></i><b></b><em></em><span></span></div><div class="gacha-crate"><i></i><b></b><em></em></div><div class="gacha-impact"></div></div>
+      <h2 id="gacha-title">보급 신호를 기다리는 중</h2><p id="gacha-copy">수송선이 신호를 받고 보급 상자를 투하합니다.</p><div id="gacha-reveal-card" class="gacha-reveal-card hidden"></div><button id="gacha-finish" class="store-primary-button" disabled>보급품 확인 중…</button>
+    </div>
+  </section>
   <div id="toast" class="toast hidden" role="status"></div>
   <script type="module" src="/src/main.js"></script>
 </body>
