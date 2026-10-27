@@ -19,15 +19,15 @@ let CLIENT_SESSION_ID;
 try { CLIENT_SESSION_ID = sessionStorage.getItem(SESSION_KEY); if (!CLIENT_SESSION_ID) { CLIENT_SESSION_ID = (crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`); sessionStorage.setItem(SESSION_KEY, CLIENT_SESSION_ID); } } catch { CLIENT_SESSION_ID = `${Date.now()}-${Math.random().toString(36).slice(2)}`; }
 
 const WEAPONS = [
-  { id:'pistol', name:'ATLAS PISTOL', short:'ATLAS', type:'SIDEARM', slot:'sidearm', price:0, damage:22, head:1.45, rate:0.32, mag:12, reserve:36, reload:1.15, spread:0.007, recoil:0.010, range:55, control:8, color:0xb8c8d9, desc:'안정적인 기본 권총 · 우주 합금 슬라이드' },
-  { id:'revolver', name:'IRONCLAD .45', short:'IRONCLAD', type:'HEAVY SIDEARM', slot:'sidearm', price:550, damage:35, head:1.42, rate:0.52, mag:6, reserve:24, reload:1.75, spread:0.0055, recoil:0.025, range:62, control:8, color:0xd9ac70, desc:'6발 실린더 · 묵직한 고출력 탄' },
-  { id:'smg', name:'VIPER SMG', short:'VIPER', type:'SMG', slot:'primary', price:850, damage:13, head:1.35, rate:0.085, mag:30, reserve:90, reload:1.45, spread:0.022, recoil:0.013, range:25, control:5, color:0x55e6d2, desc:'근거리 고연사 · 빠른 반동 회복' },
-  { id:'shotgun', name:'BREACH SG', short:'BREACH', type:'SHOTGUN', slot:'primary', price:1100, damage:8, pellets:7, head:1.15, rate:0.82, mag:7, reserve:21, reload:1.7, spread:0.075, recoil:0.042, range:13, control:3, color:0xd9a36a, desc:'7발 산탄 · 근거리 충격파' },
-  { id:'rifle', name:'VANTAGE AR', short:'VANTAGE', type:'ASSAULT RIFLE', slot:'primary', price:1950, damage:24, head:1.42, rate:0.13, mag:30, reserve:60, reload:1.55, spread:0.012, recoil:0.018, range:50, control:7, color:0x8aafff, desc:'중거리 균형형 · 우클릭 정밀 조준', scopeFov:54 },
-  { id:'dmr', name:'RAIL DMR', short:'RAIL', type:'MARKSMAN', slot:'primary', price:2200, damage:34, head:1.45, rate:0.45, mag:12, reserve:36, reload:1.65, spread:0.004, recoil:0.027, range:75, control:9, color:0x9ec4d6, desc:'정밀 단발 · 2배율 조준', scopeFov:40 },
-  { id:'sniper', name:'LONGSHOT SR', short:'LONGSHOT', type:'SNIPER', slot:'primary', price:3000, damage:78, head:1.45, rate:1.12, mag:5, reserve:15, reload:2.0, spread:0.001, recoil:0.082, range:100, control:10, color:0xdfb5ff, desc:'원형 스코프 · 발사 후 자동 줌아웃', scopeFov:25 },
-  { id:'lmg', name:'TITAN LMG', short:'TITAN', type:'LMG', slot:'primary', price:2500, damage:16, head:1.35, rate:0.115, mag:60, reserve:120, reload:2.4, spread:0.026, recoil:0.021, range:42, control:4, color:0xe6c36e, desc:'대용량 탄창 · 강한 지속 반동' },
-  { id:'burst', name:'ION BURST', short:'ION', type:'BURST RIFLE', slot:'primary', price:1600, damage:18, head:1.4, rate:0.34, mag:24, reserve:72, reload:1.5, spread:0.010, recoil:0.025, range:45, control:8, color:0x85e5ff, desc:'위상 펄스 사격 · 정밀 조준', scopeFov:50 },
+  { id:'pistol', name:'ATLAS PISTOL', short:'ATLAS', type:'SIDEARM', slot:'sidearm', price:0, damage:10, head:1.30, rate:0.32, mag:12, reserve:36, reload:1.15, spread:0.007, recoil:0.010, range:55, control:8, color:0xb8c8d9, desc:'안정적인 기본 권총 · 우주 합금 슬라이드' },
+  { id:'revolver', name:'IRONCLAD .45', short:'IRONCLAD', type:'HEAVY SIDEARM', slot:'sidearm', price:550, damage:30, head:1.30, rate:0.52, mag:6, reserve:24, reload:1.75, spread:0.0055, recoil:0.025, range:62, control:8, color:0xd9ac70, desc:'6발 실린더 · 묵직한 고출력 탄' },
+  { id:'smg', name:'VIPER SMG', short:'VIPER', type:'SMG', slot:'primary', price:850, damage:7, head:1.30, rate:0.12, mag:30, reserve:90, reload:1.45, spread:0.022, recoil:0.013, range:25, control:5, color:0x55e6d2, desc:'근거리 고연사 · 발사 간격을 줄인 안정형' },
+  { id:'shotgun', name:'BREACH SG', short:'BREACH', type:'SHOTGUN', slot:'primary', price:1100, damage:6.5, pellets:10, head:1.08, rate:0.86, mag:7, reserve:21, reload:1.7, spread:0.105, recoil:0.046, range:16, control:3, color:0xd9a36a, desc:'10발 산탄 · 근거리 강력, 원거리 피해 감소' },
+  { id:'rifle', name:'VANTAGE AR', short:'VANTAGE', type:'ASSAULT RIFLE', slot:'primary', price:1950, damage:15, head:1.30, rate:0.13, mag:30, reserve:60, reload:1.55, spread:0.012, recoil:0.018, range:50, control:7, color:0x8aafff, desc:'중거리 균형형 · 우클릭 정밀 조준', scopeFov:54 },
+  { id:'dmr', name:'RAIL DMR', short:'RAIL', type:'MARKSMAN', slot:'primary', price:2200, damage:20, head:1.30, rate:0.32, mag:12, reserve:36, reload:1.65, spread:0.004, recoil:0.027, range:75, control:9, color:0x9ec4d6, desc:'정밀 단발 · 개선된 빠른 후속 사격', scopeFov:40 },
+  { id:'sniper', name:'LONGSHOT SR', short:'LONGSHOT', type:'SNIPER', slot:'primary', price:3000, damage:78, head:1.30, rate:1.12, mag:5, reserve:15, reload:2.0, spread:0.0012, hipSpread:0.060, scopeSpread:0.0012, recoil:0.082, range:100, control:10, color:0xdfb5ff, desc:'고위력 저격총 · 노줌 명중률 낮음, 발사 후 자동 줌아웃', scopeFov:29 },
+  { id:'lmg', name:'TITAN LMG', short:'TITAN', type:'LMG', slot:'primary', price:2500, damage:16, head:1.30, rate:0.115, mag:60, reserve:120, reload:2.4, spread:0.026, recoil:0.021, range:42, control:4, color:0xe6c36e, desc:'대용량 탄창 · 강한 지속 반동' },
+  { id:'burst', name:'ION BURST', short:'ION', type:'BURST RIFLE', slot:'primary', price:1600, damage:14, head:1.30, rate:0.30, burstCount:3, burstGap:0.055, mag:24, reserve:72, reload:1.5, spread:0.010, recoil:0.025, range:45, control:8, color:0x85e5ff, desc:'3점사 위상 펄스 · 3발을 빠르게 발사', scopeFov:50 },
   { id:'knife', name:'ORBITAL EDGE', short:'ORBITAL', type:'MELEE', slot:'melee', price:0, damage:40, head:1, rate:0.48, mag:Infinity, reserve:Infinity, reload:0, spread:0, recoil:0.002, range:2.65, control:10, color:0x7af9e8, desc:'근접 전용 40 피해 · 이동 속도 +10%' },
 ];
 const WEAPON_BY_ID = Object.fromEntries(WEAPONS.map(w => [w.id, w]));
@@ -47,6 +47,7 @@ const state = {
   buyPrimaryThisRound:false, armorPurchased:false, matchOver:false, botFireTimers:[],
   pointerLocked:false, mobileLook:null, audio:null, noiseBuffer:null, currentToastTimer:0, zoomed:false, baseFov:76, localNextRoundTimer:null,
   fireHeld:false, sniperMustRelease:false, lastEmptyToast:0, recoilHeat:0, viewKick:0, walkCycle:0, walkIntensity:0, footstepAccumulator:0, lastFootstepSound:0,
+  burstRemaining:0, burstNextAt:0, burstId:0, burstSeq:1, weaponMotion:{drawAt:performance.now(),inspectAt:0,fireAt:0,knifeAt:0,reloadAt:0},
 };
 for (const weapon of WEAPONS) state.ammo[weapon.id] = { mag: weapon.mag, reserve: weapon.reserve };
 
@@ -409,7 +410,6 @@ function buildGun(id) {
   if(id!=='knife')box(.32,-.27,-.60,.20,.17,.56,darkMat);
   if(id==='knife'){
     box(.32,-.29,-.45,.12,.095,.22,darkMat);box(.32,-.235,-.58,.19,.045,.065,accentMat);
-    const blade=new THREE.Mesh(new THREE.ConeGeometry(.075,.48,4),mainMat);blade.rotation.x=-Math.PI/2;blade.position.set(.32,-.215,-.84);blade.scale.set(.72,.72,1.1);gunRoot.add(blade);
     box(.32,-.21,-.77,.08,.04,.22,mainMat);box(.32,-.18,-.50,.035,.025,.15,accentMat);
   } else if(id==='pistol'){
     box(.32,-.22,-.47,.17,.13,.30,mainMat);box(.34,-.34,-.52,.13,.19,.12,darkMat);cylinder(.32,-.23,-.76,.035,.035,.28,mainMat);box(.32,-.17,-.54,.08,.035,.09,accentMat);
@@ -431,9 +431,39 @@ function buildGun(id) {
     box(.32,-.22,-.56,.23,.16,.45,mainMat);box(.32,-.34,-.47,.13,.22,.16,darkMat);cylinder(.32,-.22,-.88,.032,.032,.38,mainMat);box(.32,-.13,-.55,.09,.08,.15,accentMat);box(.26,-.20,-.64,.05,.18,.16,darkMat);box(.38,-.20,-.64,.05,.18,.16,darkMat);
   }
   if(w.scopeFov){
-    const scopeBody=box(.32,-.105,-.60,.22,.085,.20,darkMat);
-    cylinder(.32,-.055,-.60,.055,.055,.055,accentMat,'x');
-    cylinder(.32,-.055,-.60,.042,.042,.06,mainMat,'x');
+    box(.32,-.105,-.60,id==='sniper'?.25:.20,.085,.22,darkMat);
+    cylinder(.32,-.055,-.60,id==='sniper'?.072:.055,id==='sniper'?.072:.055,.065,accentMat,'x');
+    cylinder(.32,-.055,-.60,id==='sniper'?.056:.042,id==='sniper'?.056:.042,.07,mainMat,'x');
+    // Scope glass glows softly in the game's phase-energy palette.
+    const lens=new THREE.Mesh(new THREE.CircleGeometry(id==='sniper'?.045:.032,16),new THREE.MeshBasicMaterial({color:0x64fff0,transparent:true,opacity:.6}));lens.position.set(.32,-.055,-.565);lens.rotation.y=Math.PI/2;gunRoot.add(lens);
+  }
+  // Functional-looking silhouettes: each weapon gets parts associated with its real-world family, recolored for the NEON universe.
+  if(id==='pistol'){
+    box(.32,-.125,-.53,.17,.045,.26,darkMat);box(.32,-.095,-.43,.035,.045,.06,accentMat);box(.32,-.095,-.70,.035,.045,.07,accentMat);box(.405,-.22,-.49,.018,.055,.25,accentMat);
+  }else if(id==='revolver'){
+    for(let n=0;n<6;n++){const a=n*Math.PI/3;const port=new THREE.Mesh(new THREE.CylinderGeometry(.018,.018,.012,8),darkMat);port.position.set(.32+Math.cos(a)*.055,-.22+Math.sin(a)*.055,-.515);port.rotation.x=Math.PI/2;gunRoot.add(port);}
+    box(.32,-.13,-.40,.11,.07,.08,accentMat);box(.39,-.20,-.40,.08,.04,.10,darkMat);
+  }else if(id==='smg'){
+    box(.32,-.18,-.28,.25,.07,.18,darkMat);box(.32,-.43,-.59,.12,.22,.14,mainMat);box(.32,-.36,-.81,.13,.11,.09,darkMat);box(.22,-.23,-.68,.08,.13,.12,accentMat);
+  }else if(id==='shotgun'){
+    cylinder(.27,-.22,-.86,.035,.035,.47,accentMat);box(.32,-.27,-.69,.20,.10,.21,darkMat);box(.32,-.35,-.45,.15,.16,.20,mainMat);
+  }else if(id==='rifle'){
+    box(.32,-.41,-.63,.13,.20,.15,mainMat);box(.32,-.08,-.55,.16,.06,.13,accentMat);box(.18,-.20,-.57,.06,.14,.18,darkMat);box(.45,-.18,-.38,.16,.09,.17,darkMat);
+  }else if(id==='dmr'){
+    box(.32,-.39,-.65,.10,.18,.13,mainMat);box(.23,-.44,-.91,.025,.14,.04,accentMat);box(.41,-.44,-.91,.025,.14,.04,accentMat);box(.32,-.02,-.56,.11,.04,.14,darkMat);
+  }else if(id==='sniper'){
+    box(.32,-.29,-.47,.26,.12,.32,darkMat);box(.32,-.39,-.64,.14,.19,.16,mainMat);box(.20,-.21,-.63,.055,.06,.32,accentMat);box(.44,-.21,-.63,.055,.06,.32,accentMat);cylinder(.32,-.07,-.64,.079,.079,.26,darkMat,'x');
+  }else if(id==='lmg'){
+    box(.43,-.36,-.58,.24,.19,.24,darkMat);box(.43,-.26,-.58,.20,.045,.20,accentMat);box(.21,-.40,-.86,.045,.15,.12,mainMat);box(.40,-.13,-.48,.13,.07,.10,darkMat);
+  }else if(id==='burst'){
+    cylinder(.27,-.22,-.89,.025,.025,.42,accentMat);cylinder(.37,-.22,-.89,.025,.025,.42,mainMat);box(.32,-.10,-.56,.20,.09,.20,accentMat);box(.32,-.36,-.61,.13,.15,.18,darkMat);box(.18,-.20,-.58,.05,.18,.15,mainMat);
+  }
+  if(id==='knife'){
+    // Broad angular monomolecular blade: visibly knife-shaped, with a luminous inset edge.
+    const bladeShape=new THREE.Shape();bladeShape.moveTo(.24,-.28);bladeShape.lineTo(.13,-.13);bladeShape.lineTo(.055,.10);bladeShape.lineTo(.18,.045);bladeShape.lineTo(.30,-.16);bladeShape.lineTo(.24,-.28);
+    const bladeMesh=new THREE.Mesh(new THREE.ShapeGeometry(bladeShape),mainMat);bladeMesh.position.z=-.88;bladeMesh.material.side=THREE.DoubleSide;gunRoot.add(bladeMesh);
+    const edgeLine=new THREE.Mesh(new THREE.BoxGeometry(.018,.32,.012),accentMat);edgeLine.position.set(.17,-.065,-.895);edgeLine.rotation.z=.42;gunRoot.add(edgeLine);
+    box(.24,-.28,-.86,.15,.035,.06,accentMat);box(.32,-.34,-.56,.105,.20,.14,darkMat);
   }
   if(id!=='knife'){
     box(.32,-.30,-.67,.13,.10,.12,darkMat);
@@ -442,7 +472,30 @@ function buildGun(id) {
     muzzleMesh=new THREE.Mesh(new THREE.SphereGeometry(.075,8,8),new THREE.MeshBasicMaterial({color:0xffe9a5,transparent:true,opacity:.95}));
     muzzleMesh.position.set(.32,-.23,-1.12);muzzleMesh.visible=false;gunRoot.add(muzzleMesh);
   } else muzzleMesh=null;
-  gunRoot.position.set(0,0,0);
+  // First-person forearms and gloves anchor the weapon instead of making it float alone.
+  const sleeveMat=new THREE.MeshStandardMaterial({color:0x162738,metalness:.28,roughness:.72});
+  const gloveMat=new THREE.MeshStandardMaterial({color:0x111923,metalness:.18,roughness:.64});
+  const rightSleeve=box(.43,-.46,-.24,.18,.20,.32,sleeveMat);
+  const rightHand=box(.36,-.355,-.48,.14,.09,.15,gloveMat);
+  let leftSleeve=null,leftHand=null;
+  if(w.slot==='primary'){
+    leftSleeve=box(.095,-.50,-.40,.14,.19,.30,sleeveMat);
+    leftHand=box(.20,-.355,-.63,.14,.09,.17,gloveMat);
+  }else if(w.slot==='sidearm'){
+    leftSleeve=box(-.02,-.57,-.34,.14,.18,.22,sleeveMat);leftHand=box(.115,-.45,-.53,.13,.09,.14,gloveMat);leftSleeve.visible=false;leftHand.visible=false;
+  }
+  let reloadMagazine=null,reloadInsertMagazine=null;
+  if(w.slot!=='melee'){
+    const magDims=id==='lmg'?[.17,.19,.22]:id==='shotgun'?[.12,.17,.13]:id==='pistol'||id==='revolver'?[.09,.13,.10]:[.12,.17,.13];
+    const magX=id==='lmg'?.43:.32,magY=-.405,magZ=id==='pistol'||id==='revolver'?- .52:-.62;
+    reloadMagazine=box(magX,magY,magZ,magDims[0],magDims[1],magDims[2],darkMat);
+    reloadMagazine.userData.basePosition=reloadMagazine.position.clone();
+    reloadInsertMagazine=box(.13,-.64,-.51,magDims[0],magDims[1],magDims[2],darkMat);reloadInsertMagazine.visible=false;reloadInsertMagazine.userData.slotPosition=new THREE.Vector3(magX,magY,magZ);
+  }
+  for(const handPart of [leftSleeve,leftHand,rightSleeve,rightHand])if(handPart)handPart.userData.baseRotation=handPart.rotation.clone();
+  gunRoot.userData={leftSleeve,leftHand,rightSleeve,rightHand,reloadMagazine,reloadInsertMagazine};
+  gunRoot.position.set(0,0,0);gunRoot.rotation.set(0,0,0);
+  state.weaponMotion.drawAt=performance.now();state.weaponMotion.inspectAt=0;state.weaponMotion.fireAt=0;state.weaponMotion.knifeAt=0;
 }
 
 function buildCharacterWeapon(root,weaponId='pistol'){
@@ -589,6 +642,9 @@ function soundShot(weaponId){
   // A short synthesized energy coil gives the weapons a coherent space-combat identity without making them sound alike.
   tone(weaponId==='sniper'?'sine':'triangle',p.tail,p.tail*(weaponId==='sniper'?.45:.72),p.glint,weaponId==='sniper'?.24:.095,weaponId==='sniper'?.045:.012,'lowpass',p.tail*2.1);
   if(['revolver','shotgun','lmg','sniper'].includes(weaponId))transient(.045,.11,p.noise*.32,p.crack*.58,.55);
+  // A fast, quiet mechanical/electromagnetic return click separates the weapon families.
+  const clicks={pistol:[1850,.018,.045],revolver:[920,.028,.07],smg:[2450,.012,.025],shotgun:[620,.035,.075],rifle:[1320,.016,.038],dmr:[1780,.014,.045],sniper:[470,.045,.10],lmg:[780,.024,.05],burst:[3200,.012,.035]};
+  if(clicks[weaponId]){const [freq,dur,vol]=clicks[weaponId];tone('square',freq,freq*.72,vol,dur,p.duration*.46,'highpass',Math.max(650,freq*.7));}
 }
 function soundFootstep({volume=.12,remote=false}={}){
   initAudio();const ctx=state.audio;if(!ctx||!state.noiseBuffer)return;const t=ctx.currentTime;
@@ -627,7 +683,7 @@ function makeAmmoFor(id,full=true){const w=WEAPON_BY_ID[id];if(!state.ammo[id])s
 function currentWeapon(){return WEAPON_BY_ID[state.currentWeapon]||WEAPONS[0];}
 function setWeapon(id,notify=false){
   if(!WEAPON_BY_ID[id])return;
-  state.fireHeld=false;state.sniperMustRelease=false;if(state.zoomed)setZoom(false);
+  state.fireHeld=false;state.sniperMustRelease=false;state.burstRemaining=0;state.burstNextAt=0;if(state.zoomed)setZoom(false);
   if(!state.owned.has(id)){if(notify)showToast('구매한 무기만 장착할 수 있어요. 구매 단계에서 구입하세요.');return;}
   if(state.mode==='online'){
     if(!state.socketReady||!state.socket){if(notify)showToast('서버에 연결 중입니다.');return;}
@@ -810,7 +866,7 @@ function reloadWeapon(){
   const w=currentWeapon(),a=state.ammo[w.id];
   if(w.slot==='melee'){showToast('칼은 재장전할 필요가 없습니다.',900);return;}
   if(a.mag>=w.mag||a.reserve<=0){showToast(a.mag>=w.mag?'탄창이 이미 가득 찼습니다.':'예비 탄약이 없습니다.',900);return;}
-  state.reloading=true;state.reloadWeaponId=w.id;state.reloadUntil=performance.now()+w.reload*1000;soundReload();showToast('재장전 중...',700);
+  state.reloading=true;state.reloadWeaponId=w.id;state.reloadUntil=performance.now()+w.reload*1000;state.weaponMotion.reloadAt=performance.now();soundReload();showToast('재장전 중...',700);
 }
 function completeReload(now){
   if(!state.reloading||now<state.reloadUntil)return;
@@ -823,18 +879,31 @@ function addShotFx(from,to,color=0x8ffff0){
   const geo=new THREE.BufferGeometry().setFromPoints([from.clone(),to.clone()]);const mat=new THREE.LineBasicMaterial({color,transparent:true,opacity:.85});const line=new THREE.Line(geo,mat);scene.add(line);state.shotFx.push({line,mat,geo,expires:performance.now()+75});
 }
 function cameraForward(){const d=new THREE.Vector3();camera.getWorldDirection(d);return d.normalize();}
-function doShoot(){
+function doShoot(fromBurst=false){
   if(state.phase!=='live'||state.paused||state.reloading)return false;
-  initAudio();const w=currentWeapon(),ammo=state.ammo[w.id],now=performance.now();if(now-state.lastShot<w.rate*1000)return false;
-  if(w.id!=='knife'&&state.mode!=='training'&&ammo.mag<=0){if(now-state.lastEmptyToast>1200){showToast('탄약이 없습니다. R로 재장전하세요.',850);state.lastEmptyToast=now;}return false;}
-  state.lastShot=now;state.recoilHeat=Math.min(2.4,state.recoilHeat+Math.max(.12,w.recoil*18));state.viewKick=Math.min(.14,state.viewKick+(w.recoil||.003));
+  const w=currentWeapon(),ammo=state.ammo[w.id],now=performance.now();
+  if(w.id==='burst'&&fromBurst&&state.burstRemaining<=0)return false;
+  if(!fromBurst&&now-state.lastShot<w.rate*1000)return false;
+  if(!fromBurst&&w.id==='burst'&&state.burstRemaining>0)return false;
+  if(w.id!=='knife'&&state.mode!=='training'&&ammo.mag<=0){if(now-state.lastEmptyToast>1200){showToast('탄약이 없습니다. R로 재장전하세요.',850);state.lastEmptyToast=now;}state.burstRemaining=0;return false;}
+  let burstIdForShot=null,burstSeqForShot=null;
+  if(w.id==='burst'){
+    if(!fromBurst){state.burstId=(state.burstId+1)%2147483000;if(state.burstId===0)state.burstId=1;state.burstRemaining=2;state.burstNextAt=now*(1)+(w.burstGap||.055)*1000;state.burstSeq=1;burstIdForShot=state.burstId;burstSeqForShot=0;}
+    else{burstIdForShot=state.burstId;burstSeqForShot=state.burstSeq++;state.burstRemaining=Math.max(0,state.burstRemaining-1);state.burstNextAt=state.burstRemaining?now+(w.burstGap||.055)*1000:0;}
+  }
+  state.lastShot=now;state.weaponMotion.fireAt=now;
+  if(w.id==='knife')state.weaponMotion.knifeAt=now;
+  state.recoilHeat=Math.min(2.4,state.recoilHeat+Math.max(.12,w.recoil*18));state.viewKick=Math.min(.14,state.viewKick+(w.recoil||.003));
   if(state.mode==='training'){ammo.mag=w.mag;ammo.reserve=w.reserve;}else if(w.id!=='knife')ammo.mag--;
   if(w.id==='knife')soundKnife();else soundShot(w.id);
   if(muzzleMesh&&w.id!=='knife'){muzzleMesh.visible=true;state.muzzleUntil=now+55;}
-  const direction=cameraForward();const origin=camera.position.clone();let hitPoint=origin.clone().add(direction.clone().multiplyScalar(w.range));let hitOwner=null;
-  const pellets=w.id==='shotgun'?7:1;const localDamageByTarget=new Map();let firstShotDirection=direction.clone();
+  const direction=cameraForward();const origin=camera.position.clone();let hitPoint=origin.clone().add(direction.clone().multiplyScalar(w.range));
+  const pellets=w.id==='shotgun'?(w.pellets||10):1;const localDamageByTarget=new Map();let firstShotDirection=direction.clone();
   for(let i=0;i<pellets;i++){
-    const d=direction.clone();const heatFactor=1+state.recoilHeat*(1.25-w.control*.075);const spread=(state.zoomed?w.spread*.34:w.spread)*heatFactor;
+    const d=direction.clone();const heatFactor=1+state.recoilHeat*(1.25-w.control*.075);
+    let spread=state.zoomed?(w.scopeSpread??w.spread*.34):w.id==='sniper'?(w.hipSpread??.06):w.spread;
+    if(w.id==='shotgun')spread*=1.0;
+    spread*=heatFactor;
     d.x+=(Math.random()-.5)*spread;d.y+=(Math.random()-.5)*spread;d.z+=(Math.random()-.5)*spread;d.normalize();if(i===0)firstShotDirection.copy(d);raycaster.set(origin,d);raycaster.far=w.range;
     const hits=raycaster.intersectObjects(targetObjects,false);let h=hits.find(x=>{
       const targetId=x.object.userData.targetId;if(!targetId)return false;
@@ -843,22 +912,18 @@ function doShoot(){
       return state.mode==='online'&&state.remotePlayers.has(targetId);
     });
     if(h){const blockers=raycaster.intersectObjects(obstacleMeshes,false);if(blockers.length&&blockers[0].distance<h.distance-.06)h=null;}
-    if(h){hitPoint=h.point;hitOwner=h.object.userData.targetId;
-      if(String(hitOwner).startsWith('bot-')){const bot=state.botList.find(b=>b.id===hitOwner);if(bot&&bot.alive){const part=h.object.userData.part;const dealt=w.id==='knife'?40:w.damage*getHitMultiplier(part);localDamageByTarget.set(hitOwner,(localDamageByTarget.get(hitOwner)||0)+dealt);}}
-      else if(String(hitOwner).startsWith('practice-')){const target=state.trainingTargets.find(t=>t.id===hitOwner);if(target&&target.alive){const part=h.object.userData.part;const dealt=w.id==='knife'?40:w.damage*getHitMultiplier(part);localDamageByTarget.set(hitOwner,(localDamageByTarget.get(hitOwner)||0)+dealt);flashCharacter(target.root);}}
-      // Online damage remains server-authoritative; the client only renders prediction and feedback.
+    if(h){hitPoint=h.point;const hitOwner=h.object.userData.targetId;const part=h.object.userData.part||'body';
+      if(String(hitOwner).startsWith('bot-')){const bot=state.botList.find(b=>b.id===hitOwner);if(bot&&bot.alive){let dealt=w.damage*getHitMultiplier(part);if(w.id==='knife')dealt=40;if(w.id==='shotgun')dealt*=Math.max(.20,1-(h.distance/w.range)*.78);localDamageByTarget.set(hitOwner,(localDamageByTarget.get(hitOwner)||0)+dealt);}}
+      else if(String(hitOwner).startsWith('practice-')){const target=state.trainingTargets.find(t=>t.id===hitOwner);if(target&&target.alive){let dealt=w.damage*getHitMultiplier(part);if(w.id==='knife')dealt=40;if(w.id==='shotgun')dealt*=Math.max(.20,1-(h.distance/w.range)*.78);localDamageByTarget.set(hitOwner,(localDamageByTarget.get(hitOwner)||0)+dealt);flashCharacter(target.root);}}
+      // Online damage remains server-authoritative. The server samples shotgun pellets independently.
     }
   }
   if(w.id!=='knife')addShotFx(origin,hitPoint,w.id==='sniper'?0xffdfb5:0x73f8e4);
   if(state.mode==='training'&&localDamageByTarget.size){
-    for(const [targetId,damage] of localDamageByTarget){
-      const target=state.trainingTargets.find(t=>t.id===targetId&&t.alive);if(!target)continue;
-      target.hp-=damage;soundHit();$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),100);
-      if(target.hp<=0){target.hp=0;target.alive=false;target.respawnAt=Date.now()+3000;target.root.visible=false;unregisterTarget(target.id);void awardTrainingXP();soundKill();$('kill-banner').innerHTML=`${target.name.toUpperCase()} RESET <small>RESPAWN 3 SEC · +10 XP</small>`;$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),900);}
-    }
+    for(const [targetId,damage] of localDamageByTarget){const target=state.trainingTargets.find(t=>t.id===targetId&&t.alive);if(!target)continue;target.hp-=damage;soundHit();$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),100);if(target.hp<=0){target.hp=0;target.alive=false;target.respawnAt=Date.now()+3000;target.root.visible=false;unregisterTarget(target.id);void awardTrainingXP();soundKill();$('kill-banner').innerHTML=`${target.name.toUpperCase()} RESET <small>RESPAWN 3 SEC · +10 XP</small>`;$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),900);}}
   }
   if(state.mode==='ai'&&localDamageByTarget.size){for(const [targetId,damage] of localDamageByTarget){const bot=state.botList.find(b=>b.id===targetId&&b.alive);if(!bot)continue;bot.hp-=damage;flashCharacter(bot.root);soundHit();$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),100);if(bot.hp<=0){bot.hp=0;bot.alive=false;bot.root.visible=false;unregisterTarget(bot.id);state.money+=75;soundKill();$('kill-banner').innerHTML=`${bot.name} ELIMINATED <small>+75 CR</small>`;$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),850);updateHUD();}}if(state.botList.every(b=>!b.alive))endLocalRound(true,'상대 플레이어를 처치했습니다.');}
-  if(state.mode==='online'&&state.socketReady){state.socket.emit('fire',{weaponId:w.id,origin:{x:origin.x,y:origin.y,z:origin.z},direction:{x:firstShotDirection.x,y:firstShotDirection.y,z:firstShotDirection.z}});}
+  if(state.mode==='online'&&state.socketReady){const serverAim=w.id==='shotgun'?direction:firstShotDirection;const payload={weaponId:w.id,origin:{x:origin.x,y:origin.y,z:origin.z},direction:{x:serverAim.x,y:serverAim.y,z:serverAim.z}};if(w.id==='burst'){payload.burstId=burstIdForShot;payload.burstSeq=burstSeqForShot;}state.socket.emit('fire',payload);}
   if(w.id==='sniper'){state.sniperMustRelease=true;setZoom(false);}
   updateAmmoHUD();return true;
 }
@@ -1002,6 +1067,7 @@ function setupEvents(){
       if(state.mode!=='menu'&&state.phase!=='ended'&&state.phase!=='matchover'){state.paused=true;pauseMenu.classList.remove('hidden');if(document.pointerLockElement)document.exitPointerLock();}return;
     }
     if(state.mode==='menu'||state.phase==='ended'||state.paused)return;
+    if(e.code==='Enter'&&state.phase==='live'){state.weaponMotion.inspectAt=performance.now();showToast('무기 관찰',700);return;}
     state.keys.add(e.code);
     if(e.code==='KeyR')reloadWeapon();if(e.code==='KeyQ')toggleZoom();if(e.code==='KeyT'&&state.mode==='training')openTrainingWeapons();if(/^Digit[1-9]$/.test(e.code))switchWeaponByNumber(Number(e.code.slice(-1)));
     if(e.code==='KeyB'&&state.phase==='buy')openBuy();
@@ -1048,9 +1114,34 @@ function updateWorld(dt,now){
     const bob=state.walkIntensity>0?Math.abs(Math.sin(state.walkCycle*2))*.038*state.walkIntensity:0;
     const sway=state.walkIntensity>0?Math.sin(state.walkCycle)*.022*state.walkIntensity:0;
     camera.position.set(state.pos.x+sway*.24,state.pos.y+1.58+bob,state.pos.z);camera.rotation.order='YXZ';camera.rotation.y=state.yaw;camera.rotation.x=THREE.MathUtils.clamp(state.pitch+state.viewKick,-1.3,1.3);
-    gunRoot.position.x=(state.device==='mobile'?.03:0)+sway;gunRoot.position.y=bob*.65;gunRoot.position.z=state.viewKick*1.2;gunRoot.visible=state.phase==='live'||state.phase==='buy';
-    // Holding the trigger repeats at each weapon's rate. Sniper requires a release between shots.
-    const activeWeapon=currentWeapon();if(state.fireHeld&&!state.sniperMustRelease&&activeWeapon.id!=='sniper'&&state.phase==='live'&&!state.paused&&now-state.lastShot>=activeWeapon.rate*1000)doShoot();
+    const activeWeapon=currentWeapon();
+    // Weapon draw, reload, recoil, inspect and melee-swing poses are procedural and allocation-free per frame.
+    const motion=state.weaponMotion, clamp01=v=>Math.max(0,Math.min(1,v)), easeOut=v=>1-Math.pow(1-v,3);
+    const drawT=clamp01((now-motion.drawAt)/(reduceMotion?80:440)), drawOffset=(1-easeOut(drawT));
+    const fireAge=now-motion.fireAt, fireKick=fireAge>=0&&fireAge<180?Math.exp(-fireAge/52):0;
+    let inspectX=0,inspectY=0,inspectZ=0,inspectRot=0;
+    if(motion.inspectAt&&now-motion.inspectAt<1500){const it=(now-motion.inspectAt)/1500;inspectY=Math.sin(Math.PI*it)*.085;inspectX=Math.sin(Math.PI*it)*.13;inspectRot=Math.sin(Math.PI*it)*.55;}
+    const reloadProgress=state.reloading&&activeWeapon.reload>0?clamp01((now-(motion.reloadAt||now))/(activeWeapon.reload*1000)):0;
+    const reloadWave=state.reloading?Math.sin(Math.PI*reloadProgress):0;
+    const knifeAge=now-motion.knifeAt, knifeWave=activeWeapon.id==='knife'&&knifeAge>=0&&knifeAge<310?Math.sin(Math.PI*clamp01(knifeAge/310)):0;
+    gunRoot.position.x=(state.device==='mobile'?.03:0)+sway+inspectX+reloadWave*(activeWeapon.slot==='sidearm'?.10:.035);
+    gunRoot.position.y=bob*.65+drawOffset*.48+inspectY-reloadWave*.09;
+    gunRoot.position.z=state.viewKick*1.2+drawOffset*.65+fireKick*.13;
+    gunRoot.rotation.x=-fireKick*.10+reloadWave*.11+knifeWave*.16;
+    gunRoot.rotation.y=inspectRot+reloadWave*.05;
+    gunRoot.rotation.z=-drawOffset*.42+Math.sin(state.walkCycle)*.018*state.walkIntensity+inspectRot*.45+reloadWave*(activeWeapon.slot==='sidearm'?.16:.06)-knifeWave*.88;
+    const hands=gunRoot.userData||{};const showSupportHand=activeWeapon.slot==='primary'||(state.reloading&&activeWeapon.slot==='sidearm');
+    if(hands.leftSleeve){hands.leftSleeve.visible=showSupportHand;const br=hands.leftSleeve.userData.baseRotation;if(br){hands.leftSleeve.rotation.x=br.x+reloadWave*.42+fireKick*.12;hands.leftSleeve.rotation.z=br.z-reloadWave*.28;}}
+    if(hands.leftHand){hands.leftHand.visible=showSupportHand;const br=hands.leftHand.userData.baseRotation;if(br){hands.leftHand.rotation.x=br.x+reloadWave*.52;hands.leftHand.rotation.z=br.z-reloadWave*.22;}}
+    if(hands.rightSleeve){const br=hands.rightSleeve.userData.baseRotation;if(br)hands.rightSleeve.rotation.x=br.x-fireKick*.22+reloadWave*.12;}
+    if(hands.rightHand){const br=hands.rightHand.userData.baseRotation;if(br)hands.rightHand.rotation.x=br.x-fireKick*.27+reloadWave*.18;}
+    // Magazine removal/insertion phases make the reload readable instead of only bobbing the weapon.
+    if(hands.reloadMagazine){const base=hands.reloadMagazine.userData.basePosition||new THREE.Vector3(.32,-.405,-.62);hands.reloadMagazine.position.copy(base);const removing=reloadProgress>=.22&&reloadProgress<.43;const magazineAbsent=reloadProgress>=.43&&reloadProgress<.58;const inserting=reloadProgress>=.58&&reloadProgress<.84;hands.reloadMagazine.visible=!magazineAbsent&&!inserting;if(removing){const k=(reloadProgress-.22)/.21;hands.reloadMagazine.position.x-=k*.10;hands.reloadMagazine.position.y-=k*.25;hands.reloadMagazine.rotation.x=k*.45;}else hands.reloadMagazine.rotation.x=0;}
+    if(hands.reloadInsertMagazine){const entering=state.reloading&&reloadProgress>=.48&&reloadProgress<.84;hands.reloadInsertMagazine.visible=entering;if(entering){const k=clamp01((reloadProgress-.48)/.36);const slot=hands.reloadInsertMagazine.userData.slotPosition;hands.reloadInsertMagazine.position.set(.13+(slot.x-.13)*easeOut(k),-.68+(slot.y+.68)*easeOut(k),-.51+(slot.z+.51)*easeOut(k));hands.reloadInsertMagazine.rotation.x=(1-k)*-.28;}else hands.reloadInsertMagazine.rotation.x=0;}
+    gunRoot.visible=state.phase==='live'||state.phase==='buy';
+    // A burst trigger sends three paced server-authoritative bullets. Sniper still requires a fresh click.
+    if(state.burstRemaining>0&&now>=state.burstNextAt&&state.phase==='live'&&!state.paused)doShoot(true);
+    else if(state.fireHeld&&!state.sniperMustRelease&&activeWeapon.id!=='sniper'&&state.phase==='live'&&!state.paused&&now-state.lastShot>=activeWeapon.rate*1000)doShoot();
     completeReload(now);
     if(state.phase==='buy'&&Date.now()>=state.phaseEnd&&state.mode==='ai')beginLocalLive();
     if(state.mode==='ai'&&state.phase==='live'&&Date.now()>=state.roundLimit)endLocalRound(state.hp>0,'시간 종료');

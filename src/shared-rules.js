@@ -18,7 +18,7 @@ export function applyExperienceProgress(levelValue, xpValue, amountValue) {
 }
 
 export function getHitMultiplier(part) {
-  if (part === 'head') return 2.4;
+  if (part === 'head') return 1.30;
   if (part === 'legs') return 0.65;
   return 1;
 }
