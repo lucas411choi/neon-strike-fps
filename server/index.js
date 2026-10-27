@@ -307,15 +307,15 @@ const KILL_REWARD = 75;
 // These entries were missing in the previous build, causing ReferenceError inside the
 // buy/equip/fire Socket.IO handlers and making every online shot fail before damage.
 const weapons = Object.freeze({
-  pistol:   { slot: 'sidearm', price: 0,    damage: 22, rate: 0.32, range: 55 },
-  revolver: { slot: 'sidearm', price: 550,  damage: 35, rate: 0.52, range: 62 },
-  smg:      { slot: 'primary', price: 850,  damage: 13, rate: 0.085, range: 25 },
-  shotgun:  { slot: 'primary', price: 1100, damage: 8, rate: 0.82, range: 13 },
-  rifle:    { slot: 'primary', price: 1950, damage: 24, rate: 0.13, range: 50 },
-  dmr:      { slot: 'primary', price: 2200, damage: 34, rate: 0.45, range: 75 },
+  pistol:   { slot: 'sidearm', price: 0,    damage: 10, rate: 0.32, range: 55 },
+  revolver: { slot: 'sidearm', price: 550,  damage: 30, rate: 0.52, range: 62 },
+  smg:      { slot: 'primary', price: 850,  damage: 7, rate: 0.12, range: 25 },
+  shotgun:  { slot: 'primary', price: 1100, damage: 6.5, rate: 0.86, range: 16, pellets: 10, spread: 0.105 },
+  rifle:    { slot: 'primary', price: 1950, damage: 15, rate: 0.13, range: 50 },
+  dmr:      { slot: 'primary', price: 2200, damage: 20, rate: 0.32, range: 75 },
   sniper:   { slot: 'primary', price: 3000, damage: 78, rate: 1.12, range: 100 },
   lmg:      { slot: 'primary', price: 2500, damage: 16, rate: 0.115, range: 42 },
-  burst:    { slot: 'primary', price: 1600, damage: 18, rate: 0.34, range: 45 },
+  burst:    { slot: 'primary', price: 1600, damage: 14, rate: 0.30, range: 45, burstCount: 3, burstGap: 0.055 },
   knife:    { slot: 'melee', price: 0, damage: 40, rate: 0.48, range: 2.65 },
 });
 const rooms = new Map();
@@ -585,7 +585,7 @@ io.on('connection', socket => {
     }
     leaveRoom(socket,false);
     const code=code6();
-    const p={id:socket.id,sessionId,name,device,accountId:authenticatedAccount?.id??null,connected:true,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol','knife'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0,reconnectTimer:null};
+    const p={id:socket.id,sessionId,name,device,accountId:authenticatedAccount?.id??null,connected:true,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol','knife'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0,activeBurstId:null,burstNextSeq:1,burstStartedAt:0,reconnectTimer:null};
     const room={code,rule:requestedRule,map:requestedMap,players:new Map([[socket.id,p]]),phase:'waiting',round:0,phaseEndsAt:0,liveEndsAt:0,timer:null};
     rooms.set(code,room);socket.data.roomCode=code;socket.join(code);
     socket.emit('roomCreated',{code,rule:requestedRule,device,map:room.map});
@@ -604,7 +604,7 @@ io.on('connection', socket => {
     }
     leaveRoom(socket,false);
     const name=safeName(payload?.name);
-    const p={id:socket.id,sessionId,name,device,accountId:authenticatedAccount?.id??null,connected:true,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol','knife'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0,reconnectTimer:null};
+    const p={id:socket.id,sessionId,name,device,accountId:authenticatedAccount?.id??null,connected:true,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol','knife'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0,activeBurstId:null,burstNextSeq:1,burstStartedAt:0,reconnectTimer:null};
     room.players.set(socket.id,p);socket.data.roomCode=code;socket.join(code);
     socket.emit('roomJoined',{code,rule:room.rule,device,map:room.map});
     socket.to(code).emit('playerJoined',{id:socket.id,player:publicPlayer(p)});
@@ -673,54 +673,64 @@ io.on('connection', socket => {
     const room=rooms.get(socket.data.roomCode);const shooter=playerById(room,socket.id);
     if(!room||!shooter||shooter.connected===false||room.phase!=='live'||shooter.hp<=0)return;
     const id=String(payload?.weaponId||'');const w=weapons[id];if(!w||id!==shooter.weapon||!(shooter.ownedWeapons||['pistol','knife']).includes(id))return;
-    const now=Date.now();if(now-shooter.lastFireAt < w.rate*1000*.72)return;shooter.lastFireAt=now;
+    const now=Date.now();
+    if(id==='burst'){
+      const burstId=Number(payload?.burstId),seq=Number(payload?.burstSeq);
+      if(!Number.isInteger(burstId)||burstId<1||!Number.isInteger(seq)||seq<0||seq>2)return;
+      if(seq===0){if(now-shooter.lastFireAt<w.rate*1000*.72)return;shooter.activeBurstId=burstId;shooter.burstNextSeq=1;shooter.burstStartedAt=now;shooter.lastFireAt=now;}
+      else{if(shooter.activeBurstId!==burstId||seq!==shooter.burstNextSeq||now-shooter.burstStartedAt>360)return;shooter.burstNextSeq++;shooter.lastFireAt=now;if(seq===2)shooter.activeBurstId=null;}
+    }else{if(now-shooter.lastFireAt < w.rate*1000*.72)return;shooter.lastFireAt=now;}
     const o=payload?.origin,d=payload?.direction;
     if(!o||!d||![o.x,o.y,o.z,d.x,d.y,d.z].every(v=>Number.isFinite(Number(v))))return;
     const dirLen=Math.hypot(Number(d.x),Number(d.y),Number(d.z));if(dirLen<.7||dirLen>1.3)return;
     const origin={x:Number(o.x),y:Number(o.y),z:Number(o.z)};const direction={x:Number(d.x)/dirLen,y:Number(d.y)/dirLen,z:Number(d.z)/dirLen};
     const targetEntry=[...room.players.entries()].find(([id2,p])=>id2!==socket.id&&p.hp>0);
     let end={x:origin.x+direction.x*w.range,y:origin.y+direction.y*w.range,z:origin.z+direction.z*w.range};
-    let hit=null;
+    let hit=null,totalDamage=0,closestHitDistance=Infinity;
     if(targetEntry){
       const [targetId,target]=targetEntry;
       const baseY=Number(target.y)||0, tx=Number(target.x)||0, tz=Number(target.z)||0;
-      // Approximate articulated hitboxes, checked from nearest to farthest along the ray.
-      // The ellipsoid test accounts for head, torso, and legs without requiring a physics engine.
-      const ellipsoidDistance=(center,radii)=>{
-        const ox=(origin.x-center.x)/radii.x, oy=(origin.y-center.y)/radii.y, oz=(origin.z-center.z)/radii.z;
-        const dx=direction.x/radii.x, dy=direction.y/radii.y, dz=direction.z/radii.z;
-        const a=dx*dx+dy*dy+dz*dz, b=2*(ox*dx+oy*dy+oz*dz), c=ox*ox+oy*oy+oz*oz-1;
-        const disc=b*b-4*a*c;
-        if(a<1e-9||disc<0)return null;
-        const root=Math.sqrt(disc);let t=(-b-root)/(2*a);if(t<0)t=(-b+root)/(2*a);
-        return t>=0&&t<=w.range?t:null;
-      };
       const parts=[
         {part:'head',center:{x:tx,y:baseY+1.67,z:tz},radii:{x:.23,y:.25,z:.23},multiplier:getHitMultiplier('head')},
         {part:'torso',center:{x:tx,y:baseY+1.08,z:tz},radii:{x:.40,y:.43,z:.30},multiplier:getHitMultiplier('torso')},
         {part:'legs',center:{x:tx,y:baseY+.39,z:tz},radii:{x:.34,y:.40,z:.31},multiplier:getHitMultiplier('legs')},
       ];
-      let nearestPart=null;
-      for(const part of parts){
-        const distance=ellipsoidDistance(part.center,part.radii);
-        if(distance==null||isShotBlocked(origin,direction,distance,room.map))continue;
-        if(!nearestPart||distance<nearestPart.distance)nearestPart={...part,distance};
-      }
-      if(nearestPart){
-        hit={id:targetId,p:target,part:nearestPart.part,multiplier:nearestPart.multiplier};
-        end={x:origin.x+direction.x*nearestPart.distance,y:origin.y+direction.y*nearestPart.distance,z:origin.z+direction.z*nearestPart.distance};
+      const ellipsoidDistance=(rayDirection,center,radii)=>{
+        const ox=(origin.x-center.x)/radii.x, oy=(origin.y-center.y)/radii.y, oz=(origin.z-center.z)/radii.z;
+        const dx=rayDirection.x/radii.x, dy=rayDirection.y/radii.y, dz=rayDirection.z/radii.z;
+        const a=dx*dx+dy*dy+dz*dz,b=2*(ox*dx+oy*dy+oz*dz),c=ox*ox+oy*oy+oz*oz-1,disc=b*b-4*a*c;
+        if(a<1e-9||disc<0)return null;const root=Math.sqrt(disc);let t=(-b-root)/(2*a);if(t<0)t=(-b+root)/(2*a);return t>=0&&t<=w.range?t:null;
+      };
+      const pelletCount=id==='shotgun'?(w.pellets||10):1;
+      const rightLen=Math.hypot(direction.z,direction.x)||1;const right={x:direction.z/rightLen,y:0,z:-direction.x/rightLen};
+      const up={x:right.y*direction.z-right.z*direction.y,y:right.z*direction.x-right.x*direction.z,z:right.x*direction.y-right.y*direction.x};
+      const upLen=Math.hypot(up.x,up.y,up.z)||1;up.x/=upLen;up.y/=upLen;up.z/=upLen;
+      for(let pellet=0;pellet<pelletCount;pellet++){
+        let rayDirection=direction;
+        if(id==='shotgun'){
+          const angle=Math.random()*Math.PI*2,r=Math.sqrt(Math.random())*(w.spread||.105);
+          const x=direction.x+right.x*Math.cos(angle)*r+up.x*Math.sin(angle)*r;
+          const y=direction.y+right.y*Math.cos(angle)*r+up.y*Math.sin(angle)*r;
+          const z=direction.z+right.z*Math.cos(angle)*r+up.z*Math.sin(angle)*r;const len=Math.hypot(x,y,z)||1;rayDirection={x:x/len,y:y/len,z:z/len};
+        }
+        let nearestPart=null;
+        for(const part of parts){const distance=ellipsoidDistance(rayDirection,part.center,part.radii);if(distance==null||isShotBlocked(origin,rayDirection,distance,room.map))continue;if(!nearestPart||distance<nearestPart.distance)nearestPart={...part,distance};}
+        if(nearestPart){
+          let pelletDamage=id==='knife'?40:w.damage*(nearestPart.multiplier||1);
+          if(id==='shotgun')pelletDamage*=Math.max(.2,1-(nearestPart.distance/w.range)*.78);
+          totalDamage+=pelletDamage;
+          if(nearestPart.distance<closestHitDistance){closestHitDistance=nearestPart.distance;hit={id:targetId,p:target,part:nearestPart.part,multiplier:nearestPart.multiplier};end={x:origin.x+rayDirection.x*nearestPart.distance,y:origin.y+rayDirection.y*nearestPart.distance,z:origin.z+rayDirection.z*nearestPart.distance};}
+        }
       }
     }
-    // Reuse the event for remote audio; clients intentionally suppress the tracer for melee swings.
+    // One tracer per trigger; the server computes all shotgun pellets and their range falloff.
     io.to(room.code).emit('shotFx',{id:socket.id,weaponId:id,origin,end});
-    if(!hit)return;
-    let damage=id==='knife'?40:w.damage * (hit.multiplier || 1);
-    // The server approximates a close-range pellet cluster because a client sends one authoritative aim ray.
-    if(id==='shotgun')damage=25.6 * (hit.multiplier || 1);
+    if(!hit||totalDamage<=0)return;
+    const damage=totalDamage;
     const t=hit.p;let left=damage;if(t.armor>0){const absorbRatio=t.armorTier==='heavy'?.60:.35;const absorbed=Math.min(t.armor,damage*absorbRatio);t.armor-=absorbed;left-=absorbed;if(t.armor<=0){t.armor=0;t.armorTier='none';}}t.hp=Math.max(0,t.hp-left);
     const killed=t.hp<=0;
     if(killed)shooter.money+=KILL_REWARD;
-    io.to(room.code).emit('damage',{attackerId:socket.id,targetId:hit.id,hp:t.hp,armor:t.armor,armorTier:t.armorTier,killed,damage,hitPart:hit.part||'torso'});
+    io.to(room.code).emit('damage',{attackerId:socket.id,targetId:hit.id,hp:t.hp,armor:t.armor,armorTier:t.armorTier,killed,damage,hitPart:hit.part||'torso',pelletsHit:id==='shotgun'?Math.max(1,Math.round(damage/Math.max(1,w.damage))):1});
     for(const [pid,p] of room.players)if(pid===hit.id)io.to(pid).emit('selfState',selfPayload(p));
     socket.emit('selfState',selfPayload(shooter));
     if(killed)endRound(room,socket.id,`${shooter.name} 처치 성공`);
