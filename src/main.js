@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { io } from 'socket.io-client';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { XP_PER_LEVEL, getHitMultiplier } from './shared-rules.js';
 
 const $ = (id) => document.getElementById(id);
@@ -382,6 +383,7 @@ function renderLobbyWeapons(){
   const selected=WEAPON_BY_ID[state.lobbySelectedWeapon]||WEAPON_BY_ID.rifle;
   $('showcase-weapon-name').textContent=selected.name;$('showcase-weapon-desc').textContent=selected.desc;$('showcase-power').textContent=selected.damage;$('showcase-control').textContent=`${selected.control} / 10`;$('showcase-mag').textContent=selected.mag;
   const model=$('lobby-weapon-showcase')?.querySelector('.weapon-showcase-model');if(model){model.className=`weapon-showcase-model ${selected.id}-showcase`;model.style.setProperty('--showcase-color',`#${selected.color.toString(16).padStart(6,'0')}`);}
+  updateWeaponPreview(selected.id);
   for(const w of WEAPONS){
     const button=document.createElement('button');button.className='lobby-weapon-card'+(state.lobbySelectedWeapon===w.id?' selected':'');
     button.innerHTML=`<span class="weapon-card-index">${String(WEAPONS.indexOf(w)+1).padStart(2,'0')} / ${w.type}</span><span class="weapon-mini-stage ${w.id}-showcase"><span class="weapon-mini-model" style="--showcase-color:#${w.color.toString(16).padStart(6,'0')}"><i></i><b></b><em></em><span></span></span></span><b>${w.name}</b><small>${w.desc}</small><span class="weapon-card-stats"><em>DMG ${w.damage}</em><em>${w.slot==='melee'?'MELEE':`MAG ${w.mag}`}</em></span>`;
@@ -396,16 +398,189 @@ function getGroundHeight(x,z){
 }
 const gunRoot = new THREE.Group(); camera.add(gunRoot); scene.add(camera);
 let muzzleMesh = null;
+const weaponModelSources = new Map();
+const weaponModelLoader = new GLTFLoader();
+const WEAPON_MODEL_BASE_URL = '/models/weapons/';
+const WEAPON_MODEL_CONFIG = {
+  pistol:   { scale: .40, remoteScale: .25, offset: [.32, -.23, -.58] },
+  revolver: { scale: .38, remoteScale: .24, offset: [.32, -.23, -.58] },
+  smg:      { scale: .30, remoteScale: .19, offset: [.32, -.23, -.58] },
+  shotgun:  { scale: .30, remoteScale: .19, offset: [.32, -.23, -.58] },
+  rifle:    { scale: .28, remoteScale: .18, offset: [.32, -.23, -.58] },
+  dmr:      { scale: .27, remoteScale: .17, offset: [.32, -.23, -.58] },
+  sniper:   { scale: .23, remoteScale: .15, offset: [.32, -.23, -.58] },
+  lmg:      { scale: .26, remoteScale: .17, offset: [.32, -.23, -.58] },
+  burst:    { scale: .29, remoteScale: .18, offset: [.32, -.23, -.58] },
+  knife:    { scale: .43, remoteScale: .23, offset: [.32, -.27, -.60] },
+};
+let weaponPreviewRenderer = null;
+let weaponPreviewScene = null;
+let weaponPreviewCamera = null;
+let weaponPreviewModelRoot = null;
+let weaponPreviewCurrentId = null;
+let weaponPreviewLastSize = { width: 0, height: 0 };
+
+// Clone GLB assets per player/viewmodel so each instance can animate and dispose
+// safely without mutating the shared loader cache. Generated models are optional;
+// the in-code procedural weapon remains as a fallback if an asset fails to load.
+function cloneModelForGame(source) {
+  const clone = source.clone(true);
+  clone.traverse(object => {
+    if (!object.isMesh) return;
+    if (object.geometry) object.geometry = object.geometry.clone();
+    if (object.material) object.material = Array.isArray(object.material)
+      ? object.material.map(material => material.clone())
+      : object.material.clone();
+    object.castShadow = false;
+    object.receiveShadow = false;
+    object.frustumCulled = true;
+    object.userData.noHitbox = true;
+  });
+  return clone;
+}
+
+function disposeWeaponModel(model) {
+  if (!model) return;
+  model.traverse(object => {
+    object.geometry?.dispose();
+    const mats = Array.isArray(object.material) ? object.material : (object.material ? [object.material] : []);
+    for (const material of mats) material.dispose?.();
+  });
+}
+
+function ensureWeaponPreviewRenderer() {
+  const canvasPreview = $('weapon-preview-canvas');
+  if (!canvasPreview || state.lobbyPage !== 'weapons') return false;
+  const width = Math.max(1, canvasPreview.clientWidth);
+  const height = Math.max(1, canvasPreview.clientHeight);
+  if (!weaponPreviewRenderer) {
+    try {
+      weaponPreviewRenderer = new THREE.WebGLRenderer({ canvas: canvasPreview, alpha: true, antialias: state.device !== 'mobile', powerPreference: 'low-power' });
+      weaponPreviewRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));
+      weaponPreviewRenderer.outputColorSpace = THREE.SRGBColorSpace;
+      weaponPreviewRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+      weaponPreviewRenderer.toneMappingExposure = 1.18;
+      weaponPreviewRenderer.setClearColor(0x000000, 0);
+      weaponPreviewScene = new THREE.Scene();
+      weaponPreviewCamera = new THREE.PerspectiveCamera(34, width / height, .05, 40);
+      weaponPreviewCamera.position.set(.28, .48, 3.7);
+      weaponPreviewCamera.lookAt(0, 0, 0);
+      weaponPreviewScene.add(new THREE.HemisphereLight(0xbfe7ff, 0x15212d, 2.1));
+      const key = new THREE.DirectionalLight(0xe6f5ff, 2.8); key.position.set(-2.5, 3.5, 4); weaponPreviewScene.add(key);
+      const rim = new THREE.PointLight(0x36f5df, 14, 8); rim.position.set(1.5, .7, -1.8); weaponPreviewScene.add(rim);
+      const fill = new THREE.PointLight(0x658dff, 7, 7); fill.position.set(-2, -1, 2); weaponPreviewScene.add(fill);
+    } catch (error) {
+      console.warn('[NEON STRIKE] 3D armory preview unavailable; in-game weapon models still work.', error);
+      weaponPreviewRenderer = null;
+      return false;
+    }
+  }
+  if (width !== weaponPreviewLastSize.width || height !== weaponPreviewLastSize.height) {
+    weaponPreviewRenderer.setSize(width, height, false);
+    weaponPreviewCamera.aspect = width / height;
+    weaponPreviewCamera.updateProjectionMatrix();
+    weaponPreviewLastSize = { width, height };
+  }
+  return true;
+}
+
+function updateWeaponPreview(weaponId) {
+  weaponPreviewCurrentId = weaponId;
+  if (state.lobbyPage !== 'weapons' || !ensureWeaponPreviewRenderer()) return;
+  const source = weaponModelSources.get(weaponId);
+  if (!source) return; // The asset loader will call this again once the model arrives.
+  if (weaponPreviewModelRoot) {
+    weaponPreviewScene.remove(weaponPreviewModelRoot);
+    disposeWeaponModel(weaponPreviewModelRoot);
+    weaponPreviewModelRoot = null;
+  }
+  const model = cloneModelForGame(source);
+  model.name = `ARMORY_PREVIEW_${weaponId.toUpperCase()}`;
+  const bounds = new THREE.Box3().setFromObject(model);
+  const center = bounds.getCenter(new THREE.Vector3());
+  const dimensions = bounds.getSize(new THREE.Vector3());
+  const largest = Math.max(dimensions.x, dimensions.y, dimensions.z, .01);
+  const scale = 2.35 / largest;
+  model.position.copy(center).multiplyScalar(-1);
+  const wrapper = new THREE.Group();
+  wrapper.name = 'ARMORY_PREVIEW_ROTATING_ROOT';
+  wrapper.scale.setScalar(scale);
+  wrapper.rotation.set(.10, -.24, -.035);
+  wrapper.add(model);
+  weaponPreviewScene.add(wrapper);
+  weaponPreviewModelRoot = wrapper;
+}
+
+function resizeWeaponPreview() {
+  if (weaponPreviewRenderer && state.lobbyPage === 'weapons') ensureWeaponPreviewRenderer();
+}
+
+function applyCustomWeaponModel(weaponId) {
+  const source = weaponModelSources.get(weaponId);
+  const config = WEAPON_MODEL_CONFIG[weaponId];
+  if (!source || !config || state.currentWeapon !== weaponId) return false;
+  const fallbackParts = gunRoot.userData.proceduralWeaponChildren || [];
+  // Hide the procedural silhouette but keep its small muzzle flash visible.
+  for (const child of fallbackParts) child.visible = child === muzzleMesh;
+  const old = gunRoot.userData.customWeaponModel;
+  if (old) {
+    gunRoot.remove(old);
+    disposeWeaponModel(old);
+  }
+  const model = cloneModelForGame(source);
+  model.name = `NEON_${weaponId.toUpperCase()}_VIEWMODEL`;
+  model.position.set(...config.offset);
+  // Exported assets use local +X as the barrel direction and -Y as the grip direction.
+  model.rotation.set(0, Math.PI / 2, 0);
+  model.scale.setScalar(config.scale);
+  const magazineNodes = [];
+  model.traverse(object => {
+    if (!object.isMesh || !(object.name === 'MAGAZINE' || object.name.startsWith('MAGAZINE_'))) return;
+    object.userData.basePosition = object.position.clone();
+    magazineNodes.push(object);
+  });
+  if (magazineNodes.length) model.userData.magazineNodes = magazineNodes;
+  gunRoot.add(model);
+  gunRoot.userData.customWeaponModel = model;
+  if (magazineNodes.length) {
+    if (gunRoot.userData.reloadMagazine) gunRoot.userData.reloadMagazine.visible = false;
+    if (gunRoot.userData.reloadInsertMagazine) gunRoot.userData.reloadInsertMagazine.visible = false;
+  }
+  return true;
+}
+
+function loadWeaponModels() {
+  for (const weapon of WEAPONS) {
+    const url = `${WEAPON_MODEL_BASE_URL}${weapon.id}.glb`;
+    weaponModelLoader.load(url, gltf => {
+      weaponModelSources.set(weapon.id, gltf.scene);
+      if (state.currentWeapon === weapon.id) applyCustomWeaponModel(weapon.id);
+      if (state.lobbyPage === 'weapons' && state.lobbySelectedWeapon === weapon.id) updateWeaponPreview(weapon.id);
+      // Replace the procedural weapon currently held by remote players when its GLB arrives.
+      for (const remote of state.remotePlayers.values()) {
+        if (remote.weapon !== weapon.id) continue;
+        unregisterTarget(remote.id);
+        buildCharacterWeapon(remote.root, weapon.id);
+        registerTarget(remote.root, remote.id);
+      }
+      console.info(`[NEON STRIKE] 3D weapon model loaded: ${weapon.id}`);
+    }, undefined, error => {
+      console.info(`[NEON STRIKE] Model ${weapon.id} unavailable; using procedural fallback.`, error?.message || 'asset unavailable');
+    });
+  }
+}
 function buildGun(id) {
   if(state.zoomed) setZoom(false);
   for(const child of [...gunRoot.children])child.traverse(object=>{object.geometry?.dispose();if(Array.isArray(object.material))object.material.forEach(material=>material.dispose());else object.material?.dispose();});
   gunRoot.clear();
   const w=WEAPON_BY_ID[id]||WEAPONS[0];
+  const weaponVisualRoot = new THREE.Group(); weaponVisualRoot.name = 'procedural-weapon-visual'; gunRoot.add(weaponVisualRoot);
+  let buildRoot = weaponVisualRoot;
   const mainMat=new THREE.MeshStandardMaterial({color:w.color,metalness:.7,roughness:.32});
   const darkMat=new THREE.MeshStandardMaterial({color:0x101925,metalness:.55,roughness:.42});
   const accentMat=new THREE.MeshStandardMaterial({color:0x4cf4d5,emissive:0x167e75,emissiveIntensity:1.1,metalness:.4,roughness:.35});
-  const box=(x,y,z,sx,sy,sz,mat)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz),mat);m.position.set(x,y,z);gunRoot.add(m);return m;};
-  const cylinder=(x,y,z,r1,r2,len,mat,axis='z')=>{const m=new THREE.Mesh(new THREE.CylinderGeometry(r1,r2,len,10),mat);m.position.set(x,y,z);if(axis==='z')m.rotation.x=Math.PI/2;else m.rotation.z=Math.PI/2;gunRoot.add(m);return m;};
+  const box=(x,y,z,sx,sy,sz,mat)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz),mat);m.position.set(x,y,z);buildRoot.add(m);return m;};
+  const cylinder=(x,y,z,r1,r2,len,mat,axis='z')=>{const m=new THREE.Mesh(new THREE.CylinderGeometry(r1,r2,len,10),mat);m.position.set(x,y,z);if(axis==='z')m.rotation.x=Math.PI/2;else m.rotation.z=Math.PI/2;buildRoot.add(m);return m;};
   // Silhouette is deliberately different by weapon family. The knife has its own clean melee silhouette.
   if(id!=='knife')box(.32,-.27,-.60,.20,.17,.56,darkMat);
   if(id==='knife'){
@@ -435,13 +610,13 @@ function buildGun(id) {
     cylinder(.32,-.055,-.60,id==='sniper'?.072:.055,id==='sniper'?.072:.055,.065,accentMat,'x');
     cylinder(.32,-.055,-.60,id==='sniper'?.056:.042,id==='sniper'?.056:.042,.07,mainMat,'x');
     // Scope glass glows softly in the game's phase-energy palette.
-    const lens=new THREE.Mesh(new THREE.CircleGeometry(id==='sniper'?.045:.032,16),new THREE.MeshBasicMaterial({color:0x64fff0,transparent:true,opacity:.6}));lens.position.set(.32,-.055,-.565);lens.rotation.y=Math.PI/2;gunRoot.add(lens);
+    const lens=new THREE.Mesh(new THREE.CircleGeometry(id==='sniper'?.045:.032,16),new THREE.MeshBasicMaterial({color:0x64fff0,transparent:true,opacity:.6}));lens.position.set(.32,-.055,-.565);lens.rotation.y=Math.PI/2;buildRoot.add(lens);
   }
   // Functional-looking silhouettes: each weapon gets parts associated with its real-world family, recolored for the NEON universe.
   if(id==='pistol'){
     box(.32,-.125,-.53,.17,.045,.26,darkMat);box(.32,-.095,-.43,.035,.045,.06,accentMat);box(.32,-.095,-.70,.035,.045,.07,accentMat);box(.405,-.22,-.49,.018,.055,.25,accentMat);
   }else if(id==='revolver'){
-    for(let n=0;n<6;n++){const a=n*Math.PI/3;const port=new THREE.Mesh(new THREE.CylinderGeometry(.018,.018,.012,8),darkMat);port.position.set(.32+Math.cos(a)*.055,-.22+Math.sin(a)*.055,-.515);port.rotation.x=Math.PI/2;gunRoot.add(port);}
+    for(let n=0;n<6;n++){const a=n*Math.PI/3;const port=new THREE.Mesh(new THREE.CylinderGeometry(.018,.018,.012,8),darkMat);port.position.set(.32+Math.cos(a)*.055,-.22+Math.sin(a)*.055,-.515);port.rotation.x=Math.PI/2;buildRoot.add(port);}
     box(.32,-.13,-.40,.11,.07,.08,accentMat);box(.39,-.20,-.40,.08,.04,.10,darkMat);
   }else if(id==='smg'){
     box(.32,-.18,-.28,.25,.07,.18,darkMat);box(.32,-.43,-.59,.12,.22,.14,mainMat);box(.32,-.36,-.81,.13,.11,.09,darkMat);box(.22,-.23,-.68,.08,.13,.12,accentMat);
@@ -461,8 +636,8 @@ function buildGun(id) {
   if(id==='knife'){
     // Broad angular monomolecular blade: visibly knife-shaped, with a luminous inset edge.
     const bladeShape=new THREE.Shape();bladeShape.moveTo(.24,-.28);bladeShape.lineTo(.13,-.13);bladeShape.lineTo(.055,.10);bladeShape.lineTo(.18,.045);bladeShape.lineTo(.30,-.16);bladeShape.lineTo(.24,-.28);
-    const bladeMesh=new THREE.Mesh(new THREE.ShapeGeometry(bladeShape),mainMat);bladeMesh.position.z=-.88;bladeMesh.material.side=THREE.DoubleSide;gunRoot.add(bladeMesh);
-    const edgeLine=new THREE.Mesh(new THREE.BoxGeometry(.018,.32,.012),accentMat);edgeLine.position.set(.17,-.065,-.895);edgeLine.rotation.z=.42;gunRoot.add(edgeLine);
+    const bladeMesh=new THREE.Mesh(new THREE.ShapeGeometry(bladeShape),mainMat);bladeMesh.position.z=-.88;bladeMesh.material.side=THREE.DoubleSide;buildRoot.add(bladeMesh);
+    const edgeLine=new THREE.Mesh(new THREE.BoxGeometry(.018,.32,.012),accentMat);edgeLine.position.set(.17,-.065,-.895);edgeLine.rotation.z=.42;buildRoot.add(edgeLine);
     box(.24,-.28,-.86,.15,.035,.06,accentMat);box(.32,-.34,-.56,.105,.20,.14,darkMat);
   }
   if(id!=='knife'){
@@ -470,8 +645,10 @@ function buildGun(id) {
     // Small ejection port and team-status strip.
     box(.205,-.20,-.58,.012,.035,.11,accentMat);
     muzzleMesh=new THREE.Mesh(new THREE.SphereGeometry(.075,8,8),new THREE.MeshBasicMaterial({color:0xffe9a5,transparent:true,opacity:.95}));
-    muzzleMesh.position.set(.32,-.23,-1.12);muzzleMesh.visible=false;gunRoot.add(muzzleMesh);
+    muzzleMesh.position.set(.32,-.23,-1.12);muzzleMesh.visible=false;buildRoot.add(muzzleMesh);
   } else muzzleMesh=null;
+  const proceduralWeaponChildren = [...weaponVisualRoot.children];
+  buildRoot = gunRoot;
   // First-person forearms and gloves anchor the weapon instead of making it float alone.
   const sleeveMat=new THREE.MeshStandardMaterial({color:0x162738,metalness:.28,roughness:.72});
   const gloveMat=new THREE.MeshStandardMaterial({color:0x111923,metalness:.18,roughness:.64});
@@ -493,8 +670,9 @@ function buildGun(id) {
     reloadInsertMagazine=box(.13,-.64,-.51,magDims[0],magDims[1],magDims[2],darkMat);reloadInsertMagazine.visible=false;reloadInsertMagazine.userData.slotPosition=new THREE.Vector3(magX,magY,magZ);
   }
   for(const handPart of [leftSleeve,leftHand,rightSleeve,rightHand])if(handPart)handPart.userData.baseRotation=handPart.rotation.clone();
-  gunRoot.userData={leftSleeve,leftHand,rightSleeve,rightHand,reloadMagazine,reloadInsertMagazine};
+  gunRoot.userData={leftSleeve,leftHand,rightSleeve,rightHand,reloadMagazine,reloadInsertMagazine,proceduralWeaponChildren,weaponVisualRoot};
   gunRoot.position.set(0,0,0);gunRoot.rotation.set(0,0,0);
+  applyCustomWeaponModel(id);
   state.weaponMotion.drawAt=performance.now();state.weaponMotion.inspectAt=0;state.weaponMotion.fireAt=0;state.weaponMotion.knifeAt=0;
 }
 
@@ -502,6 +680,20 @@ function buildCharacterWeapon(root,weaponId='pistol'){
   const previous=root.userData.remoteWeaponModel;
   if(previous){root.remove(previous);previous.traverse(o=>{o.geometry?.dispose();if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material?.dispose();});}
   const w=WEAPON_BY_ID[weaponId]||WEAPON_BY_ID.pistol;
+  const customSource = weaponModelSources.get(weaponId);
+  const modelConfig = WEAPON_MODEL_CONFIG[weaponId];
+  if (customSource && modelConfig) {
+    const customRig = cloneModelForGame(customSource);
+    customRig.name = `NEON_${weaponId.toUpperCase()}_REMOTE`;
+    customRig.position.set(.20, 1.02, -.31);
+    customRig.rotation.set(0, Math.PI / 2, 0);
+    customRig.scale.setScalar(modelConfig.remoteScale);
+    customRig.traverse(object => { if (object.isMesh) object.userData.noHitbox = true; });
+    root.add(customRig);
+    root.userData.remoteWeaponModel = customRig;
+    root.userData.remoteWeaponId = weaponId;
+    return customRig;
+  }
   const rig=new THREE.Group();rig.position.set(.20,.99,-.34);
   const bodyMat=new THREE.MeshStandardMaterial({color:w.color,metalness:.72,roughness:.34});
   const darkMat=new THREE.MeshStandardMaterial({color:0x101923,metalness:.55,roughness:.42});
@@ -540,26 +732,77 @@ function buildCharacterWeapon(root,weaponId='pistol'){
 
 function makeCharacter({color=0x67c9ff, accent=0x143345, onlineId=null, name='BOT'}={}) {
   const root=new THREE.Group();
-  const bodyMat=new THREE.MeshStandardMaterial({color,metalness:.35,roughness:.47});
-  const accentMat=new THREE.MeshStandardMaterial({color:accent,metalness:.48,roughness:.38});
-  const dark=new THREE.MeshStandardMaterial({color:0x111925,metalness:.35,roughness:.65});
-  const headMat=new THREE.MeshStandardMaterial({color:0xb9c9d5,metalness:.15,roughness:.55});
+  const bodyMat=new THREE.MeshStandardMaterial({color,metalness:.42,roughness:.38});
+  const accentMat=new THREE.MeshStandardMaterial({color:accent,metalness:.58,roughness:.30});
+  const dark=new THREE.MeshStandardMaterial({color:0x101923,metalness:.40,roughness:.54});
+  const headMat=new THREE.MeshStandardMaterial({color:0x9cabb7,metalness:.25,roughness:.48});
+  const trimMat=new THREE.MeshStandardMaterial({color:0x263e50,metalness:.72,roughness:.26});
+  const glowMat=new THREE.MeshStandardMaterial({color:onlineId?0x6ee9ff:0xff5f7c,emissive:onlineId?0x16717f:0x7c1029,emissiveIntensity:1.6,metalness:.35,roughness:.25});
   function part(geo,mat,x,y,z,partName){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;m.userData.part=partName||'body';root.add(m);return m;}
+  function detail(parent,geo,mat,x,y,z,rx=0,ry=0,rz=0){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.rotation.set(rx,ry,rz);m.castShadow=true;m.receiveShadow=true;m.userData.noHitbox=true;parent.add(m);return m;}
+  // Core hit volumes are kept simple and authoritative; the extra armor is cosmetic.
   part(new THREE.BoxGeometry(.72,.82,.36),bodyMat,0,1.05,0,'body');
   part(new THREE.BoxGeometry(.78,.16,.4),accentMat,0,1.38,0,'body');
   const head=part(new THREE.SphereGeometry(.225,12,10),headMat,0,1.67,0,'head');head.scale.set(.86,1.02,.86);
   part(new THREE.BoxGeometry(.34,.11,.28),dark,0,1.63,-.10,'head');
-  const visor=part(new THREE.BoxGeometry(.28,.055,.035),new THREE.MeshStandardMaterial({color:onlineId?0x6ee9ff:0xff5f7c,emissive:onlineId?0x16717f:0x7c1029,emissiveIntensity:1.5}),0,1.68,-.204,'head');
-  part(new THREE.BoxGeometry(.24,.18,.27),accentMat,-.49,1.19,0,'body');part(new THREE.BoxGeometry(.24,.18,.27),accentMat,.49,1.19,0,'body');
+  const visor=part(new THREE.BoxGeometry(.28,.055,.035),glowMat,0,1.68,-.204,'head');
+  const shoulderL=part(new THREE.IcosahedronGeometry(.155,1),accentMat,-.49,1.20,-.025,'body');shoulderL.scale.set(1.15,.82,1.05);
+  const shoulderR=part(new THREE.IcosahedronGeometry(.155,1),accentMat,.49,1.20,-.025,'body');shoulderR.scale.set(1.15,.82,1.05);
   const arm1=part(new THREE.BoxGeometry(.18,.52,.19),bodyMat,-.39,.94,-.13,'body');arm1.rotation.x=-.62;arm1.rotation.z=-.12;
   const arm2=part(new THREE.BoxGeometry(.18,.52,.19),bodyMat,.39,.94,-.13,'body');arm2.rotation.x=-.62;arm2.rotation.z=.12;
   const leg1=part(new THREE.BoxGeometry(.25,.55,.28),dark,-.19,.35,0,'legs');
   const leg2=part(new THREE.BoxGeometry(.25,.55,.28),dark,.19,.35,0,'legs');
   const pack=part(new THREE.BoxGeometry(.37,.45,.17),accentMat,0,1.1,.23,'body');
+
+  // Armored helmet, brow, cheek plates and illuminated identity strip.
+  detail(root,new THREE.BoxGeometry(.39,.14,.34),dark,0,1.815,.005);
+  detail(root,new THREE.BoxGeometry(.36,.045,.065),trimMat,0,1.735,-.193);
+  detail(root,new THREE.BoxGeometry(.045,.115,.19),accentMat,-.205,1.66,-.075);
+  detail(root,new THREE.BoxGeometry(.045,.115,.19),accentMat,.205,1.66,-.075);
+  detail(root,new THREE.BoxGeometry(.13,.025,.018),glowMat,0,1.817,-.178);
+  detail(root,new THREE.CylinderGeometry(.125,.14,.075,10),trimMat,0,1.47,0);
+
+  // Layered chest plate with a centered ion core and two armored ribs.
+  const chest=detail(root,new THREE.IcosahedronGeometry(.30,1),trimMat,0,1.12,-.19);
+  chest.scale.set(.92,.84,.36);
+  detail(root,new THREE.BoxGeometry(.28,.22,.052),dark,0,1.13,-.294);
+  detail(root,new THREE.BoxGeometry(.10,.16,.018),glowMat,0,1.13,-.327);
+  detail(root,new THREE.BoxGeometry(.20,.025,.018),accentMat,-.145,1.24,-.287);
+  detail(root,new THREE.BoxGeometry(.20,.025,.018),accentMat,.145,1.24,-.287);
+  detail(root,new THREE.BoxGeometry(.64,.12,.39),dark,0,.73,0);
+  detail(root,new THREE.BoxGeometry(.18,.12,.075),trimMat,-.29,.75,-.225);
+  detail(root,new THREE.BoxGeometry(.18,.12,.075),trimMat,.29,.75,-.225);
+  detail(root,new THREE.BoxGeometry(.16,.045,.025),glowMat,0,.66,-.204);
+
+  // Shoulder caps, forearm guards and gloves follow their animated limb meshes.
+  detail(arm1,new THREE.IcosahedronGeometry(.105,1),trimMat,0,.145,-.035).scale.set(1.05,.75,1.0);
+  detail(arm2,new THREE.IcosahedronGeometry(.105,1),trimMat,0,.145,-.035).scale.set(1.05,.75,1.0);
+  detail(arm1,new THREE.BoxGeometry(.205,.18,.035),accentMat,0,-.035,-.105);
+  detail(arm2,new THREE.BoxGeometry(.205,.18,.035),accentMat,0,-.035,-.105);
+  detail(arm1,new THREE.BoxGeometry(.15,.025,.02),glowMat,0,-.06,-.128);
+  detail(arm2,new THREE.BoxGeometry(.15,.025,.02),glowMat,0,-.06,-.128);
+  detail(arm1,new THREE.BoxGeometry(.19,.105,.20),dark,0,-.205,-.012);
+  detail(arm2,new THREE.BoxGeometry(.19,.105,.20),dark,0,-.205,-.012);
+
+  // Segmented thigh/shin plates and low-profile boots move with each leg.
+  for(const leg of [leg1,leg2]){
+    detail(leg,new THREE.BoxGeometry(.205,.22,.045),accentMat,0,.095,-.153);
+    detail(leg,new THREE.BoxGeometry(.17,.15,.035),trimMat,0,-.085,-.164);
+    detail(leg,new THREE.BoxGeometry(.14,.022,.015),glowMat,0,.10,-.181);
+    detail(leg,new THREE.BoxGeometry(.27,.12,.34),dark,0,-.275,-.005);
+    detail(leg,new THREE.BoxGeometry(.20,.025,.03),trimMat,0,-.24,-.17);
+  }
+  // Backpack power cell and side vents add a readable futuristic silhouette from behind.
+  detail(pack,new THREE.BoxGeometry(.23,.27,.06),dark,0,.015,.112);
+  detail(pack,new THREE.BoxGeometry(.13,.19,.025),glowMat,0,.015,.15);
+  detail(pack,new THREE.BoxGeometry(.055,.28,.035),trimMat,-.145,.02,.105);
+  detail(pack,new THREE.BoxGeometry(.055,.28,.035),trimMat,.145,.02,.105);
+
   root.userData={onlineId,name,parts:[head,visor],legs:[leg1,leg2],arms:[arm1,arm2],bodyMat,accentMat,walkPhase:Math.random()*6,baseBodyY:1.05};
   buildCharacterWeapon(root,'pistol');
   return root;
 }
+
 function setTargetId(group,id) { group.traverse(o=>{if(o.isMesh&&!o.userData.noHitbox)o.userData.targetId=id;}); }
 function disposeGroup(group) { const disposed=new Set();group.traverse(o=>{if(o.geometry)o.geometry.dispose();const mats=Array.isArray(o.material)?o.material:(o.material?[o.material]:[]);for(const mat of mats){if(mat===hitFlashMaterial||disposed.has(mat))continue;disposed.add(mat);mat.dispose?.();}});scene.remove(group); }
 
@@ -1085,7 +1328,7 @@ function setupEvents(){
   const look=$('look-zone');look.addEventListener('pointerdown',e=>{if(state.device!=='mobile')return;e.preventDefault();look.setPointerCapture(e.pointerId);state.mobileLook={id:e.pointerId,x:e.clientX,y:e.clientY};initAudio();});
   look.addEventListener('pointermove',e=>{if(!state.mobileLook||state.mobileLook.id!==e.pointerId)return;const dx=e.clientX-state.mobileLook.x,dy=e.clientY-state.mobileLook.y;state.mobileLook.x=e.clientX;state.mobileLook.y=e.clientY;state.yaw-=dx*.006;state.pitch-=dy*.005;state.pitch=THREE.MathUtils.clamp(state.pitch,-1.22,1.22);});
   const endLook=e=>{if(state.mobileLook&&state.mobileLook.id===e.pointerId)state.mobileLook=null;};look.addEventListener('pointerup',endLook);look.addEventListener('pointercancel',endLook);
-  window.addEventListener('resize',()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight);});
+  window.addEventListener('resize',()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight);resizeWeaponPreview();});
 }
 
 function updateWorld(dt,now){
@@ -1136,8 +1379,25 @@ function updateWorld(dt,now){
     if(hands.rightSleeve){const br=hands.rightSleeve.userData.baseRotation;if(br)hands.rightSleeve.rotation.x=br.x-fireKick*.22+reloadWave*.12;}
     if(hands.rightHand){const br=hands.rightHand.userData.baseRotation;if(br)hands.rightHand.rotation.x=br.x-fireKick*.27+reloadWave*.18;}
     // Magazine removal/insertion phases make the reload readable instead of only bobbing the weapon.
-    if(hands.reloadMagazine){const base=hands.reloadMagazine.userData.basePosition||new THREE.Vector3(.32,-.405,-.62);hands.reloadMagazine.position.copy(base);const removing=reloadProgress>=.22&&reloadProgress<.43;const magazineAbsent=reloadProgress>=.43&&reloadProgress<.58;const inserting=reloadProgress>=.58&&reloadProgress<.84;hands.reloadMagazine.visible=!magazineAbsent&&!inserting;if(removing){const k=(reloadProgress-.22)/.21;hands.reloadMagazine.position.x-=k*.10;hands.reloadMagazine.position.y-=k*.25;hands.reloadMagazine.rotation.x=k*.45;}else hands.reloadMagazine.rotation.x=0;}
-    if(hands.reloadInsertMagazine){const entering=state.reloading&&reloadProgress>=.48&&reloadProgress<.84;hands.reloadInsertMagazine.visible=entering;if(entering){const k=clamp01((reloadProgress-.48)/.36);const slot=hands.reloadInsertMagazine.userData.slotPosition;hands.reloadInsertMagazine.position.set(.13+(slot.x-.13)*easeOut(k),-.68+(slot.y+.68)*easeOut(k),-.51+(slot.z+.51)*easeOut(k));hands.reloadInsertMagazine.rotation.x=(1-k)*-.28;}else hands.reloadInsertMagazine.rotation.x=0;}
+    const modelMagazines=hands.customWeaponModel?.userData?.magazineNodes || [];
+    if(modelMagazines.length){
+      const removing=state.reloading&&reloadProgress>=.22&&reloadProgress<.43;
+      const absent=state.reloading&&reloadProgress>=.43&&reloadProgress<.58;
+      const inserting=state.reloading&&reloadProgress>=.58&&reloadProgress<.84;
+      const dx=removing?((reloadProgress-.22)/.21)*.08:inserting?((1-easeOut(clamp01((reloadProgress-.58)/.26)))*.08):0;
+      const dy=removing?((reloadProgress-.22)/.21)*.27:inserting?((1-easeOut(clamp01((reloadProgress-.58)/.26)))*.27):0;
+      const rz=removing?-((reloadProgress-.22)/.21)*.18:inserting?-(1-clamp01((reloadProgress-.58)/.26))*.18:0;
+      for(const part of modelMagazines){const base=part.userData.basePosition||part.position.clone();part.position.copy(base);part.position.y-=dy;part.position.z+=dx;part.rotation.z=rz;part.visible=!absent;}
+      if(hands.reloadMagazine)hands.reloadMagazine.visible=false;
+      if(hands.reloadInsertMagazine)hands.reloadInsertMagazine.visible=false;
+    } else if(hands.customWeaponModel){
+      // Tubular shotgun feeds, revolver cylinders and the knife do not use a detachable box magazine.
+      if(hands.reloadMagazine)hands.reloadMagazine.visible=false;
+      if(hands.reloadInsertMagazine)hands.reloadInsertMagazine.visible=false;
+    } else {
+      if(hands.reloadMagazine){const base=hands.reloadMagazine.userData.basePosition||new THREE.Vector3(.32,-.405,-.62);hands.reloadMagazine.position.copy(base);const removing=reloadProgress>=.22&&reloadProgress<.43;const magazineAbsent=reloadProgress>=.43&&reloadProgress<.58;const inserting=reloadProgress>=.58&&reloadProgress<.84;hands.reloadMagazine.visible=!magazineAbsent&&!inserting;if(removing){const k=(reloadProgress-.22)/.21;hands.reloadMagazine.position.x-=k*.10;hands.reloadMagazine.position.y-=k*.25;hands.reloadMagazine.rotation.x=k*.45;}else hands.reloadMagazine.rotation.x=0;}
+      if(hands.reloadInsertMagazine){const entering=state.reloading&&reloadProgress>=.48&&reloadProgress<.84;hands.reloadInsertMagazine.visible=entering;if(entering){const k=clamp01((reloadProgress-.48)/.36);const slot=hands.reloadInsertMagazine.userData.slotPosition;hands.reloadInsertMagazine.position.set(.13+(slot.x-.13)*easeOut(k),-.68+(slot.y+.68)*easeOut(k),-.51+(slot.z+.51)*easeOut(k));hands.reloadInsertMagazine.rotation.x=(1-k)*-.28;}else hands.reloadInsertMagazine.rotation.x=0;}
+    }
     gunRoot.visible=state.phase==='live'||state.phase==='buy';
     // A burst trigger sends three paced server-authoritative bullets. Sniper still requires a fresh click.
     if(state.burstRemaining>0&&now>=state.burstNextAt&&state.phase==='live'&&!state.paused)doShoot(true);
@@ -1155,8 +1415,12 @@ function updateWorld(dt,now){
 function animate(now){requestAnimationFrame(animate);const dt=Math.min(.05,(now-state.lastFrame)/1000||0);state.lastFrame=now;updateWorld(dt,now);
   state.fpsFrames++;if(now-state.fpsStamp>450){$('fps-value').textContent=Math.round(state.fpsFrames*1000/(now-state.fpsStamp||450));state.fpsFrames=0;state.fpsStamp=now;}
   renderer.render(scene,camera);
+  if(weaponPreviewRenderer && state.mode==='menu' && state.lobbyPage==='weapons' && weaponPreviewScene && weaponPreviewCamera){
+    if(weaponPreviewModelRoot && !reduceMotion) weaponPreviewModelRoot.rotation.y += dt*.28;
+    weaponPreviewRenderer.render(weaponPreviewScene,weaponPreviewCamera);
+  }
 }
 
-buildMap('arena');setDevice(state.device);setRule('crossplay');selectMap('arena');setPlayMode('training');setLobbyPage('play');buildGun('pistol');setupEvents();renderLobbyWeapons();updateHUD();void loadStoredAccount();requestAnimationFrame(animate);
+buildMap('arena');setDevice(state.device);setRule('crossplay');selectMap('arena');setPlayMode('training');setLobbyPage('play');buildGun('pistol');setupEvents();renderLobbyWeapons();updateHUD();void loadStoredAccount();requestAnimationFrame(animate);loadWeaponModels();
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) { navigator.serviceWorker.register('/sw.js').catch(() => {}); }
