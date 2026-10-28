@@ -518,8 +518,15 @@ function getGroundHeight(x,z){
 const gunRoot = new THREE.Group(); camera.add(gunRoot); scene.add(camera);
 let muzzleMesh = null;
 const weaponModelSources = new Map();
+const skinWeaponModelSources = new Map();
 const weaponModelLoader = new GLTFLoader();
 const WEAPON_MODEL_BASE_URL = '/models/weapons/';
+const SKIN_MODEL_CONFIG = {
+  prime_knife: { weaponId: 'knife', url: '/models/skins/prime1-karambit.glb', scale: .43, remoteScale: .23, inspect: 'karambit-spin' },
+};
+function getWeaponModelSource(weaponId, skinId = null) {
+  return (skinId && skinWeaponModelSources.get(skinId)) || weaponModelSources.get(weaponId) || null;
+}
 const WEAPON_MODEL_CONFIG = {
   pistol:   { scale: .40, remoteScale: .25, offset: [.32, -.23, -.58] },
   revolver: { scale: .38, remoteScale: .24, offset: [.32, -.23, -.58] },
@@ -606,7 +613,8 @@ function ensureWeaponPreviewRenderer() {
 function updateWeaponPreview(weaponId) {
   weaponPreviewCurrentId = weaponId;
   if (state.lobbyPage !== 'weapons' || !ensureWeaponPreviewRenderer()) return;
-  const source = weaponModelSources.get(weaponId);
+  const equippedSkinId = state.account?.equippedSkins?.[weaponId] || null;
+  const source = getWeaponModelSource(weaponId, equippedSkinId);
   if (!source) return; // The asset loader will call this again once the model arrives.
   if (weaponPreviewModelRoot) {
     weaponPreviewScene.remove(weaponPreviewModelRoot);
@@ -694,7 +702,8 @@ function applyProceduralSkinPalette(weaponId, mainMat, darkMat, accentMat) {
 }
 
 function applyCustomWeaponModel(weaponId) {
-  const source = weaponModelSources.get(weaponId);
+  const equippedSkinId = state.account?.equippedSkins?.[weaponId] || null;
+  const source = getWeaponModelSource(weaponId, equippedSkinId);
   const config = WEAPON_MODEL_CONFIG[weaponId];
   if (!source || !config || state.currentWeapon !== weaponId) return false;
   const fallbackParts = gunRoot.userData.proceduralWeaponChildren || [];
@@ -745,6 +754,27 @@ function loadWeaponModels() {
       console.info(`[NEON STRIKE] 3D weapon model loaded: ${weapon.id}`);
     }, undefined, error => {
       console.info(`[NEON STRIKE] Model ${weapon.id} unavailable; using procedural fallback.`, error?.message || 'asset unavailable');
+    });
+  }
+  // Special skin models are separate GLB assets so premium skins change the silhouette,
+  // not only the material palette. Failed loads safely keep the normal weapon model.
+  for (const [skinId, config] of Object.entries(SKIN_MODEL_CONFIG)) {
+    weaponModelLoader.load(config.url, gltf => {
+      skinWeaponModelSources.set(skinId, gltf.scene);
+      if (state.currentWeapon === config.weaponId && state.account?.equippedSkins?.[config.weaponId] === skinId) {
+        applyCustomWeaponModel(config.weaponId);
+      }
+      if (state.lobbyPage === 'weapons' && state.lobbySelectedWeapon === config.weaponId) updateWeaponPreview(config.weaponId);
+      for (const remote of state.remotePlayers.values()) {
+        const remoteSkin = remote.skinId || remote.equippedSkins?.[config.weaponId] || null;
+        if (remote.weapon !== config.weaponId || remoteSkin !== skinId) continue;
+        unregisterTarget(remote.id);
+        buildCharacterWeapon(remote.root, config.weaponId, skinId);
+        registerTarget(remote.root, remote.id);
+      }
+      console.info(`[NEON STRIKE] 3D skin model loaded: ${skinId}`);
+    }, undefined, error => {
+      console.warn(`[NEON STRIKE] Skin model ${skinId} unavailable; using base weapon model.`, error?.message || 'asset unavailable');
     });
   }
 }
@@ -860,7 +890,7 @@ function buildCharacterWeapon(root,weaponId='pistol',skinId=null){
   const previous=root.userData.remoteWeaponModel;
   if(previous){root.remove(previous);previous.traverse(o=>{o.geometry?.dispose();if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material?.dispose();});}
   const w=WEAPON_BY_ID[weaponId]||WEAPON_BY_ID.pistol;
-  const customSource = weaponModelSources.get(weaponId);
+  const customSource = getWeaponModelSource(weaponId, skinId);
   const modelConfig = WEAPON_MODEL_CONFIG[weaponId];
   if (customSource && modelConfig) {
     const customRig = cloneModelForGame(customSource);
@@ -1630,6 +1660,17 @@ function updateWorld(dt,now){
     gunRoot.rotation.x=-fireKick*.10+reloadWave*.11+knifeWave*.16;
     gunRoot.rotation.y=inspectRot+reloadWave*.05;
     gunRoot.rotation.z=-drawOffset*.42+Math.sin(state.walkCycle)*.018*state.walkIntensity+inspectRot*.45+reloadWave*(activeWeapon.slot==='sidearm'?.16:.06)-knifeWave*.88;
+    // Prime 1 karambit gets a distinct inspect spin. This animates the actual custom GLB
+    // while keeping the original model orientation outside the 1.5 s inspect window.
+    const heldSkinModel=gunRoot.userData.customWeaponModel;
+    if(heldSkinModel&&activeWeapon.id==='knife'&&state.account?.equippedSkins?.knife==='prime_knife'){
+      const inspectAge=now-motion.inspectAt;
+      if(motion.inspectAt&&inspectAge>=0&&inspectAge<1500){
+        const inspectT=clamp01(inspectAge/1500);
+        const easedSpin=inspectT*inspectT*(3-2*inspectT);
+        heldSkinModel.rotation.z=Math.PI*2*easedSpin;
+      }else heldSkinModel.rotation.z=0;
+    }
     const hands=gunRoot.userData||{};const showSupportHand=activeWeapon.slot==='primary'||(state.reloading&&activeWeapon.slot==='sidearm');
     if(hands.leftSleeve){hands.leftSleeve.visible=showSupportHand;const br=hands.leftSleeve.userData.baseRotation;if(br){hands.leftSleeve.rotation.x=br.x+reloadWave*.42+fireKick*.12;hands.leftSleeve.rotation.z=br.z-reloadWave*.28;}}
     if(hands.leftHand){hands.leftHand.visible=showSupportHand;const br=hands.leftHand.userData.baseRotation;if(br){hands.leftHand.rotation.x=br.x+reloadWave*.52;hands.leftHand.rotation.z=br.z-reloadWave*.22;}}
