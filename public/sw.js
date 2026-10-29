@@ -1,4 +1,4 @@
-const CACHE_NAME = 'neon-strike-static-v31-prime-gold-dissolve';
+const CACHE_NAME = 'neon-strike-static-v32-weapon-skins-recoil-store';
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(['/','/manifest.webmanifest','/icon.svg'])).catch(()=>{}));
   self.skipWaiting();
