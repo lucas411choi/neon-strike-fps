@@ -1,4 +1,4 @@
-const CACHE_NAME = 'neon-strike-static-v23';
+const CACHE_NAME = 'neon-strike-static-v25-prime1-karambit-flourish';
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(['/','/manifest.webmanifest','/icon.svg'])).catch(()=>{}));
   self.skipWaiting();
