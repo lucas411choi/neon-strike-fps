@@ -50,7 +50,7 @@ const state = {
   pointerLocked:false, mobileLook:null, audio:null, noiseBuffer:null, currentToastTimer:0, zoomed:false, baseFov:76, localNextRoundTimer:null,
   fireHeld:false, sniperMustRelease:false, lastEmptyToast:0, recoilHeat:0, viewKick:0, walkCycle:0, walkIntensity:0, footstepAccumulator:0, lastFootstepSound:0,
   burstRemaining:0, burstNextAt:0, burstId:0, burstSeq:1, weaponMotion:{drawAt:performance.now(),inspectAt:0,fireAt:0,knifeAt:0,reloadAt:0},
-  killCam:null, killCamActive:false, killEffects:[], roundResultTimer:null, roundResultPending:null, killCamTimer:null, killCamSavedWeapon:null,
+  killCam:null, killCamActive:false, killEffects:[], primeSlashEffects:[], roundResultTimer:null, roundResultPending:null, killCamTimer:null, killCamSavedWeapon:null,
 };
 for (const weapon of WEAPONS) state.ammo[weapon.id] = { mag: weapon.mag, reserve: weapon.reserve };
 
@@ -711,16 +711,36 @@ function applyCustomWeaponModel(weaponId) {
   for (const child of fallbackParts) child.visible = child === muzzleMesh;
   const old = gunRoot.userData.customWeaponModel;
   if (old) {
-    gunRoot.remove(old);
+    const oldParent = old.parent || gunRoot;
+    oldParent.remove(old);
     disposeWeaponModel(old);
+    if (oldParent !== gunRoot) gunRoot.remove(oldParent);
   }
+  const previousPivot = gunRoot.userData.primeSpinPivot;
+  if (previousPivot) gunRoot.remove(previousPivot);
+  gunRoot.userData.primeSpinPivot = null;
   const model = cloneModelForGame(source);
   model.name = `NEON_${weaponId.toUpperCase()}_VIEWMODEL`;
-  model.position.set(...config.offset);
-  // Exported assets use local +X as the barrel direction and -Y as the grip direction.
-  model.rotation.set(0, Math.PI / 2, 0);
+  // The ring at the handle end is the pivot, so spins feel like a fingertip trick rather than a center spin.
+  const modelRotation = new THREE.Euler(0, Math.PI / 2, 0);
+  model.rotation.copy(modelRotation);
   model.scale.setScalar(config.scale);
-  applyWeaponSkinVisual(model, state.account?.equippedSkins?.[weaponId], weaponId);
+  if (weaponId === 'knife' && equippedSkinId === 'prime_knife') {
+    const pivot = new THREE.Group();
+    pivot.name = 'PRIME1_FINGERTIP_SPIN_PIVOT';
+    const ringLocal = new THREE.Vector3(-.342, -.222, 0);
+    const ringShift = ringLocal.clone().multiplyScalar(config.scale).applyEuler(modelRotation);
+    pivot.position.set(config.offset[0] + ringShift.x, config.offset[1] + ringShift.y, config.offset[2] + ringShift.z);
+    pivot.userData.basePosition = pivot.position.clone();
+    model.position.copy(ringShift).negate();
+    pivot.add(model);
+    gunRoot.add(pivot);
+    gunRoot.userData.primeSpinPivot = pivot;
+  } else {
+    model.position.set(...config.offset);
+    gunRoot.add(model);
+  }
+  applyWeaponSkinVisual(model, equippedSkinId, weaponId);
   const magazineNodes = [];
   model.traverse(object => {
     if (!object.isMesh || !(object.name === 'MAGAZINE' || object.name.startsWith('MAGAZINE_'))) return;
@@ -728,7 +748,6 @@ function applyCustomWeaponModel(weaponId) {
     magazineNodes.push(object);
   });
   if (magazineNodes.length) model.userData.magazineNodes = magazineNodes;
-  gunRoot.add(model);
   gunRoot.userData.customWeaponModel = model;
   if (magazineNodes.length) {
     if (gunRoot.userData.reloadMagazine) gunRoot.userData.reloadMagazine.visible = false;
@@ -778,7 +797,38 @@ function loadWeaponModels() {
     });
   }
 }
+function clearPrimeKnifeSlashEffects(){
+  for(const fx of state.primeSlashEffects||[]){
+    fx.group.parent?.remove(fx.group);
+    fx.group.traverse(o=>{o.geometry?.dispose();if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material?.dispose();});
+  }
+  state.primeSlashEffects=[];
+}
+function addPrimeKnifeSlashFx(variant=0){
+  // Small gold energy arcs stay on the lower-right side of the view so the reticle remains visible.
+  const paths=[
+    [[.23,-.19,-.64],[.31,-.10,-.67],[.43,-.08,-.70],[.53,-.18,-.72],[.49,-.30,-.72]],
+    [[.49,-.34,-.66],[.46,-.23,-.68],[.39,-.13,-.70],[.28,-.06,-.72]],
+    [[.52,-.07,-.68],[.44,-.15,-.70],[.34,-.25,-.72],[.24,-.33,-.73]],
+    [[.27,-.34,-.66],[.39,-.29,-.69],[.47,-.20,-.71],[.44,-.09,-.73]]
+  ];
+  const points=paths[((variant%4)+4)%4].map(p=>new THREE.Vector3(...p));
+  const curve=new THREE.CatmullRomCurve3(points);
+  const group=new THREE.Group();group.name='PRIME1_GOLD_SLASH_FX';group.renderOrder=12;
+  const gold=new THREE.MeshBasicMaterial({color:0xffc94e,transparent:true,opacity:.86,blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false});
+  const pale=new THREE.MeshBasicMaterial({color:0xfff0bd,transparent:true,opacity:.80,blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false});
+  const ribbon=new THREE.Mesh(new THREE.TubeGeometry(curve,20,.007,5,false),gold);ribbon.renderOrder=12;group.add(ribbon);
+  const innerCurve=new THREE.CatmullRomCurve3(points.map(p=>p.clone().add(new THREE.Vector3(.004,.006,-.004))));
+  const inner=new THREE.Mesh(new THREE.TubeGeometry(innerCurve,16,.0025,4,false),pale);inner.renderOrder=13;group.add(inner);
+  for(let i=1;i<=4;i++){
+    const p=curve.getPoint(i/5);const spark=new THREE.Mesh(new THREE.IcosahedronGeometry(.006+(i%2)*.002,0),new THREE.MeshBasicMaterial({color:0xffe5a2,transparent:true,opacity:.88,blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false}));spark.position.copy(p);spark.renderOrder=14;group.add(spark);
+  }
+  gunRoot.add(group);
+  state.primeSlashEffects.push({group,started:performance.now(),duration:255,variant:variant%4});
+}
+
 function buildGun(id) {
+  clearPrimeKnifeSlashEffects();
   if(state.zoomed) setZoom(false);
   for(const child of [...gunRoot.children])child.traverse(object=>{object.geometry?.dispose();if(Array.isArray(object.material))object.material.forEach(material=>material.dispose());else object.material?.dispose();});
   gunRoot.clear();
@@ -895,7 +945,8 @@ function buildCharacterWeapon(root,weaponId='pistol',skinId=null){
   if (customSource && modelConfig) {
     const customRig = cloneModelForGame(customSource);
     customRig.name = `NEON_${weaponId.toUpperCase()}_REMOTE`;
-    customRig.position.set(.20, 1.02, -.31);
+    if (weaponId === 'knife' && skinId === 'prime_knife') customRig.position.set(.34, 1.00, -.34);
+    else customRig.position.set(.20, 1.02, -.31);
     customRig.rotation.set(0, Math.PI / 2, 0);
     customRig.scale.setScalar(modelConfig.remoteScale);
     applyWeaponSkinVisual(customRig, skinId, weaponId);
@@ -1355,7 +1406,12 @@ function doShoot(fromBurst=false){
     else{burstIdForShot=state.burstId;burstSeqForShot=state.burstSeq++;state.burstRemaining=Math.max(0,state.burstRemaining-1);state.burstNextAt=state.burstRemaining?now+(w.burstGap||.055)*1000:0;}
   }
   state.lastShot=now;state.weaponMotion.fireAt=now;
-  if(w.id==='knife')state.weaponMotion.knifeAt=now;
+  if(w.id==='knife'){
+    state.weaponMotion.knifeAt=now;
+    state.weaponMotion.inspectAt=0;
+    state.weaponMotion.knifeVariant=((state.weaponMotion.knifeVariant||0)+1)%4;
+    if(state.account?.equippedSkins?.knife==='prime_knife')addPrimeKnifeSlashFx(state.weaponMotion.knifeVariant);
+  }
   state.recoilHeat=Math.min(2.4,state.recoilHeat+Math.max(.12,w.recoil*18));state.viewKick=Math.min(.14,state.viewKick+(w.recoil||.003));
   if(state.mode==='training'){ammo.mag=w.mag;ammo.reserve=w.reserve;}else if(w.id!=='knife')ammo.mag--;
   if(w.id==='knife')soundKnife();else soundShot(w.id);
@@ -1653,23 +1709,41 @@ function updateWorld(dt,now){
     if(motion.inspectAt&&now-motion.inspectAt<1500){const it=(now-motion.inspectAt)/1500;inspectY=Math.sin(Math.PI*it)*.085;inspectX=Math.sin(Math.PI*it)*.13;inspectRot=Math.sin(Math.PI*it)*.55;}
     const reloadProgress=state.reloading&&activeWeapon.reload>0?clamp01((now-(motion.reloadAt||now))/(activeWeapon.reload*1000)):0;
     const reloadWave=state.reloading?Math.sin(Math.PI*reloadProgress):0;
-    const knifeAge=now-motion.knifeAt, knifeWave=activeWeapon.id==='knife'&&knifeAge>=0&&knifeAge<310?Math.sin(Math.PI*clamp01(knifeAge/310)):0;
-    gunRoot.position.x=(state.device==='mobile'?.03:0)+sway+inspectX+reloadWave*(activeWeapon.slot==='sidearm'?.10:.035);
-    gunRoot.position.y=bob*.65+drawOffset*.48+inspectY-reloadWave*.09;
-    gunRoot.position.z=state.viewKick*1.2+drawOffset*.65+fireKick*.13;
-    gunRoot.rotation.x=-fireKick*.10+reloadWave*.11+knifeWave*.16;
-    gunRoot.rotation.y=inspectRot+reloadWave*.05;
-    gunRoot.rotation.z=-drawOffset*.42+Math.sin(state.walkCycle)*.018*state.walkIntensity+inspectRot*.45+reloadWave*(activeWeapon.slot==='sidearm'?.16:.06)-knifeWave*.88;
-    // Prime 1 karambit gets a distinct inspect spin. This animates the actual custom GLB
-    // while keeping the original model orientation outside the 1.5 s inspect window.
-    const heldSkinModel=gunRoot.userData.customWeaponModel;
-    if(heldSkinModel&&activeWeapon.id==='knife'&&state.account?.equippedSkins?.knife==='prime_knife'){
+    const knifeAge=now-motion.knifeAt, knifeActive=activeWeapon.id==='knife'&&knifeAge>=0&&knifeAge<420;
+    const knifeT=knifeActive?clamp01(knifeAge/420):0;
+    const knifeWave=knifeActive?Math.pow(Math.sin(Math.PI*knifeT),.72):0;
+    const knifeVariant=((motion.knifeVariant||0)%4+4)%4;
+    const knifeMoves=[
+      {px:-.095,py:.005,rx:.20,ry:-.24,rz:-1.04},
+      {px:.045,py:.065,rx:-.62,ry:.18,rz:-.34},
+      {px:.10,py:-.025,rx:.30,ry:.46,rz:.88},
+      {px:-.06,py:-.045,rx:.54,ry:-.38,rz:.60}
+    ];
+    const knifeMove=knifeMoves[knifeVariant];
+    const swingX=knifeActive?knifeMove.px*knifeWave:0;
+    const swingY=knifeActive?knifeMove.py*knifeWave:0;
+    gunRoot.position.x=(state.device==='mobile'?.03:0)+sway+inspectX+reloadWave*(activeWeapon.slot==='sidearm'?.10:.035)+swingX;
+    gunRoot.position.y=bob*.65+drawOffset*.48+inspectY-reloadWave*.09+swingY;
+    gunRoot.position.z=state.viewKick*1.2+drawOffset*.65+fireKick*.13+(knifeActive?-.035*knifeWave:0);
+    gunRoot.rotation.x=-fireKick*.10+reloadWave*.11+(knifeActive?knifeMove.rx*knifeWave:0);
+    gunRoot.rotation.y=inspectRot+reloadWave*.05+(knifeActive?knifeMove.ry*knifeWave:0);
+    gunRoot.rotation.z=-drawOffset*.42+Math.sin(state.walkCycle)*.018*state.walkIntensity+inspectRot*.45+reloadWave*(activeWeapon.slot==='sidearm'?.16:.06)+(knifeActive?knifeMove.rz*knifeWave:0);
+    // Spin the karambit around the handle's finger loop, with several fast multi-axis rotations.
+    const primeSpinPivot=gunRoot.userData.primeSpinPivot;
+    if(primeSpinPivot&&activeWeapon.id==='knife'&&state.account?.equippedSkins?.knife==='prime_knife'){
       const inspectAge=now-motion.inspectAt;
-      if(motion.inspectAt&&inspectAge>=0&&inspectAge<1500){
-        const inspectT=clamp01(inspectAge/1500);
-        const easedSpin=inspectT*inspectT*(3-2*inspectT);
-        heldSkinModel.rotation.z=Math.PI*2*easedSpin;
-      }else heldSkinModel.rotation.z=0;
+      if(motion.inspectAt&&inspectAge>=0&&inspectAge<2100){
+        const t=clamp01(inspectAge/2100), ease=t*t*(3-2*t);
+        primeSpinPivot.rotation.set(Math.sin(t*Math.PI*4.6)*.58,ease*Math.PI*6.0,Math.sin(t*Math.PI*6.0)*.82);
+        const base=primeSpinPivot.userData.basePosition;
+        if(base)primeSpinPivot.position.set(base.x,base.y+Math.sin(t*Math.PI*4.0)*.012,base.z);
+      }else if(knifeActive){
+        primeSpinPivot.rotation.set(knifeMove.rx*.52*knifeWave,knifeMove.ry*.62*knifeWave,knifeMove.rz*.46*knifeWave);
+        const base=primeSpinPivot.userData.basePosition;if(base)primeSpinPivot.position.copy(base);
+      }else{
+        primeSpinPivot.rotation.set(0,0,0);
+        const base=primeSpinPivot.userData.basePosition;if(base)primeSpinPivot.position.copy(base);
+      }
     }
     const hands=gunRoot.userData||{};const showSupportHand=activeWeapon.slot==='primary'||(state.reloading&&activeWeapon.slot==='sidearm');
     if(hands.leftSleeve){hands.leftSleeve.visible=showSupportHand;const br=hands.leftSleeve.userData.baseRotation;if(br){hands.leftSleeve.rotation.x=br.x+reloadWave*.42+fireKick*.12;hands.leftSleeve.rotation.z=br.z-reloadWave*.28;}}
@@ -1708,6 +1782,12 @@ function updateWorld(dt,now){
     else {const remaining=Math.max(0,Math.ceil(((state.phase==='buy'?state.phaseEnd:state.phase==='live'?state.roundLimit:Date.now())-Date.now())/1000));$('match-timer').textContent=`${String(Math.floor(remaining/60)).padStart(2,'0')}:${String(remaining%60).padStart(2,'0')}`;}
   }
   if(muzzleMesh&&now>state.muzzleUntil)muzzleMesh.visible=false;
+  for(let i=(state.primeSlashEffects||[]).length-1;i>=0;i--){
+    const fx=state.primeSlashEffects[i],t=(now-fx.started)/fx.duration;
+    if(t>=1){fx.group.parent?.remove(fx.group);fx.group.traverse(o=>{o.geometry?.dispose();if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material?.dispose();});state.primeSlashEffects.splice(i,1);continue;}
+    fx.group.scale.setScalar(.94+t*.13);fx.group.rotation.z=(fx.variant%2?1:-1)*t*.32;
+    fx.group.traverse(o=>{if(o.material&&'opacity' in o.material){const base=o.userData.baseOpacity??o.material.opacity;o.userData.baseOpacity=base;o.material.opacity=base*Math.pow(1-t,.8);}});
+  }
   for(let i=state.killEffects.length-1;i>=0;i--){const fx=state.killEffects[i],t=(now-fx.started)/fx.duration;if(t>=1){scene.remove(fx.group);fx.group.traverse(o=>{o.geometry?.dispose();if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material?.dispose();});state.killEffects.splice(i,1);continue;}if(fx.type==='ghost-lift'){fx.group.position.y=fx.origin.y+t*5.2;fx.group.position.x=fx.origin.x+Math.sin(t*5)*.28;fx.group.traverse(o=>{if(o.material&&'opacity' in o.material)o.material.opacity=Math.max(0,.9-t*.9);});}else{fx.group.position.y=fx.origin.y+t*2.1;fx.group.scale.setScalar(1+t*.45);fx.group.traverse(o=>{if(o.material&&'opacity' in o.material)o.material.opacity=Math.max(0,.8-t*.8);});}}
   for(let i=state.shotFx.length-1;i>=0;i--){const fx=state.shotFx[i];if(now>=fx.expires){scene.remove(fx.line);fx.geo.dispose();fx.mat.dispose();state.shotFx.splice(i,1);}}
 }
