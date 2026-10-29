@@ -30,7 +30,7 @@ export const TRAINING_QUEST_REWARD = 22;
 export function getStoreSkin(skinId) { return STORE_SKINS.find(s => s.id === String(skinId)) || null; }
 export function getStoreBundle(bundleId) { return STORE_BUNDLES.find(b => b.id === String(bundleId)) || null; }
 
-// Stable daily selection: same three items for every player throughout the same UTC day.
+// Kept as a simple helper for previews; the server now persists a per-account selection for 24 hours.
 export function getDailySkinIds(dateString = new Date().toISOString().slice(0, 10)) {
   const pool = STORE_SKINS.map(s => s.id);
   let seed = 2166136261;
