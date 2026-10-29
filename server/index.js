@@ -8,7 +8,7 @@ import { randomBytes, createHash, scrypt as scryptCallback, timingSafeEqual } fr
 import { promisify } from 'node:util';
 import pg from 'pg';
 import { applyExperienceProgress, getHitMultiplier, isValidPassword, isValidUsername, normalizeUsername } from '../src/shared-rules.js';
-import { STORE_SKINS, STORE_BUNDLES, STORE_ROLL_COST, TRAINING_QUEST_TARGET, TRAINING_QUEST_REWARD, getStoreSkin, getStoreBundle, getDailySkinIds } from '../src/store-catalog.js';
+import { STORE_SKINS, STORE_BUNDLES, STORE_ROLL_COST, TRAINING_QUEST_TARGET, TRAINING_QUEST_REWARD, getStoreSkin, getStoreBundle } from '../src/store-catalog.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
@@ -65,6 +65,8 @@ function accountStoreModel(row) {
     equippedSkins: parseJsonValue(row.equipped_skins ?? row.equippedSkins, {}),
     trainingQuestProgress: Math.max(0, Number(row.training_quest_progress ?? row.trainingQuestProgress) || 0),
     redeemedCodes: parseJsonValue(row.redeemed_codes ?? row.redeemedCodes, []),
+    dailyShopIds: parseJsonValue(row.daily_shop_ids ?? row.dailyShopIds, []),
+    dailyShopExpiresAt: row.daily_shop_expires_at ?? row.dailyShopExpiresAt ?? null,
   };
 }
 
@@ -103,6 +105,8 @@ async function initializeAccountStorage() {
         equipped_skins JSONB NOT NULL DEFAULT '{}'::jsonb,
         training_quest_progress INTEGER NOT NULL DEFAULT 0 CHECK (training_quest_progress >= 0 AND training_quest_progress < 67),
         redeemed_codes JSONB NOT NULL DEFAULT '[]'::jsonb,
+        daily_shop_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+        daily_shop_expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
@@ -111,6 +115,8 @@ async function initializeAccountStorage() {
       ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS equipped_skins JSONB NOT NULL DEFAULT '{}'::jsonb;
       ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS training_quest_progress INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS redeemed_codes JSONB NOT NULL DEFAULT '[]'::jsonb;
+      ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS daily_shop_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
+      ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS daily_shop_expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
       CREATE TABLE IF NOT EXISTS ns_sessions (
         token_hash CHAR(64) PRIMARY KEY,
         account_id BIGINT NOT NULL REFERENCES ns_accounts(id) ON DELETE CASCADE,
@@ -144,6 +150,8 @@ async function initializeAccountStorage() {
         account.equipped_skins = parseJsonValue(account.equipped_skins ?? account.equippedSkins, {});
         account.training_quest_progress = Math.max(0, Number(account.training_quest_progress ?? account.trainingQuestProgress) || 0) % TRAINING_QUEST_TARGET;
         account.redeemed_codes = parseJsonValue(account.redeemed_codes ?? account.redeemedCodes, []);
+        account.daily_shop_ids = parseJsonValue(account.daily_shop_ids ?? account.dailyShopIds, []);
+        account.daily_shop_expires_at = account.daily_shop_expires_at ?? account.dailyShopExpiresAt ?? null;
       }
       localAuth.nextId = Number(parsed.nextId) || (Math.max(0, ...localAuth.accounts.map(a=>Number(a.id)||0)) + 1);
     }
@@ -169,7 +177,7 @@ async function insertAccount(username, passwordSalt, passwordHash) {
   if (localAuth.accounts.some(row => row.username === username)) {
     const error = new Error('duplicate username'); error.code = '23505'; throw error;
   }
-  const account = { id: localAuth.nextId++, username, password_salt: passwordSalt, password_hash: passwordHash, level: 1, xp: 0, neon_points: 0, owned_skins: [], equipped_skins: {}, training_quest_progress: 0, redeemed_codes: [], created_at: new Date().toISOString() };
+  const account = { id: localAuth.nextId++, username, password_salt: passwordSalt, password_hash: passwordHash, level: 1, xp: 0, neon_points: 0, owned_skins: [], equipped_skins: {}, training_quest_progress: 0, redeemed_codes: [], daily_shop_ids: [], daily_shop_expires_at: null, created_at: new Date().toISOString() };
   localAuth.accounts.push(account); await persistLocalAuth(); return account;
 }
 async function createAuthSession(accountId) {
@@ -185,7 +193,7 @@ async function accountForToken(token) {
   const tokenHash = hashSessionToken(token);
   if (authPool) {
     const result = await authPool.query(
-      `SELECT a.id,a.username,a.level,a.xp,a.neon_points,a.owned_skins,a.equipped_skins,a.training_quest_progress FROM ns_sessions s JOIN ns_accounts a ON a.id=s.account_id WHERE s.token_hash=$1 AND s.expires_at>NOW() LIMIT 1`,
+      `SELECT a.id,a.username,a.level,a.xp,a.neon_points,a.owned_skins,a.equipped_skins,a.training_quest_progress,a.daily_shop_ids,a.daily_shop_expires_at FROM ns_sessions s JOIN ns_accounts a ON a.id=s.account_id WHERE s.token_hash=$1 AND s.expires_at>NOW() LIMIT 1`,
       [tokenHash]
     );
     return result.rows[0] || null;
@@ -240,7 +248,7 @@ async function mutateAccountState(accountId, mutator) {
     try {
       await client.query('BEGIN');
       const result = await client.query(
-        'SELECT id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,redeemed_codes FROM ns_accounts WHERE id=$1 FOR UPDATE',
+        'SELECT id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,redeemed_codes,daily_shop_ids,daily_shop_expires_at FROM ns_accounts WHERE id=$1 FOR UPDATE',
         [accountId]
       );
       if (!result.rows.length) { await client.query('ROLLBACK'); return { ok:false, status:404, error:'계정을 찾을 수 없습니다.' }; }
@@ -248,9 +256,9 @@ async function mutateAccountState(accountId, mutator) {
       const outcome = mutator(model) || { ok:true };
       if (!outcome.ok) { await client.query('ROLLBACK'); return outcome; }
       const updated = await client.query(
-        `UPDATE ns_accounts SET level=$2,xp=$3,neon_points=$4,owned_skins=$5::jsonb,equipped_skins=$6::jsonb,training_quest_progress=$7,redeemed_codes=$8::jsonb,updated_at=NOW()
+        `UPDATE ns_accounts SET level=$2,xp=$3,neon_points=$4,owned_skins=$5::jsonb,equipped_skins=$6::jsonb,training_quest_progress=$7,redeemed_codes=$8::jsonb,daily_shop_ids=$9::jsonb,daily_shop_expires_at=$10,updated_at=NOW()
          WHERE id=$1 RETURNING id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress`,
-        [accountId,model.level,model.xp,model.neonPoints,JSON.stringify(model.ownedSkins),JSON.stringify(model.equippedSkins),model.trainingQuestProgress,JSON.stringify(model.redeemedCodes)]
+        [accountId,model.level,model.xp,model.neonPoints,JSON.stringify(model.ownedSkins),JSON.stringify(model.equippedSkins),model.trainingQuestProgress,JSON.stringify(model.redeemedCodes),JSON.stringify(model.dailyShopIds||[]),model.dailyShopExpiresAt||new Date(0).toISOString()]
       );
       await client.query('COMMIT');
       return { ...outcome, ok:true, account:normalizeAccountPublic(updated.rows[0]) };
@@ -268,6 +276,7 @@ async function mutateAccountState(accountId, mutator) {
     level:model.level, xp:model.xp, neon_points:model.neonPoints,
     owned_skins:model.ownedSkins, equipped_skins:model.equippedSkins,
     training_quest_progress:model.trainingQuestProgress, redeemed_codes:model.redeemedCodes,
+    daily_shop_ids:model.dailyShopIds||[], daily_shop_expires_at:model.dailyShopExpiresAt||null,
     updated_at:new Date().toISOString(),
   });
   await persistLocalAuth();
@@ -371,9 +380,20 @@ app.get('/api/store/state', async (req, res) => {
     const token = getRequestToken(req);
     const account = await accountForToken(token);
     if (!account) return accountRequiredMessage(res);
-    const today = new Date().toISOString().slice(0, 10);
+    const result = await mutateAccountState(account.id, model => {
+      const now = Date.now();
+      const expires = Date.parse(model.dailyShopExpiresAt || '');
+      if (!Array.isArray(model.dailyShopIds) || model.dailyShopIds.length !== 3 || !Number.isFinite(expires) || expires <= now) {
+        const pool = STORE_SKINS.map(skin => skin.id);
+        for (let i=pool.length-1;i>0;i--) { const j=Math.floor(Math.random()*(i+1)); [pool[i],pool[j]]=[pool[j],pool[i]]; }
+        model.dailyShopIds = pool.slice(0,3);
+        model.dailyShopExpiresAt = new Date(now + 24*60*60*1000).toISOString();
+      }
+      return { ok:true, dailySkinIds:[...model.dailyShopIds], dailyExpiresAt:model.dailyShopExpiresAt };
+    });
+    if (!result.ok) return res.status(result.status || 500).json({ error:result.error || '상점 정보를 저장하지 못했습니다.' });
     res.set('Cache-Control','no-store');
-    res.json({ account:normalizeAccountPublic(account), dailyDate:today, dailySkinIds:getDailySkinIds(today), rollCost:STORE_ROLL_COST, questTarget:TRAINING_QUEST_TARGET, questReward:TRAINING_QUEST_REWARD });
+    res.json({ account:result.account, dailyDate:result.dailyExpiresAt, dailyExpiresAt:result.dailyExpiresAt, dailySkinIds:result.dailySkinIds, rollCost:STORE_ROLL_COST, questTarget:TRAINING_QUEST_TARGET, questReward:TRAINING_QUEST_REWARD });
   } catch (error) { console.error('[store] state failed:', error?.message || error); res.status(500).json({ error:'상점 정보를 불러오지 못했습니다.' }); }
 });
 
@@ -392,20 +412,25 @@ app.post('/api/store/buy', async (req, res) => {
       if (!bundle) return res.status(400).json({ error:'존재하지 않는 번들입니다.' });
       cost = bundle.price; skinIds = bundle.skinIds; productName = bundle.displayName;
     } else if (productType === 'daily') {
-      const today = new Date().toISOString().slice(0, 10);
-      if (!getDailySkinIds(today).includes(productId)) return res.status(409).json({ error:'오늘의 스킨 목록이 갱신됐습니다. 상점을 새로고침하세요.' });
       const skin = getStoreSkin(productId);
       if (!skin) return res.status(400).json({ error:'존재하지 않는 스킨입니다.' });
       cost = skin.price; skinIds = [skin.id]; productName = skin.displayName;
     } else return res.status(400).json({ error:'구매 유형이 올바르지 않습니다.' });
     const result = await mutateAccountState(account.id, model => {
       const owned = new Set(model.ownedSkins);
+      if (productType === 'daily' && (!(model.dailyShopIds||[]).includes(productId) || !Number.isFinite(Date.parse(model.dailyShopExpiresAt||'')) || Date.parse(model.dailyShopExpiresAt)<=Date.now())) return { ok:false, status:409, error:'오늘의 스킨 목록이 만료됐습니다. 상점을 새로고침하세요.' };
       const missing = skinIds.filter(id => !owned.has(id));
       if (!missing.length) return { ok:false, status:409, error:'이미 보유한 상품입니다.' };
-      if (model.neonPoints < cost) return { ok:false, status:400, error:`네온 포인트가 부족합니다. ${cost} NP가 필요합니다.` };
-      model.neonPoints -= cost;
+      let actualCost = cost;
+      if (productType === 'bundle') {
+        const bundle = getStoreBundle(productId);
+        const alreadyOwnedCount = bundle.skinIds.filter(id => owned.has(id)).length;
+        actualCost = Math.max(0, bundle.price - alreadyOwnedCount * 60);
+      }
+      if (model.neonPoints < actualCost) return { ok:false, status:400, error:`네온 포인트가 부족합니다. ${actualCost} NP가 필요합니다.` };
+      model.neonPoints -= actualCost;
       model.ownedSkins = [...owned, ...missing];
-      return { ok:true, productName, purchasedSkinIds:missing, cost };
+      return { ok:true, productName, purchasedSkinIds:missing, cost:actualCost };
     });
     if (!result.ok) return res.status(result.status || 500).json({ error:result.error || '구매에 실패했습니다.' });
     res.json({ account:result.account, productName:result.productName, purchasedSkinIds:result.purchasedSkinIds, cost:result.cost });
@@ -423,11 +448,8 @@ app.post('/api/store/roll', async (req, res) => {
       if (model.neonPoints < STORE_ROLL_COST) return { ok:false, status:400, error:`네온 포인트가 부족합니다. ${STORE_ROLL_COST} NP가 필요합니다.` };
       const unowned = STORE_SKINS.filter(skin => !model.ownedSkins.includes(skin.id));
       if (!unowned.length) return { ok:false, status:409, error:'현재 스킨을 모두 보유하고 있습니다.' };
-      const roll = Math.random();
-      const rarity = roll < .68 ? 'normal' : roll < .94 ? 'rare' : 'premium';
-      const pool = unowned.filter(skin => skin.rarity === rarity);
-      const choices = pool.length ? pool : unowned;
-      const skin = choices[Math.floor(Math.random() * choices.length)];
+      // Every individual unowned skin has the same probability, regardless of rarity.
+      const skin = unowned[Math.floor(Math.random() * unowned.length)];
       model.neonPoints -= STORE_ROLL_COST;
       model.ownedSkins = [...model.ownedSkins, skin.id];
       return { ok:true, skin, cost:STORE_ROLL_COST };
@@ -511,26 +533,27 @@ const NEXT_ROUND_MS = 5_000;
 const WINS_TO_MATCH = 6;
 const STARTING_CREDITS = 450;
 // Generous, cumulative round economy: later rounds fund more expensive loadouts and shields.
-const ROUND_WIN_REWARD = 1800;
-const ROUND_LOSS_REWARD = 1200;
-const KILL_REWARD = 200;
-const ROUND_WIN_STEP = 300;
-const ROUND_LOSS_STEP = 200;
-const KILL_REWARD_STEP = 40;
+const ROUND_WIN_REWARD = 1550;
+const ROUND_LOSS_REWARD = 950;
+const KILL_REWARD = 150;
+const ROUND_WIN_STEP = 250;
+const ROUND_LOSS_STEP = 150;
+const KILL_REWARD_STEP = 25;
 // Server-authoritative weapon definitions. Keep IDs and balance in sync with src/main.js.
 // These entries were missing in the previous build, causing ReferenceError inside the
 // buy/equip/fire Socket.IO handlers and making every online shot fail before damage.
+const MAX_SHOT_DISTANCE = 500;
 const weapons = Object.freeze({
-  pistol:   { slot: 'sidearm', price: 0,    damage: 10, rate: 0.32, range: 55 },
-  revolver: { slot: 'sidearm', price: 550,  damage: 30, rate: 0.52, range: 62 },
-  smg:      { slot: 'primary', price: 850,  damage: 7, rate: 0.12, range: 25 },
-  shotgun:  { slot: 'primary', price: 1100, damage: 6.5, rate: 0.86, range: 16, pellets: 10, spread: 0.105 },
-  rifle:    { slot: 'primary', price: 1950, damage: 15, rate: 0.13, range: 50 },
-  dmr:      { slot: 'primary', price: 2200, damage: 20, rate: 0.32, range: 75 },
-  sniper:   { slot: 'primary', price: 3000, damage: 78, rate: 1.12, range: 100 },
-  lmg:      { slot: 'primary', price: 2500, damage: 16, rate: 0.115, range: 42 },
-  burst:    { slot: 'primary', price: 1600, damage: 14, rate: 0.30, range: 45, burstCount: 3, burstGap: 0.055 },
-  knife:    { slot: 'melee', price: 0, damage: 40, rate: 0.48, range: 2.65 },
+  pistol:   { slot: 'sidearm', price: 0,    damage: 10, rate: 0.32, distanceSpread: 0.00014, recoil:0.012 },
+  revolver: { slot: 'sidearm', price: 550,  damage: 30, rate: 0.52, distanceSpread: 0.00007, recoil:0.018 },
+  smg:      { slot: 'primary', price: 850,  damage: 7, rate: 0.12, distanceSpread: 0.00042, recoil:0.042 },
+  shotgun:  { slot: 'primary', price: 1100, damage: 6.5, rate: 0.86, pellets: 10, spread: 0.105, distanceSpread: 0.00110, recoil:0.075 },
+  rifle:    { slot: 'primary', price: 1950, damage: 15, rate: 0.13, distanceSpread: 0.00013, recoil:0.023 },
+  dmr:      { slot: 'primary', price: 2200, damage: 20, rate: 0.32, distanceSpread: 0.00004, recoil:0.010 },
+  sniper:   { slot: 'primary', price: 3000, damage: 78, rate: 1.12, distanceSpread: 0.000015, recoil:0.012 },
+  lmg:      { slot: 'primary', price: 2500, damage: 16, rate: 0.115, distanceSpread: 0.00038, recoil:0.048 },
+  burst:    { slot: 'primary', price: 1600, damage: 14, rate: 0.30, distanceSpread: 0.00016, recoil:0.024, burstCount: 3, burstGap: 0.055 },
+  knife:    { slot: 'melee', price: 0, damage: 40, rate: 0.48, range: 2.65, distanceSpread: 0, recoil:0.002 },
 });
 const rooms = new Map();
 const mapCoverBoxes = {
@@ -687,7 +710,12 @@ function endRound(room, winnerId, reason='적 처치', killInfo=null) {
   const winner = winnerId ? room.players.get(winnerId) : null;
   if (killInfo && winner && killInfo.victimId && room.players.has(killInfo.victimId)) {
     const victim=room.players.get(killInfo.victimId);
-    io.to(room.code).emit('killCamStart',{killerId:winnerId,victimId:killInfo.victimId,durationMs:5000,skinId:killInfo.skinId||winner.equippedSkins?.[winner.weapon]||null,killer:{x:winner.x,y:winner.y||0,z:winner.z,yaw:winner.yaw,pitch:winner.pitch,weapon:winner.weapon,name:winner.name},victim:{x:victim.x,y:victim.y||0,z:victim.z,yaw:victim.yaw,pitch:victim.pitch,name:victim.name}});
+    const killPayload={killerId:winnerId,victimId:killInfo.victimId,durationMs:5000,skinId:killInfo.skinId||winner.equippedSkins?.[winner.weapon]||null,killer:{x:winner.x,y:winner.y||0,z:winner.z,yaw:winner.yaw,pitch:winner.pitch,weapon:winner.weapon,name:winner.name},victim:{x:victim.x,y:victim.y||0,z:victim.z,yaw:victim.yaw,pitch:victim.pitch,name:victim.name}};
+    // Only the eliminated player receives the killcam overlay and first-person replay.
+    io.to(killInfo.victimId).emit('killCamStart',killPayload);
+    // The killer sees the victim's skin effect but remains free to reposition during the replay window.
+    io.to(winnerId).emit('killerKillEffect',killPayload);
+    io.to(winnerId).emit('killerFreedom',{durationMs:5000,killerId:winnerId});
   }
   if (winner?.accountId) {
     void (async () => {
@@ -893,18 +921,23 @@ io.on('connection', socket => {
     if(!room||!shooter||shooter.connected===false||room.phase!=='live'||shooter.hp<=0)return;
     const id=String(payload?.weaponId||'');const w=weapons[id];if(!w||id!==shooter.weapon||!(shooter.ownedWeapons||['pistol','knife']).includes(id))return;
     const now=Date.now();
+    const previousFireAt=Number(shooter.lastFireAt)||0;
     if(id==='burst'){
       const burstId=Number(payload?.burstId),seq=Number(payload?.burstSeq);
       if(!Number.isInteger(burstId)||burstId<1||!Number.isInteger(seq)||seq<0||seq>2)return;
-      if(seq===0){if(now-shooter.lastFireAt<w.rate*1000*.72)return;shooter.activeBurstId=burstId;shooter.burstNextSeq=1;shooter.burstStartedAt=now;shooter.lastFireAt=now;}
-      else{if(shooter.activeBurstId!==burstId||seq!==shooter.burstNextSeq||now-shooter.burstStartedAt>360)return;shooter.burstNextSeq++;shooter.lastFireAt=now;if(seq===2)shooter.activeBurstId=null;}
-    }else{if(now-shooter.lastFireAt < w.rate*1000*.72)return;shooter.lastFireAt=now;}
+      if(seq===0){if(now-previousFireAt<w.rate*1000*.72)return;shooter.activeBurstId=burstId;shooter.burstNextSeq=1;shooter.burstStartedAt=now;}
+      else{if(shooter.activeBurstId!==burstId||seq!==shooter.burstNextSeq||now-shooter.burstStartedAt>360)return;shooter.burstNextSeq++;if(seq===2)shooter.activeBurstId=null;}
+    }else{if(now-previousFireAt < w.rate*1000*.72)return;}
+    const elapsedSincePrevious = previousFireAt ? now - previousFireAt : Infinity;
+    shooter.recoilHeat = elapsedSincePrevious < w.rate*1000*1.55 ? Math.min(4.2,(shooter.recoilHeat||0)+(w.recoil||.01)*19) : Math.max(0,(shooter.recoilHeat||0)*.25);
+    shooter.lastFireAt=now;
     const o=payload?.origin,d=payload?.direction;
     if(!o||!d||![o.x,o.y,o.z,d.x,d.y,d.z].every(v=>Number.isFinite(Number(v))))return;
     const dirLen=Math.hypot(Number(d.x),Number(d.y),Number(d.z));if(dirLen<.7||dirLen>1.3)return;
     const origin={x:Number(o.x),y:Number(o.y),z:Number(o.z)};const direction={x:Number(d.x)/dirLen,y:Number(d.y)/dirLen,z:Number(d.z)/dirLen};
     const targetEntry=[...room.players.entries()].find(([id2,p])=>id2!==socket.id&&p.hp>0);
-    let end={x:origin.x+direction.x*w.range,y:origin.y+direction.y*w.range,z:origin.z+direction.z*w.range};
+    // Firearms have no hard gameplay range cutoff. Accuracy becomes less reliable with distance.
+    let end={x:origin.x+direction.x*MAX_SHOT_DISTANCE,y:origin.y+direction.y*MAX_SHOT_DISTANCE,z:origin.z+direction.z*MAX_SHOT_DISTANCE};
     let hit=null,totalDamage=0,closestHitDistance=Infinity;
     if(targetEntry){
       const [targetId,target]=targetEntry;
@@ -918,16 +951,19 @@ io.on('connection', socket => {
         const ox=(origin.x-center.x)/radii.x, oy=(origin.y-center.y)/radii.y, oz=(origin.z-center.z)/radii.z;
         const dx=rayDirection.x/radii.x, dy=rayDirection.y/radii.y, dz=rayDirection.z/radii.z;
         const a=dx*dx+dy*dy+dz*dz,b=2*(ox*dx+oy*dy+oz*dz),c=ox*ox+oy*oy+oz*oz-1,disc=b*b-4*a*c;
-        if(a<1e-9||disc<0)return null;const root=Math.sqrt(disc);let t=(-b-root)/(2*a);if(t<0)t=(-b+root)/(2*a);return t>=0&&t<=w.range?t:null;
+        if(a<1e-9||disc<0)return null;const root=Math.sqrt(disc);let t=(-b-root)/(2*a);if(t<0)t=(-b+root)/(2*a);return t>=0&&t<=MAX_SHOT_DISTANCE?t:null;
       };
       const pelletCount=id==='shotgun'?(w.pellets||10):1;
       const rightLen=Math.hypot(direction.z,direction.x)||1;const right={x:direction.z/rightLen,y:0,z:-direction.x/rightLen};
       const up={x:right.y*direction.z-right.z*direction.y,y:right.z*direction.x-right.x*direction.z,z:right.x*direction.y-right.y*direction.x};
       const upLen=Math.hypot(up.x,up.y,up.z)||1;up.x/=upLen;up.y/=upLen;up.z/=upLen;
+      const targetDistance = Math.hypot(tx-origin.x, baseY+1.05-origin.y, tz-origin.z);
+      const distanceBloom = id==='knife' ? 0 : Math.max(0,targetDistance-8)*(w.distanceSpread||.0001) + (shooter.recoilHeat||0)*(w.recoil||.01)*.11;
       for(let pellet=0;pellet<pelletCount;pellet++){
         let rayDirection=direction;
-        if(id==='shotgun'){
-          const angle=Math.random()*Math.PI*2,r=Math.sqrt(Math.random())*(w.spread||.105);
+        if(id!=='knife' && (id==='shotgun' || distanceBloom>0.00001)) {
+          const baseSpread = id==='shotgun' ? (w.spread||.105) : 0;
+          const angle=Math.random()*Math.PI*2,r=Math.sqrt(Math.random())*(baseSpread+distanceBloom);
           const x=direction.x+right.x*Math.cos(angle)*r+up.x*Math.sin(angle)*r;
           const y=direction.y+right.y*Math.cos(angle)*r+up.y*Math.sin(angle)*r;
           const z=direction.z+right.z*Math.cos(angle)*r+up.z*Math.sin(angle)*r;const len=Math.hypot(x,y,z)||1;rayDirection={x:x/len,y:y/len,z:z/len};
@@ -935,15 +971,14 @@ io.on('connection', socket => {
         let nearestPart=null;
         for(const part of parts){const distance=ellipsoidDistance(rayDirection,part.center,part.radii);if(distance==null||isShotBlocked(origin,rayDirection,distance,room.map))continue;if(!nearestPart||distance<nearestPart.distance)nearestPart={...part,distance};}
         if(nearestPart){
-          let pelletDamage=id==='knife'?40:w.damage*(nearestPart.multiplier||1);
-          if(id==='shotgun')pelletDamage*=Math.max(.2,1-(nearestPart.distance/w.range)*.78);
+          const pelletDamage=id==='knife'?40:w.damage*(nearestPart.multiplier||1);
           totalDamage+=pelletDamage;
           if(nearestPart.distance<closestHitDistance){closestHitDistance=nearestPart.distance;hit={id:targetId,p:target,part:nearestPart.part,multiplier:nearestPart.multiplier};end={x:origin.x+rayDirection.x*nearestPart.distance,y:origin.y+rayDirection.y*nearestPart.distance,z:origin.z+rayDirection.z*nearestPart.distance};}
         }
       }
     }
-    // One tracer per trigger; the server computes all shotgun pellets and their range falloff.
-    io.to(room.code).emit('shotFx',{id:socket.id,weaponId:id,origin,end});
+    // One tracer per trigger; distance affects spread, not maximum firearm range.
+    io.to(room.code).emit('shotFx',{id:socket.id,weaponId:id,origin,end,skinId:shooter.equippedSkins?.[id]||null});
     if(!hit||totalDamage<=0)return;
     const damage=totalDamage;
     const t=hit.p;let left=damage;if(t.armor>0){const absorbRatio=t.armorTier==='heavy'?.60:.35;const absorbed=Math.min(t.armor,damage*absorbRatio);t.armor-=absorbed;left-=absorbed;if(t.armor<=0){t.armor=0;t.armorTier='none';}}t.hp=Math.max(0,t.hp-left);
