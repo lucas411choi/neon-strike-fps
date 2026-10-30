@@ -211,9 +211,5 @@
 }
 @media(prefers-reduced-motion:reduce){.skins-weapon-card,.skin-option-card,.skins-back-button,.skins-secondary-button{transition:none!important;}}
 
-/* v1.6.2: locked skins remain inspectable but are visibly non-equippable. */
-.skin-option-card.skin-locked{border-style:dashed;border-color:#d2b86b66;background:linear-gradient(110deg,#171b25,#101722);}
-.skin-option-card.skin-locked .skin-option-art{filter:saturate(.82);}
-.skin-option-card.skin-locked .skin-option-copy em{color:#e7c978;}
-.skin-option-card.skin-locked .skin-option-check{color:#e7c978;font-size:13px;}
-#store-roll-button:disabled{opacity:.58;cursor:not-allowed;filter:saturate(.55);}
+/* v1.6.2 hotfix: readable support-hand silhouette and disabled supply-drop feedback */
+#store-roll-button:disabled{opacity:.58;filter:saturate(.55);cursor:not-allowed} .gacha-copy{overflow-wrap:anywhere}
