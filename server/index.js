@@ -447,7 +447,7 @@ app.post('/api/store/roll', async (req, res) => {
     const result = await mutateAccountState(account.id, model => {
       if (model.neonPoints < STORE_ROLL_COST) return { ok:false, status:400, error:`네온 포인트가 부족합니다. ${STORE_ROLL_COST} NP가 필요합니다.` };
       const unowned = STORE_SKINS.filter(skin => !model.ownedSkins.includes(skin.id));
-      if (!unowned.length) return { ok:false, status:409, error:'현재 스킨을 모두 보유하고 있습니다.' };
+      if (!unowned.length) return { ok:false, status:409, error:'현재 모든 스킨을 모두 보유하고 있습니다.' };
       // Every individual unowned skin has the same probability, regardless of rarity.
       const skin = unowned[Math.floor(Math.random() * unowned.length)];
       model.neonPoints -= STORE_ROLL_COST;
@@ -551,7 +551,7 @@ const weapons = Object.freeze({
   rifle:    { slot: 'primary', price: 1950, damage: 15, rate: 0.13, distanceSpread: 0.00013, recoil:0.023 },
   dmr:      { slot: 'primary', price: 2200, damage: 20, rate: 0.32, distanceSpread: 0.00004, recoil:0.010 },
   sniper:   { slot: 'primary', price: 3000, damage: 78, rate: 1.12, distanceSpread: 0.000015, recoil:0.012 },
-  lmg:      { slot: 'primary', price: 2500, damage: 16, rate: 0.115, distanceSpread: 0.00038, recoil:0.048 },
+  lmg:      { slot: 'primary', price: 2500, damage: 16, rate: 0.115, distanceSpread: 0, recoil:0.034 },
   burst:    { slot: 'primary', price: 1600, damage: 14, rate: 0.30, distanceSpread: 0.00016, recoil:0.024, burstCount: 3, burstGap: 0.055 },
   knife:    { slot: 'melee', price: 0, damage: 40, rate: 0.48, range: 2.65, distanceSpread: 0, recoil:0.002 },
 });
@@ -959,11 +959,11 @@ io.on('connection', socket => {
       const up={x:right.y*direction.z-right.z*direction.y,y:right.z*direction.x-right.x*direction.z,z:right.x*direction.y-right.y*direction.x};
       const upLen=Math.hypot(up.x,up.y,up.z)||1;up.x/=upLen;up.y/=upLen;up.z/=upLen;
       const targetDistance = Math.hypot(tx-origin.x, baseY+1.05-origin.y, tz-origin.z);
-      const distanceBloom = id==='knife' ? 0 : Math.max(0,targetDistance-8)*(w.distanceSpread||.0001) + (shooter.recoilHeat||0)*(w.recoil||.01)*.11;
+      const distanceBloom = 0; // Server hit validation never adds random distance/recoil misses; recoil is applied visibly on the client.
       for(let pellet=0;pellet<pelletCount;pellet++){
         let rayDirection=direction;
-        if(id!=='knife' && (id==='shotgun' || distanceBloom>0.00001)) {
-          const baseSpread = id==='shotgun' ? (w.spread||.105) : 0;
+        if(id==='shotgun') {
+          const baseSpread = w.spread||.105;
           const angle=Math.random()*Math.PI*2,r=Math.sqrt(Math.random())*(baseSpread+distanceBloom);
           const x=direction.x+right.x*Math.cos(angle)*r+up.x*Math.sin(angle)*r;
           const y=direction.y+right.y*Math.cos(angle)*r+up.y*Math.sin(angle)*r;
