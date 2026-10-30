@@ -129,3 +129,84 @@
 @media(max-width:900px){.store-bundle-grid{grid-template-columns:1fr 1fr}.store-bundle-card.bundle-featured{grid-column:1/-1;min-height:245px}.store-lower-grid{grid-template-columns:1fr}.store-daily-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.owned-skins-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.store-code-section{grid-template-columns:1fr}}
 @media(max-width:600px){.store-heading{align-items:flex-start;gap:8px}.store-wallet{min-width:90px;padding:9px}.store-wallet b{font-size:17px}.store-heading h2{font-size:29px}.store-heading p{font-size:9px}.store-bundle-grid{grid-template-columns:1fr}.store-bundle-card.bundle-featured{grid-column:auto}.store-bundle-card{min-height:240px}.bundle-visual{min-height:75px}.store-daily-grid{grid-template-columns:1fr}.daily-skin-card{display:grid;grid-template-columns:120px 1fr}.daily-skin-card .store-skin-art{min-height:100%;border-bottom:0;border-right:1px solid #92b4c51a}.daily-skin-copy{padding:10px}.store-code-section{padding:13px}.store-code-form{grid-template-columns:1fr}.store-code-form button{min-height:38px}.owned-skins-grid{grid-template-columns:1fr}.owned-skin-card{display:grid;grid-template-columns:128px 1fr}.owned-skin-card .store-skin-art{min-height:100%;border-bottom:0;border-right:1px solid #92b4c51a}.quest-card{align-items:flex-start;flex-wrap:wrap;padding:13px;gap:10px}.quest-card-main{min-width:calc(100% - 68px)}.quest-card>.store-primary-button{width:100%}.gacha-window{padding:18px 12px}.gacha-stage{height:200px}.gacha-earth{width:48px;height:48px}.gacha-ship{transform:scale(.75)}.gacha-reveal-card{grid-template-columns:95px 1fr}.gacha-reveal-card .store-skin-art{min-height:85px}}
 
+
+
+
+/* v1.6.1: prevent store/quest/skin heading overlap and provide a responsive, scrollable 3D skin inspector. */
+#lobby-shop-view,#lobby-skins-view,#lobby-quests-view{
+  top:104px;bottom:16px;left:clamp(16px,3vw,48px);right:clamp(16px,3vw,48px);
+  box-sizing:border-box;min-width:0;min-height:0;padding:16px clamp(10px,1.4vw,22px) 34px;
+  overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#355363 transparent;
+}
+#lobby-shop-view .store-heading,#lobby-skins-view .store-heading{position:relative;z-index:1;display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin:0 0 22px;padding:0 0 16px;border-bottom:1px solid #8ab6c21d;}
+#lobby-shop-view .store-heading>div:first-child,#lobby-skins-view .store-heading>div:first-child{min-width:0;flex:1;}
+#lobby-shop-view .store-heading h2,#lobby-skins-view .store-heading h2{margin:8px 0 7px;line-height:1.08;}
+#lobby-shop-view .store-heading p,#lobby-skins-view .store-heading p{margin:0;max-width:660px;line-height:1.55;}
+#lobby-quests-view .quest-hero{margin-top:0;}
+.skins-weapon-select-panel,.skins-detail-panel{min-width:0;}
+.skins-panel-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin:0 0 14px;}
+.skins-panel-heading small,.skins-selected-weapon>small,.skins-preview-heading small{font:700 8px var(--mono);letter-spacing:.16em;color:#72d5c7;}
+.skins-panel-heading h3{margin:7px 0 5px;font:850 clamp(20px,2vw,28px)/1.1 var(--display);color:#edf7fc;}
+.skins-panel-heading p{margin:0;color:#8ea5b8;font-size:10px;line-height:1.55;}
+.skins-count-badge{flex-shrink:0;padding:8px 10px;border:1px solid #5ec9bc43;background:#102a2b;color:#98f4e7;font:700 8px var(--mono);letter-spacing:.1em;}
+.skins-weapon-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;}
+.skins-weapon-card{position:relative;display:flex;flex-direction:column;align-items:stretch;gap:7px;min-width:0;min-height:175px;padding:12px;text-align:left;color:#e7f2fb;border:1px solid #7ba0b52d;background:linear-gradient(150deg,#132333,#09121e);cursor:pointer;overflow:hidden;transition:border-color .18s,transform .18s,background .18s,box-shadow .18s;}
+.skins-weapon-card:before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 50% 40%,#3dbab514,transparent 65%);pointer-events:none;}
+.skins-weapon-card:hover,.skins-weapon-card:focus-visible{transform:translateY(-2px);border-color:#65e6d0a0;background:linear-gradient(150deg,#193849,#0b1725);box-shadow:0 10px 28px #0004;outline:none;}
+.skins-weapon-index{position:relative;font:700 7px var(--mono);letter-spacing:.12em;color:#7fa2b7;}
+.skins-weapon-card .weapon-mini-stage{position:relative;display:grid;place-items:center;width:100%;min-height:65px;margin:1px 0 3px;background:radial-gradient(ellipse at center,#1e3a4a77,transparent 72%);overflow:hidden;}
+.skins-weapon-card .weapon-mini-model{transform:scale(.95) rotate(-8deg);}
+.skins-weapon-card>b{position:relative;font:800 clamp(10px,.9vw,13px)/1.1 var(--display);overflow-wrap:anywhere;}
+.skins-weapon-card>small{position:relative;font-size:9px;color:#8ba7b9;}
+.skins-current-label{position:relative;font-style:normal;font-size:8px;color:#73d7c8;line-height:1.35;min-height:11px;overflow-wrap:anywhere;}
+.skins-card-arrow{margin-top:auto;position:relative;font:700 8px var(--mono);color:#a4e9e1;text-align:right;}
+.skins-detail-panel{display:grid;grid-template-columns:minmax(250px,320px) minmax(0,1fr);gap:16px;align-items:stretch;min-height:470px;}
+.skins-detail-sidebar{min-width:0;padding:12px;border:1px solid #7ca5b92b;background:linear-gradient(150deg,#0d1b29f2,#09111bf5);display:flex;flex-direction:column;max-height:calc(100dvh - 195px);overflow:hidden;}
+.skins-back-button{align-self:flex-start;border:1px solid #7ba5b43d;background:#132535;color:#c1e5e7;padding:9px 11px;font:700 9px var(--mono);cursor:pointer;transition:background .18s,border-color .18s;}
+.skins-back-button:hover{background:#1b3c47;border-color:#63dfd0;}
+.skins-selected-weapon{padding:18px 3px 14px;border-bottom:1px solid #8bb2c020;}
+.skins-selected-weapon h3{margin:7px 0 5px;font:900 clamp(20px,2vw,28px)/1.02 var(--display);color:#f0f7ff;overflow-wrap:anywhere;}
+.skins-selected-weapon p{margin:0;color:#91a8b9;font-size:9px;line-height:1.5;}
+.skins-list-heading{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:13px 0 8px;color:#dcebf3;font:800 10px var(--display);}
+.skins-list-heading small{color:#7fa6b5;font:700 7px var(--mono);}
+.skins-weapon-skin-list{display:flex;flex-direction:column;gap:7px;min-height:0;overflow-y:auto;overflow-x:hidden;padding:0 3px 5px 0;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#355363 transparent;}
+.skin-option-card{width:100%;min-width:0;display:grid;grid-template-columns:66px minmax(0,1fr) 18px;gap:9px;align-items:center;padding:8px;text-align:left;border:1px solid #799bb528;background:#0c1723;color:#dbeaf5;cursor:pointer;transition:border-color .18s,background .18s;}
+.skin-option-card:hover,.skin-option-card.selected{border-color:#60e6d38c;background:#13302f;}
+.skin-option-art{display:grid;place-items:center;min-width:0;height:51px;overflow:hidden;background:radial-gradient(ellipse at center,#28465177,transparent 75%);}
+.skin-option-art .store-skin-art{width:100%;height:51px;min-height:51px;max-height:51px;border:0;}
+.skin-option-art .weapon-mini-stage{display:grid;place-items:center;width:100%;height:100%;overflow:hidden;}
+.skin-option-art .weapon-mini-model{transform:scale(.58) rotate(-9deg);}
+.skin-option-copy{display:flex;flex-direction:column;gap:4px;min-width:0;}
+.skin-option-copy>b{font-size:10px;line-height:1.25;overflow-wrap:anywhere;}
+.skin-option-copy>small{font:700 7px var(--mono);color:#93aabd;line-height:1.4;}
+.skin-option-copy>em{font-style:normal;font-size:8px;line-height:1.35;color:#83e6d4;}
+.skin-option-check{font-size:13px;text-align:center;color:#65dfce;}
+.skins-no-login-note{margin:12px 0 0;padding:9px;background:#14283a;color:#93c6d2;font-size:9px;line-height:1.5;}
+.skins-preview-panel{display:flex;flex-direction:column;min-width:0;min-height:440px;padding:15px;border:1px solid #8aa8b92e;background:radial-gradient(ellipse at 50% 45%,#1737486b,transparent 60%),linear-gradient(150deg,#0c1926,#07101a);}
+.skins-preview-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.skins-preview-heading h3{margin:6px 0 0;font:900 clamp(18px,2vw,27px)/1.1 var(--display);color:#f1f8ff;overflow-wrap:anywhere;}
+.skins-drag-hint{flex-shrink:0;color:#85b8c2;font-size:9px;}
+.skin-preview-stage{position:relative;flex:1;min-height:320px;margin:12px 0 8px;overflow:hidden;border:1px solid #8ed3df21;background:radial-gradient(ellipse at 50% 45%,#24506036,transparent 58%),linear-gradient(180deg,#0a1724,#07111b);}
+.skin-preview-grid-glow{position:absolute;inset:0;pointer-events:none;background:linear-gradient(transparent 96%,#7abac610 100%),linear-gradient(90deg,transparent 96%,#7abac610 100%);background-size:30px 30px;mask-image:linear-gradient(transparent,#000 42%,#000 75%,transparent);}
+#skin-preview-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab;outline:none;}
+#skin-preview-canvas:active{cursor:grabbing;}
+.skin-preview-loading{position:absolute;inset:auto 10px 10px;text-align:center;color:#8db6c8;font-size:9px;pointer-events:none;}
+.skin-preview-desc{margin:0 0 12px;min-height:27px;color:#95aebe;font-size:10px;line-height:1.55;}
+.skin-preview-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-top:11px;border-top:1px solid #83acbd20;}
+.skin-preview-actions .store-primary-button{min-width:145px;}
+.skin-preview-actions button:disabled{opacity:.5;cursor:not-allowed;}
+.skins-secondary-button{min-height:38px;padding:0 13px;border:1px solid #799daf4c;background:#101e2b;color:#c1d8e7;font:700 9px var(--mono);cursor:pointer;}
+.skins-secondary-button:hover:not(:disabled){border-color:#65dfd2;background:#163039;}
+#skin-preview-status{flex:1;min-width:130px;color:#7f9bac;font-size:8px;line-height:1.45;}
+#lobby-shop-view .store-bundle-grid,#lobby-shop-view .store-lower-grid,#lobby-shop-view .store-code-section{min-width:0;}
+@media(max-width:1050px){.skins-weapon-grid{grid-template-columns:repeat(4,minmax(0,1fr));}.skins-detail-panel{grid-template-columns:minmax(230px,290px) minmax(0,1fr);gap:10px;}.skins-detail-sidebar{max-height:calc(100dvh - 180px);}}
+@media(max-width:760px){#lobby-shop-view,#lobby-skins-view,#lobby-quests-view{position:relative;inset:auto;left:auto;right:auto;top:auto;bottom:auto;margin:0 10px 18px;padding:13px;max-height:none;min-height:0;overflow:visible;}
+  #lobby-shop-view .store-heading,#lobby-skins-view .store-heading{flex-direction:column;gap:10px;margin-bottom:16px;padding-bottom:13px;}
+  #lobby-shop-view .store-wallet,#lobby-skins-view .store-wallet{align-self:stretch;display:flex;align-items:center;justify-content:space-between;gap:12px;}
+  .skins-panel-heading h3{font-size:21px;}.skins-panel-heading p{font-size:9px;}.skins-count-badge{font-size:7px;padding:7px;}
+  .skins-weapon-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;}.skins-weapon-card{min-height:148px;padding:9px;}.skins-weapon-card .weapon-mini-stage{min-height:50px;}
+  .skins-detail-panel{display:flex;flex-direction:column;min-height:0;}.skins-detail-sidebar{max-height:none;overflow:visible;padding:10px;}.skins-weapon-skin-list{max-height:250px;}
+  .skins-preview-panel{min-height:390px;padding:11px;}.skin-preview-stage{min-height:275px;height:275px;flex:none;}.skins-preview-heading h3{font-size:20px;}.skins-drag-hint{font-size:8px;}
+  .skin-preview-actions{align-items:stretch;}.skin-preview-actions .store-primary-button,.skin-preview-actions .skins-secondary-button{flex:1;min-width:0;}#skin-preview-status{flex-basis:100%;}
+}
+@media(prefers-reduced-motion:reduce){.skins-weapon-card,.skin-option-card,.skins-back-button,.skins-secondary-button{transition:none!important;}}
