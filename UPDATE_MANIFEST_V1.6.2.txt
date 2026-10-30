@@ -1,0 +1,11 @@
+NEON STRIKE v1.6.2 UPDATE-ONLY PATCH
+Base: v1.6.1
+Changed files:
+  package.json
+  server/index.js
+  src/main.js
+  src/style.css
+  public/sw.js
+  public/models/skins/*.glb (15 skin assets; prime1-karambit.glb newly modeled)
+Documentation:
+  UPDATE_V1.6.2_KO.md
