@@ -437,13 +437,18 @@ function renderStoreCurrentPage(){
   if($('skins-neon-points'))$('skins-neon-points').textContent=`${points} NP`;
   if($('store-daily-date')){const expires=Date.parse(storeState.dailyExpiresAt||'');$('store-daily-date').textContent=Number.isFinite(expires)&&expires>Date.now()?`재설정 ${new Date(expires).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})}`:'24H ROTATION';}
   if(state.lobbyPage==='shop')renderShopPage();
-  const rollButton=$('store-roll-button');if(rollButton){const ownedNow=new Set(state.account?.ownedSkins||[]);const allOwned=STORE_SKINS.every(skin=>ownedNow.has(skin.id));rollButton.disabled=!getAuthToken()||allOwned||Number(state.account?.neonPoints||0)<STORE_ROLL_COST;rollButton.innerHTML=allOwned?'현재 모든 스킨을 모두 보유하고 있습니다':'보급 상자 뽑기 <span>↗</span>';}
   if(state.lobbyPage==='skins')renderOwnedSkins();
   if(state.lobbyPage==='quests')renderQuestPanel();
 }
 function renderShopPage(){
   const bundles=$('store-bundle-grid'),daily=$('store-daily-grid');if(!bundles||!daily)return;
-  const owned=new Set(state.account?.ownedSkins||[]);const loggedIn=!!state.account&&!!getAuthToken();
+  const owned=new Set(Array.isArray(state.account?.ownedSkins)?state.account.ownedSkins:[]);const loggedIn=!!state.account&&!!getAuthToken();
+  const rollButton=$('store-roll-button');
+  const allSkinsOwned=STORE_SKINS.every(skin=>owned.has(skin.id));
+  const hasRollPoints=(Number(state.account?.neonPoints)||0)>=STORE_ROLL_COST;
+  if(rollButton){rollButton.disabled=!loggedIn||allSkinsOwned||!hasRollPoints||gachaRequestBusy;rollButton.innerHTML=allSkinsOwned?'모든 스킨 보유 완료':!loggedIn?'로그인 후 뽑기':'보급 상자 뽑기 <span>↗</span>';}
+  const rollStatus=$('store-roll-status');
+  if(rollStatus){rollStatus.textContent=allSkinsOwned?'현재 모든 스킨을 모두 보유하고 있습니다.':!loggedIn?'로그인 후 보급 상자를 이용할 수 있습니다.':!hasRollPoints?`뽑기에 ${STORE_ROLL_COST} NP가 필요합니다.`:'미보유 스킨 중 하나가 무작위로 지급됩니다.';}
   bundles.innerHTML=STORE_BUNDLES.map((bundle,index)=>{
     const alreadyOwned=bundle.skinIds.every(id=>owned.has(id));
     const count=bundle.skinIds.filter(id=>!owned.has(id)).length;
@@ -537,18 +542,20 @@ async function equipOwnedSkin(skinId,weaponId=null){
 const delay = ms => new Promise(resolve=>setTimeout(resolve,ms));
 async function rollStoreSkin(){
   if(gachaRequestBusy)return;if(!storeAuthRequired())return;
-  if(STORE_SKINS.every(skin=>(state.account?.ownedSkins||[]).includes(skin.id))){setStoreFeedback('현재 모든 스킨을 모두 보유하고 있습니다.','success');renderStoreCurrentPage();return;}
+  const ownedNow=new Set(Array.isArray(state.account?.ownedSkins)?state.account.ownedSkins:[]);
+  if(STORE_SKINS.every(skin=>ownedNow.has(skin.id))){showToast('현재 모든 스킨을 모두 보유하고 있습니다.',2200);renderStoreCurrentPage();return;}
   if((Number(state.account?.neonPoints)||0)<STORE_ROLL_COST){showToast(`네온 포인트 ${STORE_ROLL_COST} NP가 필요합니다.`);return;}
-  gachaRequestBusy=true;const previousOwned=new Set(state.account?.ownedSkins||[]);const overlay=$('gacha-overlay'),stage=$('gacha-stage'),finish=$('gacha-finish');
+  gachaRequestBusy=true;const overlay=$('gacha-overlay'),stage=$('gacha-stage'),finish=$('gacha-finish');
   overlay.classList.remove('hidden');stage.classList.remove('revealed');stage.classList.add('playing');overlay.classList.add('playing');finish.disabled=true;finish.textContent='신호 전송 중…';$('gacha-phase-label').textContent='지구에서 보급 신호를 전송합니다';$('gacha-title').textContent='보급 신호를 기다리는 중';$('gacha-copy').textContent='궤도 수송선이 신호를 수신하고 보급 상자를 투하합니다.';$('gacha-reveal-card').classList.add('hidden');
   try{
     const pending=storeRequest('/api/store/roll');
     await delay(900);$('gacha-phase-label').textContent='궤도 수송선이 신호를 수신했습니다';
     await delay(1500);$('gacha-phase-label').textContent='보급 상자 대기권 진입';
     await delay(1550);const data=await pending;await refreshStoreState({silent:true});
-    const gained=STORE_SKINS.find(skin=>data?.skin?.id===skin.id)||STORE_SKINS.find(skin=>(state.account?.ownedSkins||[]).includes(skin.id)&&!previousOwned.has(skin.id));
-    if(!gained)throw new Error('서버에서 획득한 스킨 정보를 확인하지 못했습니다. 네온 포인트와 보유 목록을 새로고침한 뒤 다시 시도하세요.');
-    stage.classList.remove('playing');stage.classList.add('revealed');const card=$('gacha-reveal-card');card.classList.remove('hidden');card.className=`gacha-reveal-card rarity-${gained.rarity||'normal'}`;card.innerHTML=`${skinPreviewMarkup(gained)}<small>${String(gained.rarity||'normal').toUpperCase()} DROP</small><b>${gained.displayName}</b><p>${gained.description||''}</p>`;
+    const returnedSkinId=data.skinId||data.skin?.id||data.result?.skinId||data.reward?.skinId||'';
+    const rewardSkin=getStoreSkin(returnedSkinId)||(data.skin&&typeof data.skin==='object'?data.skin:null);
+    if(!rewardSkin?.id)throw new Error('서버가 보급 스킨 정보를 돌려주지 않았습니다. 서버의 server/index.js도 함께 업데이트한 뒤 다시 시도하세요.');
+    stage.classList.remove('playing');stage.classList.add('revealed');const card=$('gacha-reveal-card');card.classList.remove('hidden');card.className=`gacha-reveal-card rarity-${rewardSkin.rarity||'normal'}`;card.innerHTML=`${skinPreviewMarkup(rewardSkin)}<small>${String(rewardSkin.rarity||'normal').toUpperCase()} DROP</small><b>${rewardSkin.displayName||rewardSkin.name||'보급 스킨'}</b><p>${rewardSkin.description||'신규 스킨을 획득했습니다.'}</p>`;
     $('gacha-phase-label').textContent='보급품 확보 완료';$('gacha-title').textContent='스킨을 획득했습니다!';$('gacha-copy').textContent='획득한 스킨은 계정에 저장되었습니다. 스킨 메뉴에서 장착할 수 있습니다.';finish.disabled=false;finish.textContent='확인';renderStoreCurrentPage();
   }catch(error){stage.classList.remove('playing');$('gacha-title').textContent='보급 요청 실패';$('gacha-copy').textContent=error.message;finish.disabled=false;finish.textContent='닫기';}
   finally{gachaRequestBusy=false;}
@@ -586,7 +593,7 @@ const SKIN_MODEL_CONFIG = {
   classic_shotgun:{weaponId:'shotgun',url:'/models/skins/classic-shotgun.glb',scale:.30,remoteScale:.19,authored:true},
   classic_rifle:{weaponId:'rifle',url:'/models/skins/classic-rifle.glb',scale:.28,remoteScale:.18,authored:true},
   classic_dmr:{weaponId:'dmr',url:'/models/skins/classic-dmr.glb',scale:.27,remoteScale:.17,authored:true},
-  classic_sniper:{weaponId:'sniper',url:'/models/skins/classic-sniper.glb',scale:.34,remoteScale:.19,authored:true},
+  classic_sniper:{weaponId:'sniper',url:'/models/skins/classic-sniper.glb',scale:.31,remoteScale:.17,authored:true},
   classic_lmg:{weaponId:'lmg',url:'/models/skins/classic-lmg.glb',scale:.26,remoteScale:.17,authored:true},
   classic_burst:{weaponId:'burst',url:'/models/skins/classic-burst.glb',scale:.29,remoteScale:.18,authored:true},
   classic_knife:{weaponId:'knife',url:'/models/skins/classic-knife.glb',scale:.43,remoteScale:.23,authored:true},
@@ -594,7 +601,7 @@ const SKIN_MODEL_CONFIG = {
   halloween_dmr:{weaponId:'dmr',url:'/models/skins/halloween-dmr.glb',scale:.27,remoteScale:.17,authored:true},
   halloween_lmg:{weaponId:'lmg',url:'/models/skins/halloween-lmg.glb',scale:.26,remoteScale:.17,authored:true},
   prime_knife:{weaponId:'knife',url:'/models/skins/prime1-karambit.glb',scale:.43,remoteScale:.23,inspect:'karambit-spin',authored:true},
-  prime_sniper:{weaponId:'sniper',url:'/models/skins/prime1-sniper.glb',scale:.38,remoteScale:.20,inspect:'sniper-present',authored:true},
+  prime_sniper:{weaponId:'sniper',url:'/models/skins/prime1-sniper.glb',scale:.36,remoteScale:.185,inspect:'sniper-present',authored:true},
 };
 function getWeaponModelSource(weaponId, skinId = null) {
   return (skinId && skinWeaponModelSources.get(skinId)) || weaponModelSources.get(weaponId) || null;
@@ -606,7 +613,7 @@ const WEAPON_MODEL_CONFIG = {
   shotgun:  { scale: .30, remoteScale: .19, offset: [.32, -.23, -.58] },
   rifle:    { scale: .28, remoteScale: .18, offset: [.32, -.23, -.58] },
   dmr:      { scale: .27, remoteScale: .17, offset: [.32, -.23, -.58] },
-  sniper:   { scale: .34, remoteScale: .19, offset: [.32, -.23, -.58] },
+  sniper:   { scale: .31, remoteScale: .17, offset: [.34, -.245, -.68] },
   lmg:      { scale: .26, remoteScale: .17, offset: [.32, -.23, -.58] },
   burst:    { scale: .29, remoteScale: .18, offset: [.32, -.23, -.58] },
   knife:    { scale: .43, remoteScale: .23, offset: [.32, -.27, -.60] },
@@ -786,11 +793,7 @@ function resizeSkinPreview(){if(skinPreviewRenderer&&state.lobbyPage==='skins')e
 function applyWeaponSkinVisual(model, skinId, weaponId) {
   const skin=getStoreSkin(skinId);
   if(!skin||!model)return;
-  if(model.userData.authoredSkinAsset){
-    model.userData.skinId=skin.id;
-    model.traverse(node=>{if(!node.isMesh)return;node.castShadow=true;node.receiveShadow=true;const mats=Array.isArray(node.material)?node.material:[node.material];for(const m of mats){if(!m)continue;if('metalness' in m)m.metalness=skin.theme==='prime-gold'?.96:Math.max(m.metalness||0,.68);if('roughness' in m)m.roughness=skin.theme==='prime-gold'?.19:Math.min(m.roughness??.5,.34);if('envMapIntensity' in m)m.envMapIntensity=1.35;if(m.color&&skin.theme==='prime-gold')m.color.lerp(new THREE.Color(0xffd76a),.18);m.needsUpdate=true;}});
-    return;
-  }
+  if(model.userData.authoredSkinAsset){model.userData.skinId=skin.id;return;}
   const palettes={
     classic:{base:0x7c8791,dark:0x242c32,accent:0xabb9c4,emissive:0x000000,metal:0.82,rough:.36},
     'halloween-candy':{base:0xf0eee2,dark:0x284b45,accent:0x68e5cf,emissive:0x2a8c83,metal:.42,rough:.28},
@@ -887,6 +890,27 @@ function applyCustomWeaponModel(weaponId) {
   } else {
     model.position.set(...config.offset);
     gunRoot.add(model);
+  }
+  if (equippedSkinId === 'prime_sniper') {
+    model.userData.inspectBasePosition = model.position.clone();
+    model.userData.inspectBaseRotation = model.rotation.clone();
+    const oldHalo = gunRoot.userData.primeSniperHalo;
+    if (oldHalo) {
+      oldHalo.parent?.remove(oldHalo);
+      oldHalo.traverse(o => { o.geometry?.dispose(); if (Array.isArray(o.material)) o.material.forEach(m=>m.dispose()); else o.material?.dispose(); });
+    }
+    const halo = new THREE.Group();
+    halo.name = 'PRIME1_SNIPER_INSPECT_HALO';
+    const haloGold = new THREE.MeshBasicMaterial({ color:0xffd36b, transparent:true, opacity:.82, depthWrite:false, blending:THREE.AdditiveBlending });
+    const haloWhite = new THREE.MeshBasicMaterial({ color:0xfff4c4, transparent:true, opacity:.66, depthWrite:false, blending:THREE.AdditiveBlending });
+    const ringA = new THREE.Mesh(new THREE.TorusGeometry(.48,.009,8,64),haloGold);
+    const ringB = new THREE.Mesh(new THREE.TorusGeometry(.62,.006,8,64),haloWhite);
+    ringA.rotation.set(.55,.30,.18); ringB.rotation.set(-.72,.15,-.38);
+    halo.add(ringA,ringB);
+    const glow = new THREE.PointLight(0xffd36b, 5.5, 2.8, 2);
+    glow.position.set(0,.10,.10); halo.add(glow);
+    halo.position.copy(model.position); halo.visible=false;
+    gunRoot.add(halo); gunRoot.userData.primeSniperHalo=halo;
   }
   applyWeaponSkinVisual(model, equippedSkinId, weaponId);
   const magazineNodes = [];
@@ -985,8 +1009,6 @@ function addPrimeKnifeSlashFx(variant=0){
   state.primeSlashEffects.push({group,started:performance.now(),duration:720,variant:variant%4,dust,dustBase:new Float32Array(positions),dustVelocities:new Float32Array(velocities)});
 }
 
-function handsPrimeModel(){return gunRoot.userData?.customWeaponModel||null;}
-
 function buildGun(id) {
   clearPrimeKnifeSlashEffects();
   if(state.zoomed) setZoom(false);
@@ -1076,10 +1098,17 @@ function buildGun(id) {
   const rightHand=box(.36,-.355,-.48,.14,.09,.15,gloveMat);
   let leftSleeve=null,leftHand=null;
   if(w.slot==='primary'){
-    leftSleeve=box(.095,-.50,-.56,.15,.20,.34,sleeveMat);
-    leftHand=box(.20,-.385,-.82,.16,.105,.19,gloveMat);
+    leftSleeve=box(.095,-.50,-.40,.14,.19,.30,sleeveMat);
+    leftHand=box(.20,-.355,-.63,.14,.09,.17,gloveMat);
   }else if(w.slot==='sidearm'){
     leftSleeve=box(-.02,-.57,-.34,.14,.18,.22,sleeveMat);leftHand=box(.115,-.45,-.53,.13,.09,.14,gloveMat);leftSleeve.visible=false;leftHand.visible=false;
+  }
+  if(id==='sniper'&&leftSleeve&&leftHand){
+    // Sniper support grip is moved under the forward handguard; keep exactly one support hand and one trigger hand.
+    leftSleeve.position.set(.055,-.515,-.635);
+    leftHand.position.set(.205,-.405,-.875);
+    rightSleeve.position.set(.435,-.475,-.245);
+    rightHand.position.set(.365,-.365,-.515);
   }
   let reloadMagazine=null,reloadInsertMagazine=null;
   if(w.slot!=='melee'){
@@ -2050,7 +2079,10 @@ function updateWorld(dt,now){
     const drawT=clamp01((now-motion.drawAt)/(reduceMotion?80:440)), drawOffset=(1-easeOut(drawT));
     const fireAge=now-motion.fireAt, fireKick=fireAge>=0&&fireAge<180?Math.exp(-fireAge/52):0;
     let inspectX=0,inspectY=0,inspectZ=0,inspectRot=0;
-    if(motion.inspectAt&&now-motion.inspectAt<(activeWeapon.id==='sniper'&&state.account?.equippedSkins?.sniper==='prime_sniper'?3200:2200)){const inspectDuration=activeWeapon.id==='sniper'&&state.account?.equippedSkins?.sniper==='prime_sniper'?3200:2200;const it=(now-motion.inspectAt)/inspectDuration;inspectY=Math.sin(Math.PI*it)*.065;inspectX=Math.sin(Math.PI*it)*.09;inspectRot=Math.sin(Math.PI*it)*.38;}
+    const primeSniperEquipped=activeWeapon.id==='sniper'&&state.account?.equippedSkins?.sniper==='prime_sniper';
+    const primeSniperInspectDuration=3400;
+    const primeSniperInspectActive=!!(primeSniperEquipped&&motion.inspectAt&&now-motion.inspectAt>=0&&now-motion.inspectAt<primeSniperInspectDuration);
+    if(!primeSniperEquipped&&motion.inspectAt&&now-motion.inspectAt<2200){const it=(now-motion.inspectAt)/2200;inspectY=Math.sin(Math.PI*it)*.065;inspectX=Math.sin(Math.PI*it)*.09;inspectRot=Math.sin(Math.PI*it)*.38;}
     const reloadProgress=state.reloading&&activeWeapon.reload>0?clamp01((now-(motion.reloadAt||now))/(activeWeapon.reload*1000)):0;
     const reloadWave=state.reloading?Math.sin(Math.PI*reloadProgress):0;
     const knifeAge=now-motion.knifeAt, knifeActive=activeWeapon.id==='knife'&&knifeAge>=0&&knifeAge<420;
@@ -2072,20 +2104,26 @@ function updateWorld(dt,now){
     gunRoot.rotation.x=-fireKick*.10+reloadWave*.11+(knifeActive?knifeMove.rx*knifeWave:0);
     gunRoot.rotation.y=inspectRot+reloadWave*.05+(knifeActive?knifeMove.ry*knifeWave:0);
     gunRoot.rotation.z=-drawOffset*.42+Math.sin(state.walkCycle)*.018*state.walkIntensity+inspectRot*.45+reloadWave*(activeWeapon.slot==='sidearm'?.16:.06)+(knifeActive?knifeMove.rz*knifeWave:0);
-    // Spin the karambit around the handle's finger loop, with several fast multi-axis rotations.
-    const primeSniperInspect=activeWeapon.id==='sniper'&&state.account?.equippedSkins?.sniper==='prime_sniper'&&motion.inspectAt&&now-motion.inspectAt<3200;
-    if(primeSniperInspect){
-      const st=clamp01((now-motion.inspectAt)/3200),smooth=v=>v*v*(3-2*v);
-      const lift=Math.sin(Math.PI*st),spin=smooth(st);
-      // Lift the rifle clear of both hands, float, rotate in two axes, then settle precisely into the original grip.
-      gunRoot.position.x-=.075*lift;gunRoot.position.y+=.245*lift;gunRoot.position.z-=.20*lift;
-      gunRoot.rotation.x+=Math.sin(spin*Math.PI*2)*.34*lift;
-      gunRoot.rotation.y+=Math.sin(spin*Math.PI*2)*.82*lift;
-      gunRoot.rotation.z+=Math.sin(spin*Math.PI*4)*.22*lift;
-      const pulse=.5+.5*Math.sin(now*.018);
-      const primeModel=handsPrimeModel();
-      if(primeModel)primeModel.traverse(node=>{if(!node.isMesh)return;const mats=Array.isArray(node.material)?node.material:[node.material];for(const m of mats){if(m?.emissive){if(m.userData.primeInspectBaseIntensity===undefined){m.userData.primeInspectBaseIntensity=m.emissiveIntensity||0;m.userData.primeInspectBaseColor=m.emissive.getHex();}m.emissive.setHex(0xffc94f);m.emissiveIntensity=.45+pulse*1.35;}}});
+    // PRIME 1 sniper floats independently of both hands, spins in the air, glows, then eases back into the original grip position.
+    const primeSniperModel=gunRoot.userData.customWeaponModel;
+    const primeSniperHalo=gunRoot.userData.primeSniperHalo;
+    if(primeSniperModel?.userData?.inspectBasePosition&&primeSniperModel?.userData?.inspectBaseRotation){
+      const basePosition=primeSniperModel.userData.inspectBasePosition;
+      const baseRotation=primeSniperModel.userData.inspectBaseRotation;
+      if(primeSniperInspectActive){
+        const t=clamp01((now-motion.inspectAt)/primeSniperInspectDuration);
+        const envelope=Math.sin(Math.PI*t);
+        const spin=t*Math.PI*2;
+        const floatY=.43*envelope + Math.sin(spin*2.2)*.055*envelope;
+        primeSniperModel.position.set(basePosition.x-.16*envelope+Math.sin(spin*1.35)*.11*envelope,basePosition.y+floatY,basePosition.z+.18*envelope+Math.cos(spin*1.7)*.07*envelope);
+        primeSniperModel.rotation.set(baseRotation.x+Math.sin(spin*1.1)*.58*envelope,baseRotation.y+Math.sin(spin*1.65)*.82*envelope,baseRotation.z+Math.sin(spin*1.35)*.42*envelope);
+        if(primeSniperHalo){primeSniperHalo.visible=true;primeSniperHalo.position.copy(primeSniperModel.position);primeSniperHalo.rotation.set(.48+spin*.25,.22+spin*.38,spin*.55);const glow=primeSniperHalo.children.find(o=>o.isPointLight);if(glow)glow.intensity=4.0+Math.sin(spin*2)*2.2;}
+      }else{
+        primeSniperModel.position.copy(basePosition);primeSniperModel.rotation.copy(baseRotation);
+        if(primeSniperHalo)primeSniperHalo.visible=false;
+      }
     }
+    // Spin the karambit around the handle's finger loop, with several fast multi-axis rotations.
     const primeSpinPivot=gunRoot.userData.primeSpinPivot;
     if(primeSpinPivot&&activeWeapon.id==='knife'&&state.account?.equippedSkins?.knife==='prime_knife'){
       const inspectAge=now-motion.inspectAt;
@@ -2114,13 +2152,11 @@ function updateWorld(dt,now){
         const base=primeSpinPivot.userData.basePosition;if(base)primeSpinPivot.position.copy(base);
       }
     }
-    if(!primeSniperInspect){const restored=gunRoot.userData?.customWeaponModel;restored?.traverse(node=>{if(!node.isMesh)return;const mats=Array.isArray(node.material)?node.material:[node.material];for(const m of mats){if(m?.emissive&&m.userData.primeInspectBaseIntensity!==undefined){m.emissiveIntensity=m.userData.primeInspectBaseIntensity;m.emissive.setHex(m.userData.primeInspectBaseColor??0x000000);delete m.userData.primeInspectBaseIntensity;delete m.userData.primeInspectBaseColor;}}});}
-    const hands=gunRoot.userData||{};const showSupportHand=(activeWeapon.slot==='primary'||(state.reloading&&activeWeapon.slot==='sidearm'))&&!primeSniperInspect;
-    if(primeSniperInspect){if(hands.rightSleeve)hands.rightSleeve.visible=false;if(hands.rightHand)hands.rightHand.visible=false;if(hands.leftSleeve)hands.leftSleeve.visible=false;if(hands.leftHand)hands.leftHand.visible=false;}else{if(hands.rightSleeve)hands.rightSleeve.visible=true;if(hands.rightHand)hands.rightHand.visible=true;}
+    const hands=gunRoot.userData||{};const hideHandsForPrimeInspect=primeSniperInspectActive;const showSupportHand=(activeWeapon.slot==='primary'||(state.reloading&&activeWeapon.slot==='sidearm'))&&!hideHandsForPrimeInspect;
     if(hands.leftSleeve){hands.leftSleeve.visible=showSupportHand;const br=hands.leftSleeve.userData.baseRotation;if(br){hands.leftSleeve.rotation.x=br.x+reloadWave*.42+fireKick*.12;hands.leftSleeve.rotation.z=br.z-reloadWave*.28;}}
     if(hands.leftHand){hands.leftHand.visible=showSupportHand;const br=hands.leftHand.userData.baseRotation;if(br){hands.leftHand.rotation.x=br.x+reloadWave*.52;hands.leftHand.rotation.z=br.z-reloadWave*.22;}}
-    if(hands.rightSleeve){const br=hands.rightSleeve.userData.baseRotation;if(br)hands.rightSleeve.rotation.x=br.x-fireKick*.22+reloadWave*.12;}
-    if(hands.rightHand){const br=hands.rightHand.userData.baseRotation;if(br)hands.rightHand.rotation.x=br.x-fireKick*.27+reloadWave*.18;}
+    if(hands.rightSleeve){hands.rightSleeve.visible=!hideHandsForPrimeInspect;const br=hands.rightSleeve.userData.baseRotation;if(br)hands.rightSleeve.rotation.x=br.x-fireKick*.22+reloadWave*.12;}
+    if(hands.rightHand){hands.rightHand.visible=!hideHandsForPrimeInspect;const br=hands.rightHand.userData.baseRotation;if(br)hands.rightHand.rotation.x=br.x-fireKick*.27+reloadWave*.18;}
     // Magazine removal/insertion phases make the reload readable instead of only bobbing the weapon.
     const modelMagazines=hands.customWeaponModel?.userData?.magazineNodes || [];
     if(modelMagazines.length){

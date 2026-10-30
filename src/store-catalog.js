@@ -14,7 +14,7 @@ export const STORE_SKINS = Object.freeze([
   { id:'halloween_dmr', name:'GHOST SHEET RAIL', displayName:'유령천 RAIL DMR', weaponId:'dmr', rarity:'rare', price:200, bundleId:'halloween_2026_bundle', description:'유령천이 총신을 감싼 RAIL DMR. 킬 모션: 유령이 상대를 하늘로 데려갑니다.', theme:'halloween-ghost', killEffect:'ghost-lift' },
   { id:'halloween_lmg', name:'PUMPKIN CANDY TITAN', displayName:'호박 사탕 TITAN LMG', weaponId:'lmg', rarity:'rare', price:200, bundleId:'halloween_2026_bundle', description:'호박 포구에서 사탕 에너지가 발사되는 LMG. 킬 모션: 유령이 상대를 하늘로 데려갑니다.', theme:'halloween-pumpkin', killEffect:'ghost-lift' },
   { id:'prime_knife', name:'PRIME GOLD KARAMBIT', displayName:'프라임 골드 카람빗', weaponId:'knife', rarity:'premium', price:300, bundleId:'prime_1_bundle', description:'황금 카람빗. 관찰 모션은 칼 돌리기, 휘두를 때 황금 오라, 킬 모션은 황금 화살과 빛.', theme:'prime-gold', inspect:'karambit-spin', killEffect:'gold-arrows' },
-  { id:'prime_sniper', name:'PRIME GOLD LONGSHOT', displayName:'프라임 골드 LONGSHOT', weaponId:'sniper', rarity:'premium', price:300, bundleId:'prime_1_bundle', description:'고급스러운 금색 저격소총. 관찰 모션은 양손 들기, 킬 모션은 황금 화살과 빛.', theme:'prime-gold', inspect:'sniper-present', killEffect:'gold-arrows' },
+  { id:'prime_sniper', name:'PRIME GOLD LONGSHOT', displayName:'프라임 골드 LONGSHOT', weaponId:'sniper', rarity:'premium', price:300, bundleId:'prime_1_bundle', description:'고급스러운 금색 저격소총. 관찰 시 양손에서 떨어져 공중에서 회전하며 황금빛으로 발광한 뒤 원위치로 복귀. 킬 모션은 황금 화살과 빛.', theme:'prime-gold', inspect:'sniper-present', killEffect:'gold-arrows' },
 ]);
 
 export const STORE_BUNDLES = Object.freeze([
