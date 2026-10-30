@@ -1,4 +1,4 @@
-const CACHE_NAME = 'neon-strike-static-v34-v162-skin-gacha-hit-audio';
+const CACHE_NAME = 'neon-strike-static-v36-prime-sniper-model-gacha-e-key';
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(['/','/manifest.webmanifest','/icon.svg'])).catch(()=>{}));
   self.skipWaiting();
