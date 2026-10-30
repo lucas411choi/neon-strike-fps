@@ -446,7 +446,9 @@ app.post('/api/store/roll', async (req, res) => {
     if (!account) return accountRequiredMessage(res);
     const result = await mutateAccountState(account.id, model => {
       if (model.neonPoints < STORE_ROLL_COST) return { ok:false, status:400, error:`네온 포인트가 부족합니다. ${STORE_ROLL_COST} NP가 필요합니다.` };
-      const unowned = STORE_SKINS.filter(skin => !model.ownedSkins.includes(skin.id));
+      model.ownedSkins = Array.isArray(model.ownedSkins) ? model.ownedSkins.filter(id=>typeof id==='string') : [];
+      const owned = new Set(model.ownedSkins);
+      const unowned = STORE_SKINS.filter(skin => !owned.has(skin.id));
       if (!unowned.length) return { ok:false, status:409, error:'현재 모든 스킨을 모두 보유하고 있습니다.' };
       // Every individual unowned skin has the same probability, regardless of rarity.
       const skin = unowned[Math.floor(Math.random() * unowned.length)];
@@ -455,6 +457,7 @@ app.post('/api/store/roll', async (req, res) => {
       return { ok:true, skin, cost:STORE_ROLL_COST };
     });
     if (!result.ok) return res.status(result.status || 500).json({ error:result.error || '뽑기에 실패했습니다.' });
+    if (!result.skin || !STORE_SKINS.some(skin=>skin.id===result.skin.id)) return res.status(500).json({ error:'뽑기 결과 스킨을 확인하지 못했습니다. 다시 시도하세요.' });
     res.json({ account:result.account, skin:result.skin, cost:result.cost });
   } catch (error) { console.error('[store] roll failed:', error?.message || error); res.status(500).json({ error:'스킨 뽑기 중 오류가 발생했습니다.' }); }
 });
@@ -551,7 +554,7 @@ const weapons = Object.freeze({
   rifle:    { slot: 'primary', price: 1950, damage: 15, rate: 0.13, distanceSpread: 0.00013, recoil:0.023 },
   dmr:      { slot: 'primary', price: 2200, damage: 20, rate: 0.32, distanceSpread: 0.00004, recoil:0.010 },
   sniper:   { slot: 'primary', price: 3000, damage: 78, rate: 1.12, distanceSpread: 0.000015, recoil:0.012 },
-  lmg:      { slot: 'primary', price: 2500, damage: 16, rate: 0.115, distanceSpread: 0, recoil:0.034 },
+  lmg:      { slot: 'primary', price: 2500, damage: 16, rate: 0.115, distanceSpread: 0.00038, recoil:0.048 },
   burst:    { slot: 'primary', price: 1600, damage: 14, rate: 0.30, distanceSpread: 0.00016, recoil:0.024, burstCount: 3, burstGap: 0.055 },
   knife:    { slot: 'melee', price: 0, damage: 40, rate: 0.48, range: 2.65, distanceSpread: 0, recoil:0.002 },
 });
@@ -959,11 +962,11 @@ io.on('connection', socket => {
       const up={x:right.y*direction.z-right.z*direction.y,y:right.z*direction.x-right.x*direction.z,z:right.x*direction.y-right.y*direction.x};
       const upLen=Math.hypot(up.x,up.y,up.z)||1;up.x/=upLen;up.y/=upLen;up.z/=upLen;
       const targetDistance = Math.hypot(tx-origin.x, baseY+1.05-origin.y, tz-origin.z);
-      const distanceBloom = 0; // Server hit validation never adds random distance/recoil misses; recoil is applied visibly on the client.
+      const distanceBloom = id==='knife' ? 0 : Math.max(0,targetDistance-8)*(w.distanceSpread||.0001) + (shooter.recoilHeat||0)*(w.recoil||.01)*.11;
       for(let pellet=0;pellet<pelletCount;pellet++){
         let rayDirection=direction;
-        if(id==='shotgun') {
-          const baseSpread = w.spread||.105;
+        if(id!=='knife' && (id==='shotgun' || distanceBloom>0.00001)) {
+          const baseSpread = id==='shotgun' ? (w.spread||.105) : 0;
           const angle=Math.random()*Math.PI*2,r=Math.sqrt(Math.random())*(baseSpread+distanceBloom);
           const x=direction.x+right.x*Math.cos(angle)*r+up.x*Math.sin(angle)*r;
           const y=direction.y+right.y*Math.cos(angle)*r+up.y*Math.sin(angle)*r;
