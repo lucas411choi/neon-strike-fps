@@ -28,7 +28,7 @@ const WEAPONS = [
   { id:'rifle', name:'VANTAGE AR', short:'VANTAGE', type:'ASSAULT RIFLE', slot:'primary', price:1950, damage:15, head:1.30, rate:0.13, mag:30, reserve:60, reload:1.55, spread:0.012, recoil:0.023, distanceSpread:.00013, control:7, color:0x8aafff, desc:'중거리 균형형 · 우클릭 정밀 조준', scopeFov:54 },
   { id:'dmr', name:'RAIL DMR', short:'RAIL', type:'MARKSMAN', slot:'primary', price:2200, damage:20, head:1.30, rate:0.32, mag:12, reserve:36, reload:1.65, spread:0.004, recoil:0.010, distanceSpread:.00004, control:9, color:0x9ec4d6, desc:'정밀 단발 · 개선된 빠른 후속 사격', scopeFov:40 },
   { id:'sniper', name:'LONGSHOT SR', short:'LONGSHOT', type:'SNIPER', slot:'primary', price:3000, damage:78, head:1.30, rate:1.12, mag:5, reserve:15, reload:2.0, spread:0.0012, hipSpread:0.060, scopeSpread:0.0012, recoil:0.012, distanceSpread:.000015, control:10, color:0xdfb5ff, desc:'고위력 저격총 · 노줌 명중률 낮음, 발사 후 자동 줌아웃', scopeFov:29 },
-  { id:'lmg', name:'TITAN LMG', short:'TITAN', type:'LMG', slot:'primary', price:2500, damage:16, head:1.30, rate:0.115, mag:60, reserve:120, reload:2.4, spread:0.026, recoil:0.048, distanceSpread:.00038, control:4, color:0xe6c36e, desc:'대용량 탄창 · 강한 지속 반동' },
+  { id:'lmg', name:'TITAN LMG', short:'TITAN', type:'LMG', slot:'primary', price:2500, damage:16, head:1.30, rate:0.115, mag:60, reserve:120, reload:2.4, spread:0.026, recoil:0.034, distanceSpread:0, control:5, color:0xe6c36e, desc:'대용량 탄창 · 강한 지속 반동' },
   { id:'burst', name:'ION BURST', short:'ION', type:'BURST RIFLE', slot:'primary', price:1600, damage:14, head:1.30, rate:0.30, burstCount:3, burstGap:0.055, mag:24, reserve:72, reload:1.5, spread:0.010, recoil:0.024, distanceSpread:.00016, control:8, color:0x85e5ff, desc:'3점사 위상 펄스 · 3발을 빠르게 발사', scopeFov:50 },
   { id:'knife', name:'ORBITAL EDGE', short:'ORBITAL', type:'MELEE', slot:'melee', price:0, damage:40, head:1, rate:0.48, mag:Infinity, reserve:Infinity, reload:0, spread:0, recoil:0.002, range:2.65, control:10, color:0x7af9e8, desc:'근접 전용 40 피해 · 이동 속도 +10%' },
 ];
@@ -437,6 +437,7 @@ function renderStoreCurrentPage(){
   if($('skins-neon-points'))$('skins-neon-points').textContent=`${points} NP`;
   if($('store-daily-date')){const expires=Date.parse(storeState.dailyExpiresAt||'');$('store-daily-date').textContent=Number.isFinite(expires)&&expires>Date.now()?`재설정 ${new Date(expires).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'})}`:'24H ROTATION';}
   if(state.lobbyPage==='shop')renderShopPage();
+  const rollButton=$('store-roll-button');if(rollButton){const allOwned=STORE_SKINS.every(skin=>(state.account?.ownedSkins||[]).includes(skin.id));rollButton.disabled=!state.account||allOwned||(Number(state.account?.neonPoints)||0)<STORE_ROLL_COST;rollButton.textContent=allOwned?'현재 모든 스킨을 모두 보유하고 있습니다':(Number(state.account?.neonPoints)||0)<STORE_ROLL_COST?'네온 포인트 부족':'보급 상자 뽑기 ↗';if(allOwned)rollButton.title='모든 스킨을 보유해 뽑을 수 없습니다.';}
   if(state.lobbyPage==='skins')renderOwnedSkins();
   if(state.lobbyPage==='quests')renderQuestPanel();
 }
@@ -481,30 +482,31 @@ function renderOwnedSkins(){
 
   weaponPanel.classList.add('hidden');detailPanel.classList.remove('hidden');
   const weapon=WEAPON_BY_ID[skinMenuWeaponId];
-  const ownedForWeapon=STORE_SKINS.filter(s=>s.weaponId===weapon.id&&owned.has(s.id));
+  const skinsForWeapon=STORE_SKINS.filter(s=>s.weaponId===weapon.id);
+  const ownedForWeapon=skinsForWeapon.filter(s=>owned.has(s.id));
   if(skinMenuSelectedSkinId){
     const selected=getStoreSkin(skinMenuSelectedSkinId);
-    if(!selected||selected.weaponId!==weapon.id||!owned.has(selected.id))skinMenuSelectedSkinId='';
+    if(!selected||selected.weaponId!==weapon.id)skinMenuSelectedSkinId='';
   }
   const weaponName=$('skins-selected-weapon-name');if(weaponName)weaponName.textContent=weapon.name;
   const weaponDesc=$('skins-selected-weapon-desc');if(weaponDesc)weaponDesc.textContent=weapon.desc;
-  const countLabel=$('skins-owned-count');if(countLabel)countLabel.textContent=`${ownedForWeapon.length} OWNED`;
+  const countLabel=$('skins-owned-count');if(countLabel)countLabel.textContent=`${ownedForWeapon.length} / ${skinsForWeapon.length} OWNED`;
   if(accountNote)accountNote.classList.toggle('hidden',loggedIn);
   const currentEquipped=equippedMap[weapon.id]||'';
   const baseSelected=skinMenuSelectedSkinId==='';
   const baseEquipped=!currentEquipped;
   skinList.innerHTML=`<button type="button" class="skin-option-card ${baseSelected?'selected':''}" data-preview-skin=""><span class="skin-option-art base-skin-option"><span class="weapon-mini-stage ${weapon.id}-showcase"><span class="weapon-mini-model" style="--showcase-color:#${weapon.color.toString(16).padStart(6,'0')}"><i></i><b></b><em></em><span></span></span></span></span><span class="skin-option-copy"><b>기본 외형</b><small>DEFAULT / ${weapon.type}</small><em>${baseEquipped?'현재 장착 중':'기본 모델'}</em></span><span class="skin-option-check">${baseSelected?'●':'○'}</span></button>`+
-    ownedForWeapon.map(skin=>{
-      const isSelected=skinMenuSelectedSkinId===skin.id;
+    skinsForWeapon.map(skin=>{
+      const hasSkin=owned.has(skin.id),isSelected=skinMenuSelectedSkinId===skin.id;
       const isEquipped=currentEquipped===skin.id;
-      return `<button type="button" class="skin-option-card rarity-${skin.rarity} ${isSelected?'selected':''}" data-preview-skin="${skin.id}"><span class="skin-option-art">${skinPreviewMarkup(skin)}</span><span class="skin-option-copy"><b>${skin.displayName}</b><small>${skin.rarity.toUpperCase()} · ${skin.price} NP</small><em>${isEquipped?'현재 장착 중':skin.inspect?'전용 관찰 모션':skin.killEffect?'전용 킬 모션':'보유 스킨'}</em></span><span class="skin-option-check">${isSelected?'●':'○'}</span></button>`;
+      return `<button type="button" class="skin-option-card rarity-${skin.rarity} ${isSelected?'selected':''} ${hasSkin?'':'skin-locked'}" data-preview-skin="${skin.id}"><span class="skin-option-art">${skinPreviewMarkup(skin)}</span><span class="skin-option-copy"><b>${skin.displayName}</b><small>${skin.rarity.toUpperCase()} · ${skin.price} NP</small><em>${!hasSkin?'🔒 미보유 · 미리보기 가능':isEquipped?'현재 장착 중':skin.inspect?'전용 관찰 모션':skin.killEffect?'전용 킬 모션':'보유 스킨'}</em></span><span class="skin-option-check">${hasSkin?(isSelected?'●':'○'):'🔒'}</span></button>`;
     }).join('');
   const skin=skinMenuSelectedSkinId?getStoreSkin(skinMenuSelectedSkinId):null;
   const title=$('skin-preview-title');if(title)title.textContent=skin?.displayName||`기본 외형 · ${weapon.name}`;
   const desc=$('skin-preview-desc');if(desc)desc.textContent=skin?.description||(loggedIn&&ownedForWeapon.length===0?'이 무기에 보유한 스킨이 없습니다. 상점에서 스킨을 얻을 수 있습니다.':'선택한 무기의 기본 3D 모델입니다. 마우스 또는 손가락으로 드래그해 회전하세요.');
   const status=$('skin-preview-status');
-  if(status)status.textContent=!loggedIn?'장착하려면 계정에 로그인하세요.':skin?(currentEquipped===skin.id?'현재 장착 중입니다.':'보유한 스킨입니다. 장착할 수 있습니다.'):(baseEquipped?'기본 외형을 사용 중입니다.':'기본 외형으로 변경할 수 있습니다.');
-  const equip=$('skin-equip-button');if(equip){equip.disabled=!loggedIn||(skin?currentEquipped===skin.id:baseEquipped);equip.textContent=skin?(currentEquipped===skin.id?'장착 중':'이 스킨 장착'):(baseEquipped?'기본 외형 사용 중':'기본 외형 장착');}
+  if(status)status.textContent=!loggedIn?'장착하려면 계정에 로그인하세요.':skin?(owned.has(skin.id)?(currentEquipped===skin.id?'현재 장착 중입니다.':'보유한 스킨입니다. 장착할 수 있습니다.'):'🔒 미보유 스킨입니다. 외형만 미리 볼 수 있습니다.'):(baseEquipped?'기본 외형을 사용 중입니다.':'기본 외형으로 변경할 수 있습니다.');
+  const equip=$('skin-equip-button');if(equip){equip.disabled=!loggedIn||(skin?(!owned.has(skin.id)||currentEquipped===skin.id):baseEquipped);equip.textContent=skin?(currentEquipped===skin.id?'장착 중':'이 스킨 장착'):(baseEquipped?'기본 외형 사용 중':'기본 외형 장착');}
   const reset=$('skin-default-button');if(reset){reset.disabled=!loggedIn||baseEquipped;}
   updateSkinPreview(weapon.id,skin?.id||'');
 }
@@ -536,6 +538,7 @@ async function equipOwnedSkin(skinId,weaponId=null){
 const delay = ms => new Promise(resolve=>setTimeout(resolve,ms));
 async function rollStoreSkin(){
   if(gachaRequestBusy)return;if(!storeAuthRequired())return;
+  if(STORE_SKINS.every(skin=>(state.account?.ownedSkins||[]).includes(skin.id))){showToast('현재 모든 스킨을 모두 보유하고 있습니다.',2200);renderStoreCurrentPage();return;}
   if((Number(state.account?.neonPoints)||0)<STORE_ROLL_COST){showToast(`네온 포인트 ${STORE_ROLL_COST} NP가 필요합니다.`);return;}
   gachaRequestBusy=true;const overlay=$('gacha-overlay'),stage=$('gacha-stage'),finish=$('gacha-finish');
   overlay.classList.remove('hidden');stage.classList.remove('revealed');stage.classList.add('playing');overlay.classList.add('playing');finish.disabled=true;finish.textContent='신호 전송 중…';$('gacha-phase-label').textContent='지구에서 보급 신호를 전송합니다';$('gacha-title').textContent='보급 신호를 기다리는 중';$('gacha-copy').textContent='궤도 수송선이 신호를 수신하고 보급 상자를 투하합니다.';$('gacha-reveal-card').classList.add('hidden');
@@ -543,10 +546,10 @@ async function rollStoreSkin(){
     const pending=storeRequest('/api/store/roll');
     await delay(900);$('gacha-phase-label').textContent='궤도 수송선이 신호를 수신했습니다';
     await delay(1500);$('gacha-phase-label').textContent='보급 상자 대기권 진입';
-    await delay(1550);const data=await pending;await refreshStoreState({silent:true});
+    await delay(1550);const data=await pending;if(data.account){state.account=data.account;}else if(data.skin){state.account.ownedSkins=[...(state.account?.ownedSkins||[]),data.skin.id];state.account.neonPoints=Math.max(0,(Number(state.account.neonPoints)||0)-Number(data.cost||STORE_ROLL_COST));}await refreshStoreState({silent:true});
     stage.classList.remove('playing');stage.classList.add('revealed');const card=$('gacha-reveal-card');card.classList.remove('hidden');card.className=`gacha-reveal-card rarity-${data.skin.rarity}`;card.innerHTML=`${skinPreviewMarkup(data.skin)}<small>${data.skin.rarity.toUpperCase()} DROP</small><b>${data.skin.displayName}</b><p>${data.skin.description}</p>`;
     $('gacha-phase-label').textContent='보급품 확보 완료';$('gacha-title').textContent='스킨을 획득했습니다!';$('gacha-copy').textContent='획득한 스킨은 계정에 저장되었습니다. 스킨 메뉴에서 장착할 수 있습니다.';finish.disabled=false;finish.textContent='확인';renderStoreCurrentPage();
-  }catch(error){stage.classList.remove('playing');$('gacha-title').textContent='보급 요청 실패';$('gacha-copy').textContent=error.message;finish.disabled=false;finish.textContent='닫기';}
+  }catch(error){stage.classList.remove('playing');$('gacha-title').textContent='보급 요청 실패';$('gacha-copy').textContent=error.message;if(String(error.message).includes('모든 스킨')){if(state.account)state.account.ownedSkins=STORE_SKINS.map(s=>s.id);renderStoreCurrentPage();}finish.disabled=false;finish.textContent='닫기';}
   finally{gachaRequestBusy=false;}
 }
 function closeGacha(){const overlay=$('gacha-overlay');if(!overlay)return;overlay.classList.add('hidden');overlay.classList.remove('playing');$('gacha-stage')?.classList.remove('playing','revealed');}
@@ -1339,6 +1342,26 @@ function soundReload(){initAudio();if(!state.audio)return;const ctx=state.audio,
 function soundHit(){initAudio();if(!state.audio)return;const c=state.audio,t=c.currentTime;const o=c.createOscillator(),g=c.createGain();o.type='sine';o.frequency.setValueAtTime(850,t);o.frequency.exponentialRampToValueAtTime(1350,t+.04);g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.12,t+.006);g.gain.exponentialRampToValueAtTime(.0001,t+.09);o.connect(g).connect(c.destination);o.start(t);o.stop(t+.1);}
 function soundKill(){initAudio();if(!state.audio)return;const c=state.audio,t=c.currentTime;[660,990,1320].forEach((f,i)=>{const o=c.createOscillator(),g=c.createGain();o.type='sine';o.frequency.setValueAtTime(f,t+i*.055);o.frequency.exponentialRampToValueAtTime(f*1.25,t+i*.055+.05);g.gain.setValueAtTime(.0001,t+i*.055);g.gain.exponentialRampToValueAtTime(.11,t+i*.055+.008);g.gain.exponentialRampToValueAtTime(.0001,t+i*.055+.17);o.connect(g).connect(c.destination);o.start(t+i*.055);o.stop(t+i*.055+.18);});}
 
+
+function soundHalloweenGhostVoice(){
+  initAudio();const c=state.audio;if(!c)return;const t=c.currentTime;
+  // Layered, breathy formant sweep evokes a distant ghostly '우우우' without using a recorded voice.
+  for(const [f0,f1,delay,vol] of [[310,82,0,.105],[465,118,.035,.075],[155,58,.07,.085]]){
+    const o=c.createOscillator(),g=c.createGain(),f=c.createBiquadFilter();o.type='triangle';f.type='bandpass';f.Q.value=2.1;f.frequency.setValueAtTime(f0,t+delay);f.frequency.exponentialRampToValueAtTime(Math.max(40,f1),t+delay+.92);
+    o.frequency.setValueAtTime(f0,t+delay);o.frequency.exponentialRampToValueAtTime(Math.max(35,f1*.72),t+delay+1.05);
+    g.gain.setValueAtTime(.0001,t+delay);g.gain.linearRampToValueAtTime(vol,t+delay+.12);g.gain.exponentialRampToValueAtTime(.0001,t+delay+1.12);o.connect(f).connect(g).connect(c.destination);o.start(t+delay);o.stop(t+delay+1.14);
+  }
+  if(state.noiseBuffer){const n=c.createBufferSource(),f=c.createBiquadFilter(),g=c.createGain();n.buffer=state.noiseBuffer;f.type='lowpass';f.frequency.setValueAtTime(900,t);f.frequency.exponentialRampToValueAtTime(180,t+.85);g.gain.setValueAtTime(.0001,t);g.gain.linearRampToValueAtTime(.045,t+.18);g.gain.exponentialRampToValueAtTime(.0001,t+.92);n.connect(f).connect(g).connect(c.destination);n.start(t);n.stop(t+.94);}
+}
+function soundPrimeChoir(){
+  initAudio();const c=state.audio;if(!c)return;const t=c.currentTime;
+  // High, sustained '아아아' vowel-like harmonic chord with a slow luminous swell.
+  for(const [freq,det,vol] of [[880,-7,.07],[1108,5,.058],[1320,0,.052],[1760,7,.034],[660,-3,.04]]){
+    const o=c.createOscillator(),g=c.createGain(),f=c.createBiquadFilter();o.type='sine';o.frequency.setValueAtTime(freq,t);o.detune.value=det;f.type='lowpass';f.frequency.setValueAtTime(2600,t);f.frequency.linearRampToValueAtTime(4200,t+.45);
+    g.gain.setValueAtTime(.0001,t);g.gain.linearRampToValueAtTime(vol,t+.22);g.gain.setValueAtTime(vol*.82,t+.68);g.gain.exponentialRampToValueAtTime(.0001,t+1.48);o.connect(f).connect(g).connect(c.destination);o.start(t);o.stop(t+1.5);
+  }
+}
+
 function soundPrimeGoldDissolve(){
   initAudio();const c=state.audio;if(!c)return;const t=c.currentTime;
   const dry=c.createGain(),delay=c.createDelay(.7),feedback=c.createGain(),wet=c.createGain();
@@ -1605,7 +1628,7 @@ function doShoot(fromBurst=false){
     if(equippedSkinId==='prime_knife')addPrimeKnifeSlashFx(state.weaponMotion.knifeVariant);
   }
   state.recoilHeat=Math.min(4.2,state.recoilHeat+Math.max(.025,(w.recoil||.003)*15*sprayMultiplier));state.viewKick=Math.min(.28,state.viewKick+Math.max(.003,(w.recoil||.003)*.48*sprayMultiplier));
-  const upwardRecoil={pistol:.014,revolver:.022,smg:.046,shotgun:.105,rifle:.026,dmr:.014,sniper:.092,lmg:.048,burst:.030};
+  const upwardRecoil={pistol:.014,revolver:.022,smg:.046,shotgun:.105,rifle:.026,dmr:.014,sniper:.092,lmg:.034,burst:.030};
   if(w.id!=='knife')state.recoilPitch=Math.min(.62,state.recoilPitch+(upwardRecoil[w.id]||.02)*(state.zoomed?.62:1)*(fromBurst?1.08:1));
   const crosshair=$('crosshair');if(crosshair){crosshair.style.setProperty('--recoil-rise',`${Math.min(14,state.recoilHeat*3.2)}px`);crosshair.style.transform=`translate(-50%,calc(-50% - ${Math.min(14,state.recoilHeat*3.2)}px))`;}
   if(state.mode==='training'){ammo.mag=w.mag;ammo.reserve=w.reserve;}else if(w.id!=='knife')ammo.mag--;
@@ -1616,7 +1639,7 @@ function doShoot(fromBurst=false){
   for(let i=0;i<pellets;i++){
     const d=direction.clone();const heatFactor=1+state.recoilHeat*(1.25-w.control*.075);
     let spread=state.zoomed?(w.scopeSpread??w.spread*.34):w.id==='sniper'?(w.hipSpread??.06):w.spread;
-    spread+=Math.max(0,expectedDistance-8)*(w.distanceSpread||0);
+    // Distance no longer injects random miss chance: only weapon spread and visible recoil affect aim.
     if(w.id==='shotgun')spread*=1.0;
     spread*=heatFactor;
     const jitterAngle=Math.random()*Math.PI*2,jitterRadius=Math.sqrt(Math.random())*spread;
@@ -1778,6 +1801,7 @@ function spawnSkinKillEffect(data){
   const origin=new THREE.Vector3(Number(victim.x)||0,Number(victim.y)||0,Number(victim.z)||0);
   const group=new THREE.Group();group.position.copy(origin);group.name=`KILL_EFFECT_${effectType}`;scene.add(group);
   if(effectType==='prime-gold-dissolve'){
+    soundPrimeChoir();
     const goldCore=new THREE.Mesh(new THREE.SphereGeometry(.52,18,14),new THREE.MeshBasicMaterial({color:0xffd45b,transparent:true,opacity:.27,blending:THREE.AdditiveBlending,depthWrite:false}));goldCore.position.y=1.0;goldCore.scale.set(.82,1.65,.82);group.add(goldCore);
     const ringMat=new THREE.MeshBasicMaterial({color:0xffdf7a,transparent:true,opacity:.88,blending:THREE.AdditiveBlending,depthWrite:false});
     const ringA=new THREE.Mesh(new THREE.TorusGeometry(.57,.018,6,44),ringMat.clone());ringA.position.y=.24;ringA.rotation.x=Math.PI/2;group.add(ringA);
@@ -1803,6 +1827,7 @@ function spawnSkinKillEffect(data){
     group.userData.primeGoldDust={dust,dustBase:positions.slice(),dustVel:velocities,bright,brightBase:bp.slice(),brightVel:bv};
     soundPrimeGoldDissolve();
   }else if(effectType==='ghost-lift'){
+    soundHalloweenGhostVoice();
     const glow=new THREE.Mesh(new THREE.SphereGeometry(.42,12,10),new THREE.MeshStandardMaterial({color:0xeaf8f6,emissive:0x8adbd7,emissiveIntensity:1.8,transparent:true,opacity:.9,roughness:.25}));glow.position.y=1.7;glow.scale.set(.8,1.15,.65);group.add(glow);
     const tail=new THREE.Mesh(new THREE.ConeGeometry(.32,.75,12),new THREE.MeshStandardMaterial({color:0xdaf3ef,emissive:0x3c8d89,emissiveIntensity:.7,transparent:true,opacity:.72,side:THREE.DoubleSide}));tail.position.y=1.15;tail.rotation.x=Math.PI;group.add(tail);
     for(let i=0;i<3;i++){const eye=new THREE.Mesh(new THREE.SphereGeometry(.045,8,6),new THREE.MeshBasicMaterial({color:0x14242e}));eye.position.set(i===0?-.11:.11,1.77,.36);group.add(eye);}
@@ -1947,7 +1972,7 @@ function setupEvents(){
   $('skins-weapon-skin-list')?.addEventListener('click',e=>{
     const option=e.target.closest('[data-preview-skin]');if(!option)return;
     const next=option.dataset.previewSkin||'';const owned=new Set(state.account?.ownedSkins||[]);
-    if(next&&(!owned.has(next)||getStoreSkin(next)?.weaponId!==skinMenuWeaponId)){showToast('보유한 스킨만 선택할 수 있습니다.',1400);return;}
+    if(next&&getStoreSkin(next)?.weaponId!==skinMenuWeaponId)return;
     skinMenuSelectedSkinId=next;skinPreviewCurrentKey='';renderOwnedSkins();
   });
   $('skin-equip-button')?.addEventListener('click',()=>{
