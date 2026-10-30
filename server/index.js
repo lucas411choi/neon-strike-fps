@@ -935,7 +935,8 @@ io.on('connection', socket => {
     if(!o||!d||![o.x,o.y,o.z,d.x,d.y,d.z].every(v=>Number.isFinite(Number(v))))return;
     const dirLen=Math.hypot(Number(d.x),Number(d.y),Number(d.z));if(dirLen<.7||dirLen>1.3)return;
     const origin={x:Number(o.x),y:Number(o.y),z:Number(o.z)};const direction={x:Number(d.x)/dirLen,y:Number(d.y)/dirLen,z:Number(d.z)/dirLen};
-    const targetEntry=[...room.players.entries()].find(([id2,p])=>id2!==socket.id&&p.hp>0);
+    let targetEntry=[...room.players.entries()].find(([id2,p])=>id2!==socket.id&&p.hp>0);
+    if(id==='knife'&&targetEntry){const [,target]=targetEntry;const targetDistance=Math.hypot((Number(target.x)||0)-origin.x,(Number(target.y)||0)+1.08-origin.y,(Number(target.z)||0)-origin.z);if(targetDistance>(Number(w.range)||2.65))targetEntry=null;}
     // Firearms have no hard gameplay range cutoff. Accuracy becomes less reliable with distance.
     let end={x:origin.x+direction.x*MAX_SHOT_DISTANCE,y:origin.y+direction.y*MAX_SHOT_DISTANCE,z:origin.z+direction.z*MAX_SHOT_DISTANCE};
     let hit=null,totalDamage=0,closestHitDistance=Infinity;
@@ -951,7 +952,7 @@ io.on('connection', socket => {
         const ox=(origin.x-center.x)/radii.x, oy=(origin.y-center.y)/radii.y, oz=(origin.z-center.z)/radii.z;
         const dx=rayDirection.x/radii.x, dy=rayDirection.y/radii.y, dz=rayDirection.z/radii.z;
         const a=dx*dx+dy*dy+dz*dz,b=2*(ox*dx+oy*dy+oz*dz),c=ox*ox+oy*oy+oz*oz-1,disc=b*b-4*a*c;
-        if(a<1e-9||disc<0)return null;const root=Math.sqrt(disc);let t=(-b-root)/(2*a);if(t<0)t=(-b+root)/(2*a);return t>=0&&t<=MAX_SHOT_DISTANCE?t:null;
+        if(a<1e-9||disc<0)return null;const root=Math.sqrt(disc);let t=(-b-root)/(2*a);if(t<0)t=(-b+root)/(2*a);const maxDistance=id==='knife'?(Number(w.range)||2.65):MAX_SHOT_DISTANCE;return t>=0&&t<=maxDistance?t:null;
       };
       const pelletCount=id==='shotgun'?(w.pellets||10):1;
       const rightLen=Math.hypot(direction.z,direction.x)||1;const right={x:direction.z/rightLen,y:0,z:-direction.x/rightLen};
