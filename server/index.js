@@ -446,19 +446,21 @@ app.post('/api/store/roll', async (req, res) => {
     if (!account) return accountRequiredMessage(res);
     const result = await mutateAccountState(account.id, model => {
       if (model.neonPoints < STORE_ROLL_COST) return { ok:false, status:400, error:`네온 포인트가 부족합니다. ${STORE_ROLL_COST} NP가 필요합니다.` };
-      model.ownedSkins = Array.isArray(model.ownedSkins) ? model.ownedSkins.filter(id=>typeof id==='string') : [];
-      const owned = new Set(model.ownedSkins);
-      const unowned = STORE_SKINS.filter(skin => !owned.has(skin.id));
+      const ownedSkins = new Set(Array.isArray(model.ownedSkins) ? model.ownedSkins : []);
+      const unowned = STORE_SKINS.filter(skin => !ownedSkins.has(skin.id));
       if (!unowned.length) return { ok:false, status:409, error:'현재 모든 스킨을 모두 보유하고 있습니다.' };
-      // Every individual unowned skin has the same probability, regardless of rarity.
+      // Pick from the actual catalog, then return both a stable ID and the complete catalog record.
       const skin = unowned[Math.floor(Math.random() * unowned.length)];
+      if (!skin?.id || !getStoreSkin(skin.id)) return { ok:false, status:500, error:'보급 스킨 정보를 확인할 수 없습니다. 다시 시도하세요.' };
       model.neonPoints -= STORE_ROLL_COST;
-      model.ownedSkins = [...model.ownedSkins, skin.id];
-      return { ok:true, skin, cost:STORE_ROLL_COST };
+      model.ownedSkins = [...ownedSkins, skin.id];
+      return { ok:true, skin, skinId:skin.id, cost:STORE_ROLL_COST };
     });
     if (!result.ok) return res.status(result.status || 500).json({ error:result.error || '뽑기에 실패했습니다.' });
-    if (!result.skin || !STORE_SKINS.some(skin=>skin.id===result.skin.id)) return res.status(500).json({ error:'뽑기 결과 스킨을 확인하지 못했습니다. 다시 시도하세요.' });
-    res.json({ account:result.account, skin:result.skin, cost:result.cost });
+    const rewardSkin = getStoreSkin(result.skinId || result.skin?.id);
+    if (!rewardSkin) return res.status(500).json({ error:'보급 결과에 스킨 식별자가 없습니다. 다시 시도하세요.' });
+    res.set('Cache-Control','no-store');
+    res.json({ account:result.account, skin:rewardSkin, skinId:rewardSkin.id, cost:result.cost });
   } catch (error) { console.error('[store] roll failed:', error?.message || error); res.status(500).json({ error:'스킨 뽑기 중 오류가 발생했습니다.' }); }
 });
 
