@@ -1,4 +1,4 @@
-const CACHE_NAME = 'neon-strike-static-v33-skin-menu-preview-hitflash-fix';
+const CACHE_NAME = 'neon-strike-static-v34-v162-skin-gacha-hit-audio';
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(['/','/manifest.webmanifest','/icon.svg'])).catch(()=>{}));
   self.skipWaiting();
