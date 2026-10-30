@@ -8,7 +8,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/src/style.css" />
-  <title>NEON STRIKE — Tactical FPS v1.5.1</title>
+  <title>NEON STRIKE — Tactical FPS v1.6.1</title>
 </head>
 <body>
   <canvas id="game-canvas" aria-label="NEON STRIKE 3D 게임"></canvas>
@@ -26,7 +26,7 @@
         <button class="lobby-tab" data-lobby-tab="skins"><span class="tab-glyph">◇</span><b>스킨</b></button>
         <button class="lobby-tab" data-lobby-tab="account"><span class="tab-glyph">◎</span><b>계정</b></button>
       </nav>
-      <div class="lobby-live"><span></span> LIVE SERVER <em>1.5.1</em></div>
+      <div class="lobby-live"><span></span> LIVE SERVER <em>1.6.1</em></div>
     </header>
 
     <section id="lobby-play-view" class="lobby-view lobby-play-view">
@@ -90,8 +90,26 @@
     </section>
 
     <section id="lobby-skins-view" class="lobby-view lobby-skins-view hidden">
-      <header class="store-heading"><div><div class="lobby-section-kicker">PLAYER INVENTORY / EQUIPMENT</div><h2>스킨 <span>YOUR COLLECTION</span></h2><p>보유한 스킨만 장착할 수 있습니다. 장착 정보는 계정에 저장됩니다.</p></div><div class="store-wallet"><small>NEON POINTS</small><b id="skins-neon-points">0 NP</b></div></header>
-      <div id="owned-skins-grid" class="owned-skins-grid"></div>
+      <header class="store-heading skin-store-heading"><div><div class="lobby-section-kicker">PLAYER INVENTORY / EQUIPMENT</div><h2>스킨 <span>YOUR COLLECTION</span></h2><p>무기를 선택한 뒤 보유한 스킨을 확인하고 장착하세요.</p></div><div class="store-wallet"><small>NEON POINTS</small><b id="skins-neon-points">0 NP</b></div></header>
+      <div id="skins-weapon-select-panel" class="skins-weapon-select-panel">
+        <div class="skins-panel-heading"><div><small>SELECT WEAPON</small><h3>스킨을 적용할 무기 선택</h3><p>총기 9종과 근접 무기 1종 · 보유 스킨만 장착 가능</p></div><span class="skins-count-badge">10 WEAPONS</span></div>
+        <div id="skins-weapon-grid" class="skins-weapon-grid"></div>
+      </div>
+      <div id="skins-detail-panel" class="skins-detail-panel hidden">
+        <aside class="skins-detail-sidebar">
+          <button id="skins-back-weapons" class="skins-back-button" type="button">‹ 무기 선택으로 돌아가기</button>
+          <div class="skins-selected-weapon"><small>SELECTED WEAPON</small><h3 id="skins-selected-weapon-name">ATLAS PISTOL</h3><p id="skins-selected-weapon-desc">기본 외형 및 보유 스킨</p></div>
+          <div class="skins-list-heading"><span>보유 스킨</span><small id="skins-owned-count">0 OWNED</small></div>
+          <div id="skins-weapon-skin-list" class="skins-weapon-skin-list"></div>
+          <p id="skins-no-login-note" class="skins-no-login-note hidden">계정에 로그인하면 보유 스킨이 표시됩니다.</p>
+        </aside>
+        <section class="skins-preview-panel">
+          <div class="skins-preview-heading"><div><small>3D SKIN INSPECTOR</small><h3 id="skin-preview-title">기본 외형</h3></div><span class="skins-drag-hint">드래그하여 회전 ↻</span></div>
+          <div class="skin-preview-stage" id="skin-preview-stage"><div class="skin-preview-grid-glow"></div><canvas id="skin-preview-canvas" aria-label="스킨 3D 미리보기. 마우스 또는 손가락으로 드래그해 회전할 수 있습니다."></canvas><div id="skin-preview-loading" class="skin-preview-loading hidden">3D 모델을 불러오는 중…</div></div>
+          <p id="skin-preview-desc" class="skin-preview-desc">선택한 무기의 기본 모델입니다.</p>
+          <div class="skin-preview-actions"><button id="skin-equip-button" class="store-primary-button" type="button" disabled>장착하기</button><button id="skin-default-button" class="skins-secondary-button" type="button" disabled>기본 외형</button><span id="skin-preview-status" role="status">보유한 스킨만 장착할 수 있습니다.</span></div>
+        </section>
+      </div>
       <div id="skins-empty-state" class="skins-empty-state hidden"><div class="coming-soon-symbol">◇</div><h3>아직 보유한 스킨이 없습니다</h3><p>상점에서 번들을 구매하거나 보급 상자를 열어 첫 스킨을 획득하세요.</p><button class="store-primary-button" data-lobby-tab="shop">상점 열기 ↗</button></div>
     </section>
 
