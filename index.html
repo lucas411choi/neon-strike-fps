@@ -8,7 +8,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/icon.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="/src/style.css" />
-  <title>NEON STRIKE — Tactical FPS v1.6.4</title>
+  <title>NEON STRIKE — Tactical FPS v1.6.1</title>
 </head>
 <body>
   <canvas id="game-canvas" aria-label="NEON STRIKE 3D 게임"></canvas>
@@ -26,7 +26,7 @@
         <button class="lobby-tab" data-lobby-tab="skins"><span class="tab-glyph">◇</span><b>스킨</b></button>
         <button class="lobby-tab" data-lobby-tab="account"><span class="tab-glyph">◎</span><b>계정</b></button>
       </nav>
-      <div class="lobby-live"><span></span> LIVE SERVER <em>1.6.4</em></div>
+      <div class="lobby-live"><span></span> LIVE SERVER <em>1.6.1</em></div>
     </header>
 
     <section id="lobby-play-view" class="lobby-view lobby-play-view">
@@ -84,7 +84,7 @@
       <section class="store-bundle-section"><div class="store-section-title"><div><small>LIMITED-TIME BUNDLES</small><h3>기간 한정 번들</h3></div><span class="store-live-tag">LIMITED DROP</span></div><div id="store-bundle-grid" class="store-bundle-grid"></div></section>
       <div class="store-lower-grid">
         <section class="store-daily-section"><div class="store-section-title"><div><small>ROTATES DAILY / UTC</small><h3>오늘의 스킨</h3></div><span id="store-daily-date" class="store-date"></span></div><div id="store-daily-grid" class="store-daily-grid"></div></section>
-        <aside class="store-roll-card"><div class="roll-card-orbit"><span class="roll-planet"></span><span class="roll-satellite">✦</span><span class="roll-crate">▣</span></div><small>DEEP SPACE SUPPLY DROP</small><h3>우주 보급 상자</h3><p>지구의 신호를 받은 궤도 수송선이 무작위 스킨 보급품을 투하합니다.</p><div class="roll-price">150 <small>NP / 1회</small></div><button id="store-roll-button" class="store-primary-button">보급 상자 뽑기 <span>↗</span></button><small id="store-roll-status" class="roll-footnote" aria-live="polite">미보유 스킨은 등급과 관계없이 개별 스킨별 동일 확률</small></aside>
+        <aside class="store-roll-card"><div class="roll-card-orbit"><span class="roll-planet"></span><span class="roll-satellite">✦</span><span class="roll-crate">▣</span></div><small>DEEP SPACE SUPPLY DROP</small><h3>우주 보급 상자</h3><p>지구의 신호를 받은 궤도 수송선이 무작위 스킨 보급품을 투하합니다.</p><div class="roll-price">150 <small>NP / 1회</small></div><button id="store-roll-button" class="store-primary-button">보급 상자 뽑기 <span>↗</span></button><small class="roll-footnote">미보유 스킨은 등급과 관계없이 개별 스킨별 동일 확률</small></aside>
       </div>
       <section class="store-code-section"><div><small>REDEEM TRANSMISSION</small><h3>보급 코드</h3><p>공식 코드를 입력하면 네온 포인트를 받을 수 있습니다.</p></div><form id="store-code-form" class="store-code-form"><input id="store-code-input" maxlength="64" placeholder="코드 입력" aria-label="보급 코드" autocomplete="off"/><button type="submit">사용하기</button></form><div id="store-feedback" class="store-feedback" role="status">상점을 이용하려면 계정에 로그인하세요.</div></section>
     </section>
@@ -142,10 +142,19 @@
           </form>
         </div>
         <div id="account-profile-panel" class="account-panel hidden">
-          <div class="account-profile-head"><div class="account-avatar">NS</div><div><small>AUTHENTICATED PLAYER</small><h3 id="account-profile-name">PLAYER</h3><p>계정 데이터는 온라인 서버에 저장됩니다.</p></div></div>
+          <div class="account-profile-head"><div id="account-avatar" class="account-avatar">NS</div><div><small>AUTHENTICATED PLAYER</small><h3 id="account-profile-name">PLAYER</h3><p>계정 데이터는 온라인 서버에 저장됩니다.</p></div></div>
           <div class="account-level-row"><div><small>CURRENT LEVEL</small><b id="account-level">LV. 1</b></div><div class="account-xp-count"><b id="account-xp">0 / 150 XP</b><small id="account-next-level">다음 레벨까지 150 XP</small></div></div>
           <div class="account-xp-track"><span id="account-xp-fill"></span></div>
           <div class="account-neon-currency"><span>NEON POINTS</span><b id="account-neon-points">0 NP</b></div>
+          <div class="account-cosmetics">
+            <div class="account-cosmetics-heading"><b>프로필 꾸미기</b><small>ACCOUNT SYNC</small></div>
+            <label for="account-profile-select">프로필 사진</label>
+            <select id="account-profile-select" class="text-input"><option value="default">기본 프로필 · NS</option><option value="pumpkin">호박 프로필 · 🎃</option></select>
+            <label for="account-name-color-select">이름 색깔</label>
+            <select id="account-name-color-select" class="text-input"><option value="default">기본 색상</option><option value="orange">호박 주황색</option></select>
+            <button id="account-cosmetics-save" type="button" class="outline-button">프로필 설정 저장</button>
+            <small id="account-cosmetics-note">핼러윈 번들에 포함된 프로필과 이름 색상은 계정에 저장되어 모든 기기에서 동기화됩니다.</small>
+          </div>
           <div class="account-xp-notes"><span>훈련장 과녁/더미 +10 XP</span><span>라운드 승리 +50 XP</span><span>매치 승리 +200 XP</span></div>
           <div class="account-profile-actions"><button id="account-logout" type="button" class="outline-button">로그아웃</button><button type="button" class="lobby-start-button" data-lobby-tab="play"><span class="start-button-icon">▶</span><span><b>플레이로 돌아가기</b><small>BACK TO LOBBY</small></span><span class="start-arrow">↗</span></button></div>
           <div id="account-profile-message" class="account-message" role="status"></div>
@@ -176,7 +185,7 @@
     <footer class="bottom-hud">
       <div class="player-vitals"><div class="vital-icon">+</div><div><small>HEALTH</small><b id="health-value">100</b></div><div class="health-track"><span id="health-fill"></span></div></div>
       <div class="armor-readout"><div class="armor-icon">⬡</div><div><small id="armor-tier-label">NONE</small><b id="armor-value">0</b></div></div>
-      <div class="controls-hint"><kbd>SHIFT</kbd> 조용히 걷기 <kbd>SPACE</kbd> 점프 <kbd>R</kbd> 재장전 <kbd>E</kbd> 무기 관찰 <kbd>1</kbd> 주무기 <kbd>2</kbd> 권총 <kbd>3</kbd> 칼 <kbd>우클릭 / Q</kbd> 줌 <kbd>ESC</kbd> 메뉴</div>
+      <div class="controls-hint"><kbd>SHIFT</kbd> 조용히 걷기 <kbd>SPACE</kbd> 점프 <kbd>R</kbd> 재장전 <kbd>ENTER</kbd> 무기 관찰 <kbd>1</kbd> 주무기 <kbd>2</kbd> 권총 <kbd>3</kbd> 칼 <kbd>우클릭 / Q</kbd> 줌 <kbd>ESC</kbd> 메뉴</div>
     </footer>
     <div id="center-notice" class="center-notice hidden"></div><div id="killcam-label" class="killcam-label hidden"><small>NEON STRIKE / ELIMINATION REPLAY</small><b>킬캠 재생 중</b><span>시점 고정 · 5초</span></div>
     <button id="training-weapon-button" class="training-weapon-button hidden">▤ 훈련 무기 선택</button>
