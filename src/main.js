@@ -38,7 +38,7 @@ const platformName = { pc:'PC', mobile:'MOBILE' };
 const state = {
   device: matchMedia('(pointer:coarse)').matches ? 'mobile' : 'pc',
   rule:'crossplay', difficulty:'normal', name:'PLAYER', mode:'menu', phase:'menu', playMode:'training', selectedMap:'arena', mapId:'arena', mapBounds:31.8, lobbyPage:'play', lobbyMapCycle:-1, lobbySelectedWeapon:'rifle',
-  round:0, selfScore:0, enemyScore:0, money:450, hp:100, armor:0, armorTier:'none',
+  round:0, selfScore:0, enemyScore:0, money:450, hp:100, armor:0, armorTier:'none', team:'red', teamMode:'1v1',
   authToken:initialAuthToken, account:null, accountMode:'register', xpLoginNoticeShown:false,
   currentWeapon:'pistol', owned:new Set(['pistol','knife']), ammo:{},
   pos:new THREE.Vector3(0,0,15), velocityY:0, yaw:0, pitch:0,
@@ -1272,10 +1272,10 @@ function updateRemotePlayer(id,data) {
   const weapon=data.weapon||remote?.weapon||'pistol';
   const skinId=data.skinId||data.equippedSkins?.[weapon]||remote?.skinId||null;
   if(!remote){
-    const root=makeCharacter({color:0xff6c85,accent:0x52233a,onlineId:id,name:data.name||'OPPONENT'});buildCharacterWeapon(root,weapon,skinId);root.position.set(data.x||0,data.y||0,data.z||0);scene.add(root);registerTarget(root,id);
-    remote={id,root,target:new THREE.Vector3(data.x||0,data.y||0,data.z||0),yaw:data.yaw||0,name:data.name||'OPPONENT',hp:data.hp??100,weapon,skinId,equippedSkins:data.equippedSkins||{},walkPhase:Math.random()*6,lastX:data.x||0,lastZ:data.z||0};state.remotePlayers.set(id,remote);
+    const teamColor=data.team==='red'?0xff627d:0x58a8ff;const friendly=state.teamMode==='2v2'&&data.team===state.team;const root=makeCharacter({color:friendly?0x52dfd2:teamColor,accent:friendly?0x145d61:(data.team==='red'?0x52233a:0x193d65),onlineId:id,name:data.name||'OPPONENT'});buildCharacterWeapon(root,weapon,skinId);root.position.set(data.x||0,data.y||0,data.z||0);scene.add(root);registerTarget(root,id);
+    remote={id,root,target:new THREE.Vector3(data.x||0,data.y||0,data.z||0),yaw:data.yaw||0,name:data.name||'OPPONENT',team:data.team||'blue',hp:data.hp??100,weapon,skinId,equippedSkins:data.equippedSkins||{},walkPhase:Math.random()*6,lastX:data.x||0,lastZ:data.z||0};state.remotePlayers.set(id,remote);
   }
-  remote.target.set(data.x||0,data.y||0,data.z||0);remote.yaw=data.yaw||0;remote.name=data.name||remote.name;if(data.hp!=null)remote.hp=data.hp;
+  remote.target.set(data.x||0,data.y||0,data.z||0);remote.yaw=data.yaw||0;remote.name=data.name||remote.name;if(data.team)remote.team=data.team;if(data.hp!=null)remote.hp=data.hp;
   if(data.equippedSkins)remote.equippedSkins=data.equippedSkins;
   if(weapon!==remote.weapon||skinId!==remote.skinId){remote.weapon=weapon;remote.skinId=skinId;buildCharacterWeapon(remote.root,weapon,skinId);}
 }
@@ -1597,7 +1597,7 @@ function addShotFx(from,to,color=0x8ffff0){
 function cameraForward(){const d=new THREE.Vector3();camera.getWorldDirection(d);return d.normalize();}
 function estimateAimDistance(origin,direction){
   const candidates=[];
-  if(state.mode==='online'){for(const p of state.remotePlayers.values())if(p.hp>0)candidates.push(p.root.position);}
+  if(state.mode==='online'){for(const p of state.remotePlayers.values())if(p.hp>0&&(state.teamMode!=='2v2'||p.team!==state.team))candidates.push(p.root.position);}
   else if(state.mode==='training'){for(const t of state.trainingTargets)if(t.alive)candidates.push(t.root.position);}
   else if(state.mode==='ai'){for(const b of state.botList)if(b.alive)candidates.push(b.root.position);}
   let nearest=44;
@@ -1605,7 +1605,7 @@ function estimateAimDistance(origin,direction){
   return THREE.MathUtils.clamp(nearest,8,140);
 }
 function doShoot(fromBurst=false){
-  if(state.phase!=='live'||state.paused||state.reloading)return false;
+  if(state.phase!=='live'||state.paused||state.reloading||(state.mode==='online'&&state.hp<=0))return false;
   const w=currentWeapon(),ammo=state.ammo[w.id],now=performance.now();
   if(w.id==='burst'&&fromBurst&&state.burstRemaining<=0)return false;
   if(!fromBurst&&now-state.lastShot<w.rate*1000)return false;
@@ -1649,7 +1649,7 @@ function doShoot(fromBurst=false){
       const targetId=x.object.userData.targetId;if(!targetId)return false;
       if(String(targetId).startsWith('bot-'))return state.mode==='ai'&&state.botList.some(b=>b.id===targetId&&b.alive);
       if(String(targetId).startsWith('practice-'))return state.mode==='training'&&state.trainingTargets.some(t=>t.id===targetId&&t.alive);
-      return state.mode==='online'&&state.remotePlayers.has(targetId);
+      return state.mode==='online'&&state.remotePlayers.has(targetId)&&(state.teamMode!=='2v2'||state.remotePlayers.get(targetId)?.team!==state.team);
     });
     if(h){const blockers=raycaster.intersectObjects(obstacleMeshes,false);if(blockers.length&&blockers[0].distance<h.distance-.06)h=null;}
     if(h){hitPoint=h.point;const hitOwner=h.object.userData.targetId;const part=h.object.userData.part||'body';
@@ -1686,7 +1686,7 @@ function collideAt(x,z,y=state.pos.y){
   return false;
 }
 function movePlayer(dt){
-  if((state.phase!=='live'&&!hasKillerMovementGrace())||state.paused||state.killCamActive)return;
+  if((state.phase!=='live'&&!hasKillerMovementGrace())||state.paused||state.killCamActive||(state.mode==='online'&&state.hp<=0))return;
   const forward=(state.keys.has('KeyW')?1:0)-(state.keys.has('KeyS')?1:0)-state.touchMove.y;
   const strafe=(state.keys.has('KeyD')?1:0)-(state.keys.has('KeyA')?1:0)+state.touchMove.x;
   const slowWalk=state.keys.has('ShiftLeft')||state.keys.has('ShiftRight');
@@ -1883,15 +1883,27 @@ function beginKillCam(data){
     if(state.roundResultPending){const pending=state.roundResultPending;state.roundResultPending=null;renderOnlineRoundResult(pending);}
   },Math.max(500,Number(data.durationMs)||5000));
 }
+
+function updateOnlineScoreDisplay(scores={}){
+  const ownId=state.socket?.id;
+  state.selfScore=Number(scores?.[ownId])||0;
+  if(state.teamMode==='2v2'){
+    const enemyScores=[...state.remotePlayers.entries()].filter(([,player])=>player.team!==state.team).map(([id])=>Number(scores?.[id])||0);
+    state.enemyScore=enemyScores.length?Math.max(...enemyScores):0;
+  }else{
+    state.enemyScore=Object.entries(scores||{}).filter(([id])=>id!==ownId).reduce((max,[,value])=>Math.max(max,Number(value)||0),0);
+  }
+}
+
 function renderOnlineRoundResult(data){
-  setZoom(false);state.phase='ended';state.selfScore=data.scores?.[state.socket?.id]||0;state.enemyScore=Object.entries(data.scores||{}).filter(([id])=>id!==state.socket?.id).reduce((a,[,v])=>a+v,0);state.money=data.selfMoney??state.money;state.matchOver=!!data.matchOver;
-  const won=data.winnerId===state.socket?.id;$('result-kicker').textContent=data.matchOver?'MATCH RESULT':'ROUND RESULT';$('result-title').innerHTML=data.matchOver?(won?'MATCH<br/><span>VICTORY.</span>':'MATCH<br/><span>DEFEAT.</span>'):(won?'ROUND<br/><span>WON.</span>':'ROUND<br/><span>LOST.</span>');
+  setZoom(false);state.phase='ended';updateOnlineScoreDisplay(data.scores||{});state.money=data.selfMoney??state.money;state.matchOver=!!data.matchOver;
+  const won=data.winnerTeam?state.team===data.winnerTeam:data.winnerId===state.socket?.id;$('result-kicker').textContent=data.matchOver?'MATCH RESULT':'ROUND RESULT';$('result-title').innerHTML=data.matchOver?(won?'MATCH<br/><span>VICTORY.</span>':'MATCH<br/><span>DEFEAT.</span>'):(won?'ROUND<br/><span>WON.</span>':'ROUND<br/><span>LOST.</span>');
   $('result-copy').textContent=data.matchOver?(data.reason||'6라운드 선취로 매치가 끝났습니다.'):`${data.reason||'라운드 종료'} · 이번 라운드만 종료됐습니다. 현재 점수 ${state.selfScore}-${state.enemyScore}. 다음 라운드 버튼을 눌러 계속하세요.`;
   $('result-reward').textContent=`+${(data.reward??0).toLocaleString()} CR`;$('next-round').classList.toggle('hidden',!!data.matchOver);$('next-round').disabled=false;$('next-round').textContent='다음 라운드 시작';endScreen.classList.remove('hidden');updateHUD();
 }
 function handleOnlineRoundResult(data){
   // Lock input immediately, but don't reveal the round result until the five-second killcam is complete.
-  state.phase='ended';state.selfScore=data.scores?.[state.socket?.id]||0;state.enemyScore=Object.entries(data.scores||{}).filter(([id])=>id!==state.socket?.id).reduce((a,[,v])=>a+v,0);state.money=data.selfMoney??state.money;state.matchOver=!!data.matchOver;setZoom(false);
+  state.phase='ended';updateOnlineScoreDisplay(data.scores||{});state.money=data.selfMoney??state.money;state.matchOver=!!data.matchOver;setZoom(false);
   if(state.roundResultTimer){clearTimeout(state.roundResultTimer);state.roundResultTimer=null;}
   const delayMs=Math.max(0,Number(data.killCamMs)||0);
   if(state.killCamActive||delayMs>0){state.roundResultPending=data;if(!state.killCamActive){state.roundResultTimer=setTimeout(()=>{state.roundResultTimer=null;const pending=state.roundResultPending;state.roundResultPending=null;if(pending)renderOnlineRoundResult(pending);},delayMs);}return;}
@@ -1918,7 +1930,7 @@ function beginOnline(){
   socket.on('footstep',data=>{if(data.id===socket.id)return;const remote=state.remotePlayers.get(data.id);if(!remote)return;const dist=remote.root.position.distanceTo(state.pos);if(dist<23)soundFootstep({volume:Math.max(.015,.11*(1-dist/25)),remote:true});});
   socket.on('roundState',data=>{
     clearTrainingTargets();
-    if(data.map&&state.mapId!==data.map)buildMap(data.map);hideRoomWait();endScreen.classList.add('hidden');state.phase=data.phase;state.round=data.round;state.phaseEnd=data.endsAt;state.roundLimit=data.roundEndsAt||0;state.selfScore=data.scores?.[socket.id]||0;state.enemyScore=Object.entries(data.scores||{}).filter(([id])=>id!==socket.id).reduce((a,[,v])=>a+v,0);state.money=data.self?.money??state.money;state.hp=data.self?.hp??100;state.armor=data.self?.armor??state.armor;state.armorTier=data.self?.armorTier??state.armorTier;state.currentWeapon=data.self?.weapon||state.currentWeapon;state.buyPrimaryThisRound=!!data.self?.boughtPrimary;state.owned=new Set(data.self?.ownedWeapons||['pistol',...(data.self?.weapon&&data.self.weapon!=='pistol'?[data.self.weapon]:[])]);state.pos.set(data.self?.x??0,data.self?.y??0,data.self?.z??27);state.yaw=data.self?.yaw??state.yaw;state.pitch=data.self?.pitch??0;state.reloading=false;state.reloadWeaponId=null;makeAmmoFor(state.currentWeapon,true);buildGun(state.currentWeapon);if(data.phase==='buy'){clearRemotePlayers();for(const [id,p]of Object.entries(data.players||{}))if(id!==socket.id)updateRemotePlayer(id,p);$('phase-label').textContent='BUY PHASE';openBuy();}else{$('phase-label').textContent='LIVE';closeBuy();}updateHUD();
+    if(data.map&&state.mapId!==data.map)buildMap(data.map);hideRoomWait();endScreen.classList.add('hidden');state.phase=data.phase;state.round=data.round;state.phaseEnd=data.endsAt;state.roundLimit=data.roundEndsAt||0;state.team=data.self?.team||'red';state.teamMode=data.teamMode||'1v1';state.money=data.self?.money??state.money;state.hp=data.self?.hp??100;state.armor=data.self?.armor??state.armor;state.armorTier=data.self?.armorTier??state.armorTier;state.currentWeapon=data.self?.weapon||state.currentWeapon;state.buyPrimaryThisRound=!!data.self?.boughtPrimary;state.owned=new Set(data.self?.ownedWeapons||['pistol',...(data.self?.weapon&&data.self.weapon!=='pistol'?[data.self.weapon]:[])]);state.pos.set(data.self?.x??0,data.self?.y??0,data.self?.z??27);state.yaw=data.self?.yaw??state.yaw;state.pitch=data.self?.pitch??0;state.reloading=false;state.reloadWeaponId=null;makeAmmoFor(state.currentWeapon,true);buildGun(state.currentWeapon);clearRemotePlayers();for(const [id,p]of Object.entries(data.players||{}))if(id!==socket.id)updateRemotePlayer(id,p);if(data.phase==='buy'){$('phase-label').textContent='BUY PHASE';openBuy();}else{$('phase-label').textContent='LIVE';closeBuy();}updateOnlineScoreDisplay(data.scores||{});updateHUD();
   });
   socket.on('selfState',data=>{if(data.money!=null)state.money=data.money;if(data.hp!=null)state.hp=data.hp;if(data.armor!=null)state.armor=data.armor;if(data.armorTier)state.armorTier=data.armorTier;if(data.ownedWeapons)for(const weaponId of data.ownedWeapons)state.owned.add(weaponId);if(data.weapon&&data.weapon!==state.currentWeapon){state.currentWeapon=data.weapon;buildGun(data.weapon);}if(data.boughtPrimary!=null)state.buyPrimaryThisRound=data.boughtPrimary;updateHUD();});
   socket.on('roundPhase',data=>{state.phase=data.phase;state.phaseEnd=data.endsAt;if(data.phase==='live')state.roundLimit=data.endsAt;if(data.phase==='live'){$('phase-label').textContent='LIVE';closeBuy();showToast(`ROUND ${data.round} — FIGHT`,1600);}if(data.phase==='buy'){$('phase-label').textContent='BUY PHASE';openBuy();}updateHUD();});
@@ -1935,46 +1947,53 @@ function renderRoomLobby(data){
   state.roomLobbyData=data||state.roomLobbyData;if(!state.roomLobbyData)return;
   const info=state.roomLobbyData,panel=$('room-wait');if(!panel)return;
   const isHost=info.hostId===state.socket?.id;const players=Array.isArray(info.players)?info.players:[];
-  const playerCard=(player,emptyLabel)=>{
-    if(!player)return `<div class="room-player-empty">${emptyLabel}</div>`;
-    const avatar=player.profileId==='pumpkin'?'🎃':'NS';const color=player.nameColor==='orange'?'#ff963b':'#edf6ff';
-    return `<div class="room-player"><div class="room-player-avatar ${player.profileId==='pumpkin'?'pumpkin-avatar':''}">${avatar}</div><div class="room-player-copy"><b style="color:${color}">${escapeRoomText(player.name||'PLAYER')}</b><small>LV. ${Math.max(1,Number(player.level)||1)} · ${player.connected===false?'연결 복구 중':'ONLINE'}</small></div></div>`;
+  const teamMode=info.teamMode==='2v2'?'2v2':'1v1';const slotCount=teamMode==='2v2'?2:1;
+  const red=players.filter(player=>player.team==='red');const blue=players.filter(player=>player.team==='blue');
+  const avatar=(player)=>player.profileId==='pumpkin'?'🎃':'NS';
+  const playerCard=(player,team,index)=>{
+    if(!player)return `<div class="room-player-empty">${team==='red'?'레드':'블루'} ${index+1} 참가 대기</div>`;
+    const color=player.nameColor==='orange'?'#ff963b':'#edf6ff';
+    const teamSelect=isHost&&teamMode==='2v2'?`<select class="room-player-team" data-player-team="${escapeRoomText(player.id)}" aria-label="${escapeRoomText(player.name)} 팀 변경"><option value="red" ${player.team==='red'?'selected':''}>RED 팀</option><option value="blue" ${player.team==='blue'?'selected':''}>BLUE 팀</option></select>`:'';
+    return `<div class="room-player"><div class="room-player-avatar ${player.profileId==='pumpkin'?'pumpkin-avatar':''}">${avatar(player)}</div><div class="room-player-copy"><b style="color:${color}">${escapeRoomText(player.name||'PLAYER')}</b><small>LV. ${Math.max(1,Number(player.level)||1)} · ${player.connected===false?'연결 복구 중':'ONLINE'} · ${player.id===info.hostId?'HOST':''}</small>${teamSelect}</div></div>`;
   };
+  const slots=(team,items)=>Array.from({length:slotCount},(_,index)=>playerCard(items[index],team,index)).join('');
   const modeNames={classic:'클래식 모드',unlimited:'무제한 크레딧 모드',knife:'나이프 모드'};const mapNames={arena:'아레나',palace:'경복궁',city:'시티'};
-  const me=players.find(player=>player.id===state.socket?.id);const opponent=players.find(player=>player.id!==state.socket?.id);
-  const first=players.find(player=>player.id===info.hostId)||players[0]||null;const second=players.find(player=>player.id!==first?.id)||null;
-  panel.innerHTML=`<div class="room-lobby-card">
-    <div class="room-lobby-top"><div><small>NEON STRIKE / PRIVATE 1 VS 1</small><h3>${isHost?'방 설정 및 팀 확인':'대전 대기실'}</h3><p class="room-lobby-copy">${players.length<2?'친구가 참가하면 양 팀을 확인하고 방장이 게임을 시작할 수 있습니다.':'팀 배치가 완료됐습니다. 방장이 설정을 확인한 뒤 게임을 시작합니다.'}</p></div><div class="room-lobby-code">${escapeRoomText(info.code||state.roomCode)}</div></div>
-    <div class="room-lobby-settings"><div class="room-lobby-setting"><label for="room-mode-select">GAME MODE ${isHost?'· HOST ONLY':'· 방장 설정'}</label><select id="room-mode-select" data-room-setting="mode" ${isHost?'':'disabled'}><option value="classic" ${info.mode==='classic'?'selected':''}>클래식 모드 (현재 방식)</option><option value="unlimited" ${info.mode==='unlimited'?'selected':''}>무제한 크레딧 모드</option><option value="knife" ${info.mode==='knife'?'selected':''}>나이프 모드</option></select></div>
+  const required=teamMode==='2v2'?4:2;const ready=players.length===required&&red.length===slotCount&&blue.length===slotCount&&players.every(player=>player.connected!==false);
+  panel.innerHTML=`<div class="room-lobby-card room-lobby-card-wide">
+    <div class="room-lobby-top"><div><small>NEON STRIKE / PRIVATE MATCH</small><h3>${isHost?'방 설정 및 팀 배치':'대전 대기실'}</h3><p class="room-lobby-copy">${players.length<required?`${required}명 중 ${players.length}명 참가 · 친구가 방 코드로 입장하면 팀에 자동 배치됩니다.`:'팀 배치가 완료되면 방장이 게임을 시작할 수 있습니다.'}</p></div><div class="room-lobby-code">${escapeRoomText(info.code||state.roomCode)}<small>${players.length} / ${required} PLAYERS</small></div></div>
+    <div class="room-lobby-settings room-lobby-settings-3"><div class="room-lobby-setting"><label for="room-team-mode-select">TEAM FORMAT ${isHost?'· HOST ONLY':'· 방장 설정'}</label><select id="room-team-mode-select" data-room-setting="teamMode" ${isHost?'':'disabled'}><option value="1v1" ${teamMode==='1v1'?'selected':''}>1 대 1 · 2명</option><option value="2v2" ${teamMode==='2v2'?'selected':''}>2 대 2 · 4명</option></select></div>
+    <div class="room-lobby-setting"><label for="room-mode-select">GAME MODE ${isHost?'· HOST ONLY':'· 방장 설정'}</label><select id="room-mode-select" data-room-setting="mode" ${isHost?'':'disabled'}><option value="classic" ${info.mode==='classic'?'selected':''}>클래식 모드 (현재 방식)</option><option value="unlimited" ${info.mode==='unlimited'?'selected':''}>무제한 크레딧 모드</option><option value="knife" ${info.mode==='knife'?'selected':''}>나이프 모드</option></select></div>
     <div class="room-lobby-setting"><label for="room-map-select">MAP ${isHost?'· HOST ONLY':'· 방장 설정'}</label><select id="room-map-select" data-room-setting="map" ${isHost?'':'disabled'}><option value="arena" ${info.map==='arena'?'selected':''}>아레나</option><option value="palace" ${info.map==='palace'?'selected':''}>경복궁</option><option value="city" ${info.map==='city'?'selected':''}>시티</option></select></div></div>
-    <div class="room-lobby-teams"><section class="room-team red"><div class="room-team-head"><span>RED TEAM</span><small>${first?'PLAYER 1':'WAITING'}</small></div>${playerCard(first,'방장 참가 대기')}</section><section class="room-team blue"><div class="room-team-head"><span>BLUE TEAM</span><small>${second?'PLAYER 2':'WAITING'}</small></div>${playerCard(second,'상대 참가 대기')}</section></div>
-    <p class="room-lobby-note">선택 모드: ${modeNames[info.mode]||modeNames.classic} · 선택 맵: ${mapNames[info.map]||mapNames.arena} · ${isHost?'방장만 모드와 맵을 변경할 수 있습니다.':'방장이 설정을 변경하고 시작합니다.'}</p>
-    <div class="room-lobby-actions"><button id="copy-room-code" class="outline-button">방 코드 복사</button>${isHost?`<button id="start-room-match" class="solid-button" ${players.length!==2?'disabled':''}>게임 시작</button>`:'<button class="solid-button" disabled>방장 시작 대기 중</button>'}<button id="cancel-room-wait" class="outline-button">나가기</button></div>
+    <div class="room-lobby-teams room-lobby-teams-2v2"><section class="room-team red"><div class="room-team-head"><span>RED TEAM</span><small>${red.length} / ${slotCount}</small></div>${slots('red',red)}</section><section class="room-team blue"><div class="room-team-head"><span>BLUE TEAM</span><small>${blue.length} / ${slotCount}</small></div>${slots('blue',blue)}</section></div>
+    <p class="room-lobby-note">선택 대전: ${teamMode==='2v2'?'2 대 2 팀전':'1 대 1 개인전'} · 모드: ${modeNames[info.mode]||modeNames.classic} · 맵: ${mapNames[info.map]||mapNames.arena} · ${isHost?(teamMode==='2v2'?'방장은 플레이어의 팀을 직접 변경할 수 있습니다.':'방장만 대전 방식·모드·맵을 변경할 수 있습니다.'):'방장 설정과 팀 배치가 실시간으로 동기화됩니다.'}</p>
+    <div class="room-lobby-actions"><button id="copy-room-code" class="outline-button">방 코드 복사</button>${isHost?`<button id="start-room-match" class="solid-button" ${ready?'':'disabled'}>게임 시작</button>`:'<button class="solid-button" disabled>방장 시작 대기 중</button>'}<button id="cancel-room-wait" class="outline-button">나가기</button></div>
   </div>`;
   panel.classList.remove('hidden');
 }
 function bindRoomLobbyControls(panel){
   if(panel.dataset.bound==='1')return;panel.dataset.bound='1';
   panel.addEventListener('change',event=>{
+    const teamControl=event.target.closest('[data-player-team]');
+    if(teamControl){if(!state.socketReady||!state.roomLobbyData||state.roomLobbyData.hostId!==state.socket?.id)return;state.socket.emit('assignPlayerTeam',{playerId:teamControl.dataset.playerTeam,team:teamControl.value});return;}
     const control=event.target.closest('[data-room-setting]');if(!control||!state.socketReady||!state.roomLobbyData||state.roomLobbyData.hostId!==state.socket?.id)return;
-    const mode=panel.querySelector('[data-room-setting=mode]')?.value||state.roomLobbyData.mode||'classic';const map=panel.querySelector('[data-room-setting=map]')?.value||state.roomLobbyData.map||'arena';
-    state.socket.emit('updateRoomSettings',{mode,map});
+    const mode=panel.querySelector('[data-room-setting=mode]')?.value||state.roomLobbyData.mode||'classic';const map=panel.querySelector('[data-room-setting=map]')?.value||state.roomLobbyData.map||'arena';const teamMode=panel.querySelector('[data-room-setting=teamMode]')?.value||state.roomLobbyData.teamMode||'1v1';
+    state.socket.emit('updateRoomSettings',{mode,map,teamMode});
   });
   panel.addEventListener('click',event=>{
     if(event.target.closest('#copy-room-code'))navigator.clipboard?.writeText(state.roomCode).then(()=>showToast('방 코드를 복사했습니다.')).catch(()=>showToast(`방 코드: ${state.roomCode}`));
     if(event.target.closest('#cancel-room-wait'))backToMenu();
-    if(event.target.closest('#start-room-match')){if(state.roomLobbyData?.hostId!==state.socket?.id){showToast('방장만 게임을 시작할 수 있습니다.');return;}if((state.roomLobbyData?.players||[]).length!==2){showToast('상대가 참가할 때까지 기다리세요.');return;}event.target.closest('#start-room-match').disabled=true;state.socket.emit('startMatch');}
+    if(event.target.closest('#start-room-match')){if(state.roomLobbyData?.hostId!==state.socket?.id){showToast('방장만 게임을 시작할 수 있습니다.');return;}const info=state.roomLobbyData,players=info.players||[],cap=info.teamMode==='2v2'?2:1;const red=players.filter(player=>player.team==='red').length,blue=players.filter(player=>player.team==='blue').length;if(players.length!==(info.teamMode==='2v2'?4:2)||red!==cap||blue!==cap){showToast(info.teamMode==='2v2'?'4명 참가 및 레드 2명·블루 2명 배치가 필요합니다.':'레드 1명·블루 1명이 필요합니다.');return;}event.target.closest('#start-room-match').disabled=true;state.socket.emit('startMatch');}
   });
 }
 function showRoomWait(code){
   let panel=$('room-wait');if(!panel){panel=document.createElement('div');panel.id='room-wait';panel.className='room-wait';document.body.append(panel);}
   bindRoomLobbyControls(panel);
-  if(!state.roomLobbyData)renderRoomLobby({code:code||state.roomCode,hostId:state.socket?.id,map:state.selectedMap,mode:'classic',players:[]});else renderRoomLobby({...state.roomLobbyData,code:code||state.roomLobbyData.code});
+  if(!state.roomLobbyData)renderRoomLobby({code:code||state.roomCode,hostId:state.socket?.id,map:state.selectedMap,mode:'classic',teamMode:'1v1',maxPlayers:2,players:[]});else renderRoomLobby({...state.roomLobbyData,code:code||state.roomLobbyData.code});
 }
 function hideRoomWait(){const p=$('room-wait');if(p)p.classList.add('hidden');}
 function registerRoomLobbySocket(socket){
   socket.on('roomLobby',data=>{state.roomLobbyData=data;if(data.map)state.selectedMap=data.map;renderRoomLobby(data);});
-  socket.on('matchStarting',data=>{state.roomLobbyData=null;if(data.map)state.selectedMap=data.map;if(data.map&&state.mapId!==data.map)buildMap(data.map);hideRoomWait();});
+  socket.on('matchStarting',data=>{state.roomLobbyData=null;state.teamMode=data.teamMode||'1v1';if(data.map)state.selectedMap=data.map;if(data.map&&state.mapId!==data.map)buildMap(data.map);hideRoomWait();});
   socket.on('killerKillEffect',data=>beginKillerSkinEffect(data));
   socket.on('killerFreedom',data=>{state.killCamKillerId=data.killerId||socket.id;state.killerFreedomUntil=performance.now()+Math.max(0,Number(data.durationMs)||5000);state.killCamActive=false;state.keys.clear();$('killcam-label')?.classList.add('hidden');});
 }
@@ -1985,7 +2004,7 @@ function joinOnline(){const code=$('room-code').value.trim().toUpperCase().repla
   socket.on('roomError',d=>showToast(d.message||'방 입장 실패',3200));socket.on('accountUpdated',applyAccountUpdated);socket.on('roomJoined',d=>{if(d.map&&state.mapId!==d.map)buildMap(d.map);state.roomCode=d.code;showRoomWait(d.code);});
   socket.on('roomResumed',d=>{if(d.map&&state.mapId!==d.map)buildMap(d.map);state.roomCode=d.code;if(d.phase==='waiting'){state.roomLobbyData=null;showRoomWait(d.code);}else hideRoomWait();showToast('온라인 연결이 복구됐습니다.',1800);updateHUD();});socket.on('killCamStart',d=>beginKillCam(d));
   socket.on('playerJoined',d=>{updateRemotePlayer(d.id,d.player);});socket.on('playerLeft',d=>{const r=state.remotePlayers.get(d.id);if(r){unregisterTarget(d.id);disposeGroup(r.root);state.remotePlayers.delete(d.id);}state.phase='waiting';});socket.on('playerMoved',d=>updateRemotePlayer(d.id,d));socket.on('playerWeapon',d=>updateRemoteWeaponModel(d.id,d.weapon));socket.on('playersSnapshot',d=>{for(const[id,p]of Object.entries(d||{}))if(id!==socket.id)updateRemotePlayer(id,p);});
-  socket.on('roundState',d=>{clearTrainingTargets();if(d.map&&state.mapId!==d.map)buildMap(d.map);hideRoomWait();endScreen.classList.add('hidden');state.phase=d.phase;state.round=d.round;state.phaseEnd=d.endsAt;state.roundLimit=d.roundEndsAt||0;state.selfScore=d.scores?.[socket.id]||0;state.enemyScore=Object.entries(d.scores||{}).filter(([id])=>id!==socket.id).reduce((a,[,v])=>a+v,0);state.money=d.self?.money??650;state.hp=d.self?.hp??100;state.armor=d.self?.armor??0;state.armorTier=d.self?.armorTier??'none';state.currentWeapon=d.self?.weapon||'pistol';state.owned=new Set(d.self?.ownedWeapons||['pistol',...(state.currentWeapon!=='pistol'?[state.currentWeapon]:[])]);state.buyPrimaryThisRound=!!d.self?.boughtPrimary;state.pos.set(d.self?.x??0,d.self?.y??0,d.self?.z??27);state.yaw=d.self?.yaw??state.yaw;state.pitch=d.self?.pitch??0;state.reloading=false;state.reloadWeaponId=null;makeAmmoFor(state.currentWeapon,true);clearRemotePlayers();for(const[id,player]of Object.entries(d.players||{}))if(id!==socket.id)updateRemotePlayer(id,player);buildGun(state.currentWeapon);if(d.phase==='buy')openBuy();else closeBuy();$('phase-label').textContent=d.phase==='buy'?'BUY PHASE':'LIVE';updateHUD();});
+  socket.on('roundState',d=>{clearTrainingTargets();if(d.map&&state.mapId!==d.map)buildMap(d.map);hideRoomWait();endScreen.classList.add('hidden');state.phase=d.phase;state.round=d.round;state.phaseEnd=d.endsAt;state.roundLimit=d.roundEndsAt||0;state.team=d.self?.team||'red';state.teamMode=d.teamMode||'1v1';state.money=d.self?.money??650;state.hp=d.self?.hp??100;state.armor=d.self?.armor??0;state.armorTier=d.self?.armorTier??'none';state.currentWeapon=d.self?.weapon||'pistol';state.owned=new Set(d.self?.ownedWeapons||['pistol',...(state.currentWeapon!=='pistol'?[state.currentWeapon]:[])]);state.buyPrimaryThisRound=!!d.self?.boughtPrimary;state.pos.set(d.self?.x??0,d.self?.y??0,d.self?.z??27);state.yaw=d.self?.yaw??state.yaw;state.pitch=d.self?.pitch??0;state.reloading=false;state.reloadWeaponId=null;makeAmmoFor(state.currentWeapon,true);clearRemotePlayers();for(const[id,player]of Object.entries(d.players||{}))if(id!==socket.id)updateRemotePlayer(id,player);buildGun(state.currentWeapon);updateOnlineScoreDisplay(d.scores||{});if(d.phase==='buy')openBuy();else closeBuy();$('phase-label').textContent=d.phase==='buy'?'BUY PHASE':'LIVE';updateHUD();});
   socket.on('roundPhase',d=>{state.phase=d.phase;state.phaseEnd=d.endsAt;if(d.phase==='live')state.roundLimit=d.endsAt;$('phase-label').textContent=d.phase==='buy'?'BUY PHASE':'LIVE';if(d.phase==='buy')openBuy();else closeBuy();});socket.on('selfState',d=>{state.money=d.money??state.money;state.hp=d.hp??state.hp;state.armor=d.armor??state.armor;state.armorTier=d.armorTier??state.armorTier;if(d.ownedWeapons)for(const weaponId of d.ownedWeapons)state.owned.add(weaponId);if(d.weapon&&d.weapon!==state.currentWeapon){state.currentWeapon=d.weapon;buildGun(d.weapon);}state.buyPrimaryThisRound=!!d.boughtPrimary;updateHUD();});
   socket.on('buyResult',d=>{if(!d.ok){showToast(d.message||'구매할 수 없습니다.');return;}state.money=d.money;state.armor=d.armor??state.armor;state.armorTier=d.armorTier??state.armorTier;if(d.ownedWeapons)for(const weaponId of d.ownedWeapons)state.owned.add(weaponId);if(d.weapon&&d.weapon!==state.currentWeapon){state.currentWeapon=d.weapon;makeAmmoFor(d.weapon,true);buildGun(d.weapon);}state.buyPrimaryThisRound=!!d.boughtPrimary;state.armorPurchased=!!d.armorPurchased;soundBuy();updateHUD();});socket.on('shotFx',d=>{if(d.id!==socket.id){if(d.weaponId!=='knife')addShotFx(new THREE.Vector3(d.origin.x,d.origin.y,d.origin.z),new THREE.Vector3(d.end.x,d.end.y,d.end.z),d.skinId==='prime_sniper'?0xffd267:0xff718a);soundShot(d.weaponId,d.skinId);if(d.skinId==='prime_sniper')soundPrimeSniperShot();else if(String(d.skinId||'').startsWith('halloween_'))soundHalloweenShot(d.weaponId,d.skinId);}});socket.on('damage',d=>{if(d.targetId===socket.id){state.hp=d.hp;state.armor=d.armor??state.armor;state.armorTier=d.armorTier??state.armorTier;updateHUD();soundHit();}if(d.targetId!==socket.id){const target=state.remotePlayers.get(d.targetId);if(target)flashCharacter(target.root);}if(d.attackerId===socket.id&&d.targetId!==socket.id){$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),110);soundHit();}if(d.killed&&d.attackerId===socket.id){soundKill();$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),900);}});socket.on('footstep',d=>{if(d.id===socket.id)return;const remote=state.remotePlayers.get(d.id);if(!remote)return;const dist=remote.root.position.distanceTo(state.pos);if(dist<23)soundFootstep({volume:Math.max(.015,.11*(1-dist/25)),remote:true});});
   socket.on('roundResult',d=>handleOnlineRoundResult(d));

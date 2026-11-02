@@ -215,3 +215,15 @@
   .skin-preview-actions{align-items:stretch;}.skin-preview-actions .store-primary-button,.skin-preview-actions .skins-secondary-button{flex:1;min-width:0;}#skin-preview-status{flex-basis:100%;}
 }
 @media(prefers-reduced-motion:reduce){.skins-weapon-card,.skin-option-card,.skins-back-button,.skins-secondary-button{transition:none!important;}}
+
+/* NEON STRIKE 2v2 room lobby */
+.room-lobby-card-wide{width:min(1040px,100%)}
+.room-lobby-settings-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.room-lobby-teams-2v2{align-items:stretch}
+.room-lobby-teams-2v2 .room-team{display:grid;align-content:start;gap:9px}
+.room-player-team{width:100%;max-width:130px;margin-top:5px;padding:5px 7px;border:1px solid #5bd9d15c;background:#07131e;color:#cfe8ef;font-size:10px;}
+.room-lobby-code{display:grid;gap:5px;justify-items:center}
+.room-lobby-code small{font:700 8px var(--mono);letter-spacing:.12em;color:#88a4b8}
+.room-lobby-actions button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.45)}
+@media(max-width:760px){.room-lobby-settings-3{grid-template-columns:1fr 1fr}.room-lobby-card-wide{max-height:calc(100dvh - 28px);overflow:auto}}
+@media(max-width:620px){.room-lobby-settings-3{grid-template-columns:1fr}.room-lobby-teams-2v2{grid-template-columns:1fr}.room-lobby-card-wide{padding:15px}.room-lobby-top{align-items:flex-start}.room-player-team{max-width:100%}}
