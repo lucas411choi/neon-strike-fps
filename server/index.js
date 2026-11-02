@@ -55,6 +55,10 @@ function normalizeAccountPublic(row) {
     ownedSkins: parseJsonValue(row.owned_skins ?? row.ownedSkins, []),
     equippedSkins: parseJsonValue(row.equipped_skins ?? row.equippedSkins, {}),
     trainingQuestProgress: Math.max(0, Number(row.training_quest_progress ?? row.trainingQuestProgress) || 0),
+    ownedProfiles: parseJsonValue(row.owned_profiles ?? row.ownedProfiles, ['default']),
+    ownedNameColors: parseJsonValue(row.owned_name_colors ?? row.ownedNameColors, ['default']),
+    profileId: String(row.profile_id ?? row.profileId ?? 'default'),
+    nameColor: String(row.name_color ?? row.nameColor ?? 'default'),
   };
 }
 function accountStoreModel(row) {
@@ -67,6 +71,10 @@ function accountStoreModel(row) {
     redeemedCodes: parseJsonValue(row.redeemed_codes ?? row.redeemedCodes, []),
     dailyShopIds: parseJsonValue(row.daily_shop_ids ?? row.dailyShopIds, []),
     dailyShopExpiresAt: row.daily_shop_expires_at ?? row.dailyShopExpiresAt ?? null,
+    ownedProfiles: parseJsonValue(row.owned_profiles ?? row.ownedProfiles, ['default']),
+    ownedNameColors: parseJsonValue(row.owned_name_colors ?? row.ownedNameColors, ['default']),
+    profileId: String(row.profile_id ?? row.profileId ?? 'default'),
+    nameColor: String(row.name_color ?? row.nameColor ?? 'default'),
   };
 }
 
@@ -117,6 +125,10 @@ async function initializeAccountStorage() {
       ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS redeemed_codes JSONB NOT NULL DEFAULT '[]'::jsonb;
       ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS daily_shop_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
       ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS daily_shop_expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+      ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS owned_profiles JSONB NOT NULL DEFAULT '["default"]'::jsonb;
+      ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS owned_name_colors JSONB NOT NULL DEFAULT '["default"]'::jsonb;
+      ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS profile_id TEXT NOT NULL DEFAULT 'default';
+      ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS name_color TEXT NOT NULL DEFAULT 'default';
       CREATE TABLE IF NOT EXISTS ns_sessions (
         token_hash CHAR(64) PRIMARY KEY,
         account_id BIGINT NOT NULL REFERENCES ns_accounts(id) ON DELETE CASCADE,
@@ -152,6 +164,10 @@ async function initializeAccountStorage() {
         account.redeemed_codes = parseJsonValue(account.redeemed_codes ?? account.redeemedCodes, []);
         account.daily_shop_ids = parseJsonValue(account.daily_shop_ids ?? account.dailyShopIds, []);
         account.daily_shop_expires_at = account.daily_shop_expires_at ?? account.dailyShopExpiresAt ?? null;
+        account.owned_profiles = parseJsonValue(account.owned_profiles ?? account.ownedProfiles, ['default']);
+        account.owned_name_colors = parseJsonValue(account.owned_name_colors ?? account.ownedNameColors, ['default']);
+        account.profile_id = String(account.profile_id ?? account.profileId ?? 'default');
+        account.name_color = String(account.name_color ?? account.nameColor ?? 'default');
       }
       localAuth.nextId = Number(parsed.nextId) || (Math.max(0, ...localAuth.accounts.map(a=>Number(a.id)||0)) + 1);
     }
@@ -161,7 +177,7 @@ async function initializeAccountStorage() {
 }
 async function findAccountByUsername(username) {
   if (authPool) {
-    const result = await authPool.query('SELECT id, username, password_salt, password_hash, level, xp, neon_points, owned_skins, equipped_skins, training_quest_progress, redeemed_codes FROM ns_accounts WHERE username=$1 LIMIT 1', [username]);
+    const result = await authPool.query('SELECT id, username, password_salt, password_hash, level, xp, neon_points, owned_skins, equipped_skins, training_quest_progress, redeemed_codes,owned_profiles,owned_name_colors,profile_id,name_color FROM ns_accounts WHERE username=$1 LIMIT 1', [username]);
     return result.rows[0] || null;
   }
   return localAuth.accounts.find(row => row.username === username) || null;
@@ -177,7 +193,7 @@ async function insertAccount(username, passwordSalt, passwordHash) {
   if (localAuth.accounts.some(row => row.username === username)) {
     const error = new Error('duplicate username'); error.code = '23505'; throw error;
   }
-  const account = { id: localAuth.nextId++, username, password_salt: passwordSalt, password_hash: passwordHash, level: 1, xp: 0, neon_points: 0, owned_skins: [], equipped_skins: {}, training_quest_progress: 0, redeemed_codes: [], daily_shop_ids: [], daily_shop_expires_at: null, created_at: new Date().toISOString() };
+  const account = { id: localAuth.nextId++, username, password_salt: passwordSalt, password_hash: passwordHash, level: 1, xp: 0, neon_points: 0, owned_skins: [], equipped_skins: {}, training_quest_progress: 0, redeemed_codes: [], daily_shop_ids: [], daily_shop_expires_at: null, owned_profiles:['default'], owned_name_colors:['default'], profile_id:'default', name_color:'default', created_at: new Date().toISOString() };
   localAuth.accounts.push(account); await persistLocalAuth(); return account;
 }
 async function createAuthSession(accountId) {
@@ -193,7 +209,7 @@ async function accountForToken(token) {
   const tokenHash = hashSessionToken(token);
   if (authPool) {
     const result = await authPool.query(
-      `SELECT a.id,a.username,a.level,a.xp,a.neon_points,a.owned_skins,a.equipped_skins,a.training_quest_progress,a.daily_shop_ids,a.daily_shop_expires_at FROM ns_sessions s JOIN ns_accounts a ON a.id=s.account_id WHERE s.token_hash=$1 AND s.expires_at>NOW() LIMIT 1`,
+      `SELECT a.id,a.username,a.level,a.xp,a.neon_points,a.owned_skins,a.equipped_skins,a.training_quest_progress,a.daily_shop_ids,a.daily_shop_expires_at,a.owned_profiles,a.owned_name_colors,a.profile_id,a.name_color FROM ns_sessions s JOIN ns_accounts a ON a.id=s.account_id WHERE s.token_hash=$1 AND s.expires_at>NOW() LIMIT 1`,
       [tokenHash]
     );
     return result.rows[0] || null;
@@ -225,10 +241,10 @@ async function awardAccountXP(accountId, amount) {
     const client = await authPool.connect();
     try {
       await client.query('BEGIN');
-      const result = await client.query('SELECT id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress FROM ns_accounts WHERE id=$1 FOR UPDATE', [accountId]);
+      const result = await client.query('SELECT id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,owned_profiles,owned_name_colors,profile_id,name_color FROM ns_accounts WHERE id=$1 FOR UPDATE', [accountId]);
       if (!result.rows.length) { await client.query('ROLLBACK'); return null; }
       const progression = applyExperienceProgress(result.rows[0].level, result.rows[0].xp, award);
-      const updated = await client.query('UPDATE ns_accounts SET level=$2,xp=$3,updated_at=NOW() WHERE id=$1 RETURNING id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress', [accountId,progression.level,progression.xp]);
+      const updated = await client.query('UPDATE ns_accounts SET level=$2,xp=$3,updated_at=NOW() WHERE id=$1 RETURNING id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,owned_profiles,owned_name_colors,profile_id,name_color', [accountId,progression.level,progression.xp]);
       await client.query('COMMIT');
       return normalizeAccountPublic(updated.rows[0]);
     } catch (error) { try { await client.query('ROLLBACK'); } catch {} throw error; }
@@ -248,7 +264,7 @@ async function mutateAccountState(accountId, mutator) {
     try {
       await client.query('BEGIN');
       const result = await client.query(
-        'SELECT id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,redeemed_codes,daily_shop_ids,daily_shop_expires_at FROM ns_accounts WHERE id=$1 FOR UPDATE',
+        'SELECT id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,redeemed_codes,daily_shop_ids,daily_shop_expires_at,owned_profiles,owned_name_colors,profile_id,name_color FROM ns_accounts WHERE id=$1 FOR UPDATE',
         [accountId]
       );
       if (!result.rows.length) { await client.query('ROLLBACK'); return { ok:false, status:404, error:'계정을 찾을 수 없습니다.' }; }
@@ -256,9 +272,9 @@ async function mutateAccountState(accountId, mutator) {
       const outcome = mutator(model) || { ok:true };
       if (!outcome.ok) { await client.query('ROLLBACK'); return outcome; }
       const updated = await client.query(
-        `UPDATE ns_accounts SET level=$2,xp=$3,neon_points=$4,owned_skins=$5::jsonb,equipped_skins=$6::jsonb,training_quest_progress=$7,redeemed_codes=$8::jsonb,daily_shop_ids=$9::jsonb,daily_shop_expires_at=$10,updated_at=NOW()
-         WHERE id=$1 RETURNING id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress`,
-        [accountId,model.level,model.xp,model.neonPoints,JSON.stringify(model.ownedSkins),JSON.stringify(model.equippedSkins),model.trainingQuestProgress,JSON.stringify(model.redeemedCodes),JSON.stringify(model.dailyShopIds||[]),model.dailyShopExpiresAt||new Date(0).toISOString()]
+        `UPDATE ns_accounts SET level=$2,xp=$3,neon_points=$4,owned_skins=$5::jsonb,equipped_skins=$6::jsonb,training_quest_progress=$7,redeemed_codes=$8::jsonb,daily_shop_ids=$9::jsonb,daily_shop_expires_at=$10,owned_profiles=$11::jsonb,owned_name_colors=$12::jsonb,profile_id=$13,name_color=$14,updated_at=NOW()
+         WHERE id=$1 RETURNING id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,owned_profiles,owned_name_colors,profile_id,name_color`,
+        [accountId,model.level,model.xp,model.neonPoints,JSON.stringify(model.ownedSkins),JSON.stringify(model.equippedSkins),model.trainingQuestProgress,JSON.stringify(model.redeemedCodes),JSON.stringify(model.dailyShopIds||[]),model.dailyShopExpiresAt||new Date(0).toISOString(),JSON.stringify(model.ownedProfiles||['default']),JSON.stringify(model.ownedNameColors||['default']),model.profileId||'default',model.nameColor||'default']
       );
       await client.query('COMMIT');
       return { ...outcome, ok:true, account:normalizeAccountPublic(updated.rows[0]) };
@@ -277,6 +293,8 @@ async function mutateAccountState(accountId, mutator) {
     owned_skins:model.ownedSkins, equipped_skins:model.equippedSkins,
     training_quest_progress:model.trainingQuestProgress, redeemed_codes:model.redeemedCodes,
     daily_shop_ids:model.dailyShopIds||[], daily_shop_expires_at:model.dailyShopExpiresAt||null,
+    owned_profiles:model.ownedProfiles||['default'], owned_name_colors:model.ownedNameColors||['default'],
+    profile_id:model.profileId||'default', name_color:model.nameColor||'default',
     updated_at:new Date().toISOString(),
   });
   await persistLocalAuth();
@@ -340,6 +358,25 @@ app.get('/api/account/me', async (req, res) => {
     res.json({ account: normalizeAccountPublic(account) });
   } catch (error) { console.error('[accounts] profile failed:', error?.message || error); res.status(500).json({ error: '계정 정보를 불러오지 못했습니다.' }); }
 });
+app.post('/api/account/cosmetics', async (req, res) => {
+  if (apiStorageUnavailable(res)) return;
+  try {
+    const account = await accountForToken(getRequestToken(req));
+    if (!account) return accountRequiredMessage(res);
+    const profileId = String(req.body?.profileId || 'default');
+    const nameColor = String(req.body?.nameColor || 'default');
+    if (!['default','pumpkin'].includes(profileId) || !['default','orange'].includes(nameColor)) return res.status(400).json({ error:'선택한 프로필 또는 이름 색상이 올바르지 않습니다.' });
+    const result = await mutateAccountState(account.id, model => {
+      if (!(model.ownedProfiles||['default']).includes(profileId)) return { ok:false, status:403, error:'보유하지 않은 프로필입니다. 핼러윈 번들에서 획득할 수 있습니다.' };
+      if (!(model.ownedNameColors||['default']).includes(nameColor)) return { ok:false, status:403, error:'보유하지 않은 이름 색상입니다. 핼러윈 번들에서 획득할 수 있습니다.' };
+      model.profileId = profileId; model.nameColor = nameColor;
+      return { ok:true, profileId, nameColor };
+    });
+    if (!result.ok) return res.status(result.status||500).json({ error:result.error||'프로필 저장에 실패했습니다.' });
+    res.json({ account:result.account, profileId:result.profileId, nameColor:result.nameColor });
+  } catch (error) { console.error('[account] cosmetics failed:', error?.message||error); res.status(500).json({ error:'프로필 설정을 저장하지 못했습니다.' }); }
+});
+
 app.post('/api/account/logout', async (req, res) => {
   if (!authStorageReady) return res.json({ ok: true });
   try { await deleteAuthSession(getRequestToken(req)); res.json({ ok: true }); }
@@ -406,11 +443,11 @@ app.post('/api/store/buy', async (req, res) => {
     if (!account) return accountRequiredMessage(res);
     const productType = String(req.body?.productType || '');
     const productId = String(req.body?.productId || '');
-    let cost = 0, skinIds = [], productName = '';
+    let cost = 0, skinIds = [], profileIds = [], nameColorIds = [], productName = '';
     if (productType === 'bundle') {
       const bundle = getStoreBundle(productId);
       if (!bundle) return res.status(400).json({ error:'존재하지 않는 번들입니다.' });
-      cost = bundle.price; skinIds = bundle.skinIds; productName = bundle.displayName;
+      cost = bundle.price; skinIds = bundle.skinIds; profileIds = bundle.profileIds || []; nameColorIds = bundle.nameColorIds || []; productName = bundle.displayName;
     } else if (productType === 'daily') {
       const skin = getStoreSkin(productId);
       if (!skin) return res.status(400).json({ error:'존재하지 않는 스킨입니다.' });
@@ -420,7 +457,9 @@ app.post('/api/store/buy', async (req, res) => {
       const owned = new Set(model.ownedSkins);
       if (productType === 'daily' && (!(model.dailyShopIds||[]).includes(productId) || !Number.isFinite(Date.parse(model.dailyShopExpiresAt||'')) || Date.parse(model.dailyShopExpiresAt)<=Date.now())) return { ok:false, status:409, error:'오늘의 스킨 목록이 만료됐습니다. 상점을 새로고침하세요.' };
       const missing = skinIds.filter(id => !owned.has(id));
-      if (!missing.length) return { ok:false, status:409, error:'이미 보유한 상품입니다.' };
+      const missingProfiles = profileIds.filter(id => !(model.ownedProfiles||['default']).includes(id));
+      const missingNameColors = nameColorIds.filter(id => !(model.ownedNameColors||['default']).includes(id));
+      if (!missing.length && !missingProfiles.length && !missingNameColors.length) return { ok:false, status:409, error:'이미 보유한 상품입니다.' };
       let actualCost = cost;
       if (productType === 'bundle') {
         const bundle = getStoreBundle(productId);
@@ -430,10 +469,12 @@ app.post('/api/store/buy', async (req, res) => {
       if (model.neonPoints < actualCost) return { ok:false, status:400, error:`네온 포인트가 부족합니다. ${actualCost} NP가 필요합니다.` };
       model.neonPoints -= actualCost;
       model.ownedSkins = [...owned, ...missing];
-      return { ok:true, productName, purchasedSkinIds:missing, cost:actualCost };
+      model.ownedProfiles = [...new Set([...(model.ownedProfiles||['default']), ...missingProfiles])];
+      model.ownedNameColors = [...new Set([...(model.ownedNameColors||['default']), ...missingNameColors])];
+      return { ok:true, productName, purchasedSkinIds:missing, purchasedProfileIds:missingProfiles, purchasedNameColorIds:missingNameColors, cost:actualCost };
     });
     if (!result.ok) return res.status(result.status || 500).json({ error:result.error || '구매에 실패했습니다.' });
-    res.json({ account:result.account, productName:result.productName, purchasedSkinIds:result.purchasedSkinIds, cost:result.cost });
+    res.json({ account:result.account, productName:result.productName, purchasedSkinIds:result.purchasedSkinIds, purchasedProfileIds:result.purchasedProfileIds||[], purchasedNameColorIds:result.purchasedNameColorIds||[], cost:result.cost });
   } catch (error) { console.error('[store] purchase failed:', error?.message || error); res.status(500).json({ error:'구매 처리 중 오류가 발생했습니다.' }); }
 });
 
@@ -444,23 +485,22 @@ app.post('/api/store/roll', async (req, res) => {
     const token = getRequestToken(req);
     const account = await accountForToken(token);
     if (!account) return accountRequiredMessage(res);
+    let selectedSkin = null;
     const result = await mutateAccountState(account.id, model => {
+      const owned = new Set(Array.isArray(model.ownedSkins) ? model.ownedSkins : []);
       if (model.neonPoints < STORE_ROLL_COST) return { ok:false, status:400, error:`네온 포인트가 부족합니다. ${STORE_ROLL_COST} NP가 필요합니다.` };
-      const ownedSkins = new Set(Array.isArray(model.ownedSkins) ? model.ownedSkins : []);
-      const unowned = STORE_SKINS.filter(skin => !ownedSkins.has(skin.id));
+      const unowned = STORE_SKINS.filter(skin => !owned.has(skin.id));
       if (!unowned.length) return { ok:false, status:409, error:'현재 모든 스킨을 모두 보유하고 있습니다.' };
-      // Pick from the actual catalog, then return both a stable ID and the complete catalog record.
-      const skin = unowned[Math.floor(Math.random() * unowned.length)];
-      if (!skin?.id || !getStoreSkin(skin.id)) return { ok:false, status:500, error:'보급 스킨 정보를 확인할 수 없습니다. 다시 시도하세요.' };
+      selectedSkin = unowned[Math.floor(Math.random() * unowned.length)];
       model.neonPoints -= STORE_ROLL_COST;
-      model.ownedSkins = [...ownedSkins, skin.id];
-      return { ok:true, skin, skinId:skin.id, cost:STORE_ROLL_COST };
+      model.ownedSkins = [...owned, selectedSkin.id];
+      return { ok:true, skinId:selectedSkin.id, cost:STORE_ROLL_COST };
     });
     if (!result.ok) return res.status(result.status || 500).json({ error:result.error || '뽑기에 실패했습니다.' });
-    const rewardSkin = getStoreSkin(result.skinId || result.skin?.id);
-    if (!rewardSkin) return res.status(500).json({ error:'보급 결과에 스킨 식별자가 없습니다. 다시 시도하세요.' });
+    const awardedSkin = selectedSkin || getStoreSkin(result.skinId);
+    if (!awardedSkin?.id || !awardedSkin?.rarity) return res.status(500).json({ error:'스킨 지급 결과를 확인하지 못했습니다. 네온 포인트가 차감되지 않았는지 계정에서 확인하세요.' });
     res.set('Cache-Control','no-store');
-    res.json({ account:result.account, skin:rewardSkin, skinId:rewardSkin.id, cost:result.cost });
+    res.json({ ok:true, account:result.account, skin:awardedSkin, skinId:awardedSkin.id, cost:result.cost ?? STORE_ROLL_COST });
   } catch (error) { console.error('[store] roll failed:', error?.message || error); res.status(500).json({ error:'스킨 뽑기 중 오류가 발생했습니다.' }); }
 });
 
@@ -626,15 +666,19 @@ function code6() {
 function safeName(name) { return String(name || 'PLAYER').replace(/[<>\u0000-\u001f]/g, '').trim().slice(0, 16) || 'PLAYER'; }
 function safeSessionId(value) { return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100); }
 function compatible(rule, device) { return rule === 'crossplay' || rule === device; }
-function publicPlayer(p) { return { x:p.x, y:p.y||0, z:p.z, yaw:p.yaw, pitch:p.pitch, name:p.name, hp:p.hp, armor:p.armor, weapon:p.weapon, skinId:p.equippedSkins?.[p.weapon]||null, equippedSkins:p.equippedSkins||{}, device:p.device, score:p.score }; }
+function publicPlayer(p) { return { x:p.x, y:p.y||0, z:p.z, yaw:p.yaw, pitch:p.pitch, name:p.name, level:p.level||1, profileId:p.profileId||'default', nameColor:p.nameColor||'default', hp:p.hp, armor:p.armor, weapon:p.weapon, skinId:p.equippedSkins?.[p.weapon]||null, equippedSkins:p.equippedSkins||{}, device:p.device, score:p.score }; }
 function playerById(room, id) { return room?.players.get(id); }
+function roomLobbySnapshot(room) {
+  return { code:room.code, hostId:room.hostId, phase:room.phase, map:room.map||'arena', mode:room.mode||'classic', players:[...room.players.entries()].map(([id,p])=>({id,...publicPlayer(p),connected:p.connected!==false})), maxPlayers:2 };
+}
+function emitRoomLobby(room) { if(room&&rooms.has(room.code))io.to(room.code).emit('roomLobby',roomLobbySnapshot(room)); }
 function selfPayload(p) { return { money:p.money, hp:p.hp, armor:p.armor, armorTier:p.armorTier, weapon:p.weapon, skinId:p.equippedSkins?.[p.weapon]||null, ownedWeapons:[...(p.ownedWeapons||['pistol','knife'])], boughtPrimary:p.boughtPrimary, armorPurchased:p.armorPurchased, x:p.x, y:p.y||0, z:p.z, yaw:p.yaw, pitch:p.pitch }; }
 function playersSnapshot(room) { return Object.fromEntries([...room.players.entries()].map(([id,p])=>[id,publicPlayer(p)])); }
 function emitState(room) {
   const players = playersSnapshot(room);
   for (const [id,p] of room.players) {
     io.to(id).emit('roundState', {
-      code: room.code, map: room.map || 'arena', phase: room.phase, round: room.round, endsAt: room.phaseEndsAt,
+      code: room.code, map: room.map || 'arena', mode:room.mode||'classic', phase: room.phase, round: room.round, endsAt: room.phaseEndsAt,
       roundEndsAt: room.liveEndsAt, scores: Object.fromEntries([...room.players.entries()].map(([pid,pl])=>[pid,pl.score])),
       self: selfPayload(p), players,
     });
@@ -644,9 +688,10 @@ function resetPlayerForRound(room, p, index) {
   p.hp = 100;
   p.armor = Math.max(0, p.armor); // Retain surviving shield points between rounds.
   if (p.armor <= 0) p.armorTier = 'none';
-  // Bought guns last for this round only. Credits remain cumulative, but each round begins with pistol + knife.
-  p.ownedWeapons = ['pistol','knife'];
-  p.weapon = 'pistol';
+  // Weapon availability follows the host-selected room mode.
+  if(room.mode==='knife') { p.ownedWeapons=['knife']; p.weapon='knife'; }
+  else { p.ownedWeapons=['pistol','knife']; p.weapon='pistol'; }
+  if(room.mode==='unlimited') p.money=999999;
   p.boughtPrimary = false;
   p.armorPurchased = p.armorTier === 'heavy';
   p.lastFireAt = 0;
@@ -666,6 +711,13 @@ function beginRound(room) {
   room.phaseEndsAt = Date.now() + BUY_MS;
   room.liveEndsAt = room.phaseEndsAt + ROUND_MS;
   [...room.players.values()].forEach((p,i)=>resetPlayerForRound(room,p,i));
+  if(room.mode==='knife') {
+    room.phase='live'; room.phaseEndsAt=Date.now()+ROUND_MS; room.liveEndsAt=room.phaseEndsAt;
+    emitState(room); io.to(room.code).emit('roundPhase',{phase:'live',round:room.round,endsAt:room.phaseEndsAt,mode:room.mode});
+    room.timer=setTimeout(()=>resolveTimedRound(room),ROUND_MS);
+    return;
+  }
+  room.phase='buy'; room.phaseEndsAt=Date.now()+BUY_MS; room.liveEndsAt=room.phaseEndsAt+ROUND_MS;
   emitState(room);
   room.timer = setTimeout(() => startLive(room), BUY_MS);
 }
@@ -733,7 +785,7 @@ function endRound(room, winnerId, reason='적 처치', killInfo=null) {
     const won = winnerId===id;
     const roundBonus=Math.max(0,room.round-1);
     const reward = won?(ROUND_WIN_REWARD+roundBonus*ROUND_WIN_STEP):(ROUND_LOSS_REWARD+roundBonus*ROUND_LOSS_STEP);
-    p.money += reward;
+    if(room.mode==='unlimited') p.money=999999; else p.money += reward;
     io.to(id).emit('roundResult', {
       winnerId, reason, scores:Object.fromEntries([...room.players.entries()].map(([pid,pl])=>[pid,pl.score])),
       selfMoney:p.money, reward, matchOver, round:room.round, nextRoundInMs:0, killCamMs:killInfo?5000:0,
@@ -765,7 +817,9 @@ function leaveRoom(socket, announce=true) {
   else {
     if (room.timer) clearTimeout(room.timer);
     room.timer=null;room.phase='waiting';room.phaseEndsAt=0;room.liveEndsAt=0;
+    if(!room.players.has(room.hostId))room.hostId=room.players.keys().next().value;
     io.to(code).emit('roomMessage',{message:'상대가 나갔습니다. 새 플레이어가 참가하거나 다시 연결할 때까지 대기합니다.'});
+    emitRoomLobby(room);
   }
 }
 function suspendDisconnectedSocket(socket) {
@@ -794,7 +848,7 @@ function suspendDisconnectedSocket(socket) {
     if(currentRoom.timer)clearTimeout(currentRoom.timer);
     currentRoom.timer=null;currentRoom.phase='waiting';currentRoom.phaseEndsAt=0;currentRoom.liveEndsAt=0;currentRoom.phaseBeforeDisconnect=null;currentRoom.remainingPhaseMs=0;
     if(currentRoom.players.size===0)closeRoom(currentRoom);
-    else io.to(code).emit('roomMessage',{message:'상대의 재연결 시간이 만료되었습니다. 새 플레이어가 참가할 수 있습니다.'});
+    else { if(!currentRoom.players.has(currentRoom.hostId))currentRoom.hostId=currentRoom.players.keys().next().value; io.to(code).emit('roomMessage',{message:'상대의 재연결 시간이 만료되었습니다. 새 플레이어가 참가할 수 있습니다.'}); emitRoomLobby(currentRoom); }
   },90000);
   p.reconnectTimer.unref?.();
 }
@@ -809,6 +863,7 @@ function resumePlayer(socket,payload) {
   const [oldId,p]=entry;
   if(p.reconnectTimer)clearTimeout(p.reconnectTimer);
   p.reconnectTimer=null;p.connected=true;p.id=socket.id;
+  if(room.hostId===oldId)room.hostId=socket.id;
   if(oldId!==socket.id)room.players.delete(oldId);
   room.players.set(socket.id,p);socket.data.roomCode=code;socket.data.sessionId=sessionId;socket.join(code);
   if(oldId!==socket.id)io.to(code).emit('playerLeft',{id:oldId});
@@ -817,7 +872,7 @@ function resumePlayer(socket,payload) {
   if(room.players.size===2&&[...room.players.values()].every(candidate=>candidate.connected!==false)){
     restoreRoomPhaseAfterDisconnect(room);
     io.to(code).emit('playerJoined',{id:socket.id,player:publicPlayer(p)});
-    if(room.phase==='waiting')beginRound(room);
+    if(room.phase==='waiting')emitRoomLobby(room);
     else if(room.phase==='ended'||room.phase==='matchover'){
       for(const [pid,player] of room.players){io.to(pid).emit('roundResult',{winnerId:room.lastWinnerId??null,reason:room.lastReason||'라운드 종료',scores:Object.fromEntries([...room.players.entries()].map(([key,value])=>[key,value.score])),selfMoney:player.money,reward:0,matchOver:room.phase==='matchover',round:room.round,nextRoundInMs:0});}
     } else emitState(room);
@@ -837,10 +892,11 @@ io.on('connection', socket => {
     }
     leaveRoom(socket,false);
     const code=code6();
-    const p={id:socket.id,sessionId,name,device,accountId:authenticatedAccount?.id??null,equippedSkins:parseJsonValue(authenticatedAccount?.equipped_skins??authenticatedAccount?.equippedSkins,{}),connected:true,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol','knife'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0,activeBurstId:null,burstNextSeq:1,burstStartedAt:0,reconnectTimer:null};
-    const room={code,rule:requestedRule,map:requestedMap,players:new Map([[socket.id,p]]),phase:'waiting',round:0,phaseEndsAt:0,liveEndsAt:0,timer:null};
+    const p={id:socket.id,sessionId,name,device,accountId:authenticatedAccount?.id??null,level:Math.max(1,Number(authenticatedAccount?.level)||1),profileId:String(authenticatedAccount?.profile_id??authenticatedAccount?.profileId??'default'),nameColor:String(authenticatedAccount?.name_color??authenticatedAccount?.nameColor??'default'),equippedSkins:parseJsonValue(authenticatedAccount?.equipped_skins??authenticatedAccount?.equippedSkins,{}),connected:true,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol','knife'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0,activeBurstId:null,burstNextSeq:1,burstStartedAt:0,reconnectTimer:null};
+    const room={code,rule:requestedRule,map:requestedMap,mode:'classic',hostId:socket.id,players:new Map([[socket.id,p]]),phase:'waiting',round:0,phaseEndsAt:0,liveEndsAt:0,timer:null,hasStarted:false};
     rooms.set(code,room);socket.data.roomCode=code;socket.join(code);
-    socket.emit('roomCreated',{code,rule:requestedRule,device,map:room.map});
+    socket.emit('roomCreated',{code,rule:requestedRule,device,map:room.map,mode:room.mode,hostId:room.hostId});
+    emitRoomLobby(room);
   });
   socket.on('joinRoom', async payload => {
     const authenticatedAccount = await accountFromToken(payload?.authToken);
@@ -856,12 +912,24 @@ io.on('connection', socket => {
     }
     leaveRoom(socket,false);
     const name=safeName(payload?.name);
-    const p={id:socket.id,sessionId,name,device,accountId:authenticatedAccount?.id??null,equippedSkins:parseJsonValue(authenticatedAccount?.equipped_skins??authenticatedAccount?.equippedSkins,{}),connected:true,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol','knife'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0,activeBurstId:null,burstNextSeq:1,burstStartedAt:0,reconnectTimer:null};
+    const p={id:socket.id,sessionId,name,device,accountId:authenticatedAccount?.id??null,level:Math.max(1,Number(authenticatedAccount?.level)||1),profileId:String(authenticatedAccount?.profile_id??authenticatedAccount?.profileId??'default'),nameColor:String(authenticatedAccount?.name_color??authenticatedAccount?.nameColor??'default'),equippedSkins:parseJsonValue(authenticatedAccount?.equipped_skins??authenticatedAccount?.equippedSkins,{}),connected:true,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol','knife'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0,activeBurstId:null,burstNextSeq:1,burstStartedAt:0,reconnectTimer:null};
     room.players.set(socket.id,p);socket.data.roomCode=code;socket.join(code);
-    socket.emit('roomJoined',{code,rule:room.rule,device,map:room.map});
+    socket.emit('roomJoined',{code,rule:room.rule,device,map:room.map,mode:room.mode,hostId:room.hostId});
     socket.to(code).emit('playerJoined',{id:socket.id,player:publicPlayer(p)});
     socket.emit('playersSnapshot',playersSnapshot(room));
-    beginRound(room);
+    emitRoomLobby(room);
+  });
+  socket.on('updateRoomSettings',payload=>{
+    const room=rooms.get(socket.data.roomCode);
+    if(!room||socket.id!==room.hostId||room.phase!=='waiting'||room.players.size>2)return;
+    const mode=['classic','unlimited','knife'].includes(payload?.mode)?payload.mode:room.mode;
+    const map=['arena','palace','city'].includes(payload?.map)?payload.map:room.map;
+    room.mode=mode;room.map=map;emitRoomLobby(room);
+  });
+  socket.on('startMatch',()=>{
+    const room=rooms.get(socket.data.roomCode);
+    if(!room||socket.id!==room.hostId||room.phase!=='waiting'||room.players.size!==2||[...room.players.values()].some(p=>p.connected===false))return;
+    room.hasStarted=true;io.to(room.code).emit('matchStarting',{map:room.map,mode:room.mode,hostId:room.hostId});beginRound(room);
   });
   socket.on('resumeRoom', payload => resumePlayer(socket,payload));
   socket.on('move', payload => {
@@ -879,13 +947,15 @@ io.on('connection', socket => {
   socket.on('buy', payload => {
     const room=rooms.get(socket.data.roomCode);const p=playerById(room,socket.id);
     if(!room||!p||room.phase!=='buy'){socket.emit('buyResult',{ok:false,message:'구매 단계에서만 살 수 있습니다.'});return;}
+    if(room.mode==='knife'){socket.emit('buyResult',{ok:false,message:'나이프 모드에서는 칼만 사용할 수 있습니다.'});return;}
+    const unlimited=room.mode==='unlimited';
     if(payload?.kind==='armor'){
       const tier=payload?.tier==='heavy'?'heavy':'light';
       const gear=tier==='heavy'?{cost:1000,value:110,name:'중량 보호막'}:{cost:400,value:60,name:'경량 보호막'};
       if(tier==='light'&&p.armorTier!=='none'){socket.emit('buyResult',{ok:false,message:'이미 보호막을 보유 중입니다. 중량 보호막으로 강화할 수 있습니다.'});return;}
       if(tier==='heavy'&&p.armorTier==='heavy'){socket.emit('buyResult',{ok:false,message:'이미 중량 보호막을 보유하고 있습니다.'});return;}
       if(p.money<gear.cost){socket.emit('buyResult',{ok:false,message:'크레딧이 부족합니다.'});return;}
-      p.money-=gear.cost;p.armor=gear.value;p.armorTier=tier;p.armorPurchased=tier==='heavy';
+      if(!unlimited)p.money-=gear.cost;p.armor=gear.value;p.armorTier=tier;p.armorPurchased=tier==='heavy';
       socket.emit('buyResult',{ok:true,message:`${gear.name} 장착 완료`,money:p.money,armor:p.armor,armorTier:p.armorTier,armorPurchased:p.armorPurchased,weapon:p.weapon,boughtPrimary:p.boughtPrimary});
       return;
     }
@@ -901,11 +971,11 @@ io.on('connection', socket => {
     if(w.slot==='primary'&&p.boughtPrimary){socket.emit('buyResult',{ok:false,message:'이번 구매 단계에 새 주무기는 하나만 살 수 있습니다.'});return;}
     if(p.money<w.price){socket.emit('buyResult',{ok:false,message:'크레딧이 부족합니다.'});return;}
     if(w.slot==='primary'){
-      p.money-=w.price;p.boughtPrimary=true;
+      if(!unlimited)p.money-=w.price;p.boughtPrimary=true;
       p.ownedWeapons=p.ownedWeapons.filter(ownedId=>weapons[ownedId]?.slot!=='primary');
       p.ownedWeapons.push(id);
     } else {
-      if(id!=='pistol')p.money-=w.price;
+      if(id!=='pistol'&&!unlimited)p.money-=w.price;
       p.ownedWeapons.push(id);
     }
     p.weapon=id;
@@ -914,6 +984,7 @@ io.on('connection', socket => {
   socket.on('equipWeapon', payload => {
     const room=rooms.get(socket.data.roomCode);const p=playerById(room,socket.id);const id=String(payload?.weaponId||'');
     if(!room||!p||!['buy','live'].includes(room.phase)){socket.emit('equipResult',{ok:false,message:'현재는 무기를 교체할 수 없습니다.'});return;}
+    if(room.mode==='knife'&&id!=='knife'){socket.emit('equipResult',{ok:false,message:'나이프 모드에서는 칼만 사용할 수 있습니다.'});return;}
     p.ownedWeapons ||= ['pistol','knife'];
     if(!weapons[id]||!p.ownedWeapons.includes(id)){socket.emit('equipResult',{ok:false,message:'구매한 무기만 장착할 수 있습니다.'});return;}
     p.weapon=id;
@@ -1016,7 +1087,7 @@ io.on('connection', socket => {
   });
   if(socket.recovered&&socket.data.roomCode){
     const room=rooms.get(socket.data.roomCode);const p=room?.players.get(socket.id);
-    if(p){p.connected=true;if(p.reconnectTimer)clearTimeout(p.reconnectTimer);p.reconnectTimer=null;socket.join(room.code);if(room.players.size===2&&[...room.players.values()].every(candidate=>candidate.connected!==false))restoreRoomPhaseAfterDisconnect(room);socket.emit('roomResumed',{code:room.code,map:room.map,rule:room.rule,phase:room.phase,round:room.round});if(room.players.size===2&&[...room.players.values()].every(candidate=>candidate.connected!==false)){if(room.phase==='waiting')beginRound(room);else if(room.phase==='ended'||room.phase==='matchover'){for(const [pid,player] of room.players)io.to(pid).emit('roundResult',{winnerId:room.lastWinnerId??null,reason:room.lastReason||'라운드 종료',scores:Object.fromEntries([...room.players.entries()].map(([key,value])=>[key,value.score])),selfMoney:player.money,reward:0,matchOver:room.phase==='matchover',round:room.round,nextRoundInMs:0});}else emitState(room);}}
+    if(p){p.connected=true;if(p.reconnectTimer)clearTimeout(p.reconnectTimer);p.reconnectTimer=null;socket.join(room.code);if(room.players.size===2&&[...room.players.values()].every(candidate=>candidate.connected!==false))restoreRoomPhaseAfterDisconnect(room);socket.emit('roomResumed',{code:room.code,map:room.map,rule:room.rule,phase:room.phase,round:room.round});if(room.players.size===2&&[...room.players.values()].every(candidate=>candidate.connected!==false)){if(room.phase==='waiting')emitRoomLobby(room);else if(room.phase==='ended'||room.phase==='matchover'){for(const [pid,player] of room.players)io.to(pid).emit('roundResult',{winnerId:room.lastWinnerId??null,reason:room.lastReason||'라운드 종료',scores:Object.fromEntries([...room.players.entries()].map(([key,value])=>[key,value.score])),selfMoney:player.money,reward:0,matchOver:room.phase==='matchover',round:room.round,nextRoundInMs:0});}else emitState(room);}}
   }
 });
 
