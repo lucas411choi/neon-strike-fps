@@ -666,44 +666,69 @@ function code6() {
 function safeName(name) { return String(name || 'PLAYER').replace(/[<>\u0000-\u001f]/g, '').trim().slice(0, 16) || 'PLAYER'; }
 function safeSessionId(value) { return String(value || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100); }
 function compatible(rule, device) { return rule === 'crossplay' || rule === device; }
-function publicPlayer(p) { return { x:p.x, y:p.y||0, z:p.z, yaw:p.yaw, pitch:p.pitch, name:p.name, level:p.level||1, profileId:p.profileId||'default', nameColor:p.nameColor||'default', hp:p.hp, armor:p.armor, weapon:p.weapon, skinId:p.equippedSkins?.[p.weapon]||null, equippedSkins:p.equippedSkins||{}, device:p.device, score:p.score }; }
+function isTeamsMode(room) { return room?.teamMode === '2v2'; }
+function roomRequiredPlayers(room) { return isTeamsMode(room) ? 4 : 2; }
+function roomTeamCounts(room) {
+  const counts={red:0,blue:0};
+  for (const player of room?.players?.values?.() || []) if (player.team==='red'||player.team==='blue') counts[player.team]++;
+  return counts;
+}
+function roomIsReady(room) {
+  if (!room || room.players.size !== roomRequiredPlayers(room) || [...room.players.values()].some(p=>p.connected===false)) return false;
+  const counts=roomTeamCounts(room);
+  return isTeamsMode(room) ? counts.red===2&&counts.blue===2 : counts.red===1&&counts.blue===1;
+}
+function roomScoreSnapshot(room) {
+  return Object.fromEntries([...room.players.entries()].map(([id,p])=>[id,isTeamsMode(room)?(room.teamScores?.[p.team]||0):(p.score||0)]));
+}
+function publicPlayer(p) { return { x:p.x, y:p.y||0, z:p.z, yaw:p.yaw, pitch:p.pitch, name:p.name, level:p.level||1, profileId:p.profileId||'default', nameColor:p.nameColor||'default', team:p.team||'red', hp:p.hp, armor:p.armor, weapon:p.weapon, skinId:p.equippedSkins?.[p.weapon]||null, equippedSkins:p.equippedSkins||{}, device:p.device, score:p.score }; }
 function playerById(room, id) { return room?.players.get(id); }
 function roomLobbySnapshot(room) {
-  return { code:room.code, hostId:room.hostId, phase:room.phase, map:room.map||'arena', mode:room.mode||'classic', players:[...room.players.entries()].map(([id,p])=>({id,...publicPlayer(p),connected:p.connected!==false})), maxPlayers:2 };
+  return { code:room.code, hostId:room.hostId, phase:room.phase, map:room.map||'arena', mode:room.mode||'classic', teamMode:room.teamMode||'1v1', players:[...room.players.entries()].map(([id,p])=>({id,...publicPlayer(p),connected:p.connected!==false})), maxPlayers:roomRequiredPlayers(room), teamCounts:roomTeamCounts(room) };
 }
 function emitRoomLobby(room) { if(room&&rooms.has(room.code))io.to(room.code).emit('roomLobby',roomLobbySnapshot(room)); }
-function selfPayload(p) { return { money:p.money, hp:p.hp, armor:p.armor, armorTier:p.armorTier, weapon:p.weapon, skinId:p.equippedSkins?.[p.weapon]||null, ownedWeapons:[...(p.ownedWeapons||['pistol','knife'])], boughtPrimary:p.boughtPrimary, armorPurchased:p.armorPurchased, x:p.x, y:p.y||0, z:p.z, yaw:p.yaw, pitch:p.pitch }; }
+function selfPayload(p) { return { money:p.money, hp:p.hp, armor:p.armor, armorTier:p.armorTier, weapon:p.weapon, skinId:p.equippedSkins?.[p.weapon]||null, ownedWeapons:[...(p.ownedWeapons||['pistol','knife'])], boughtPrimary:p.boughtPrimary, armorPurchased:p.armorPurchased, team:p.team||'red', x:p.x, y:p.y||0, z:p.z, yaw:p.yaw, pitch:p.pitch }; }
 function playersSnapshot(room) { return Object.fromEntries([...room.players.entries()].map(([id,p])=>[id,publicPlayer(p)])); }
 function emitState(room) {
   const players = playersSnapshot(room);
   for (const [id,p] of room.players) {
     io.to(id).emit('roundState', {
-      code: room.code, map: room.map || 'arena', mode:room.mode||'classic', phase: room.phase, round: room.round, endsAt: room.phaseEndsAt,
-      roundEndsAt: room.liveEndsAt, scores: Object.fromEntries([...room.players.entries()].map(([pid,pl])=>[pid,pl.score])),
+      code: room.code, map: room.map || 'arena', mode:room.mode||'classic', teamMode:room.teamMode||'1v1', phase: room.phase, round: room.round, endsAt: room.phaseEndsAt,
+      roundEndsAt: room.liveEndsAt, scores: roomScoreSnapshot(room), teamScores:room.teamScores||{red:0,blue:0},
       self: selfPayload(p), players,
     });
   }
 }
 function resetPlayerForRound(room, p, index) {
   p.hp = 100;
-  p.armor = Math.max(0, p.armor); // Retain surviving shield points between rounds.
+  p.armor = Math.max(0, p.armor);
   if (p.armor <= 0) p.armorTier = 'none';
-  // Weapon availability follows the host-selected room mode.
   if(room.mode==='knife') { p.ownedWeapons=['knife']; p.weapon='knife'; }
   else { p.ownedWeapons=['pistol','knife']; p.weapon='pistol'; }
   if(room.mode==='unlimited') p.money=999999;
   p.boughtPrimary = false;
   p.armorPurchased = p.armorTier === 'heavy';
   p.lastFireAt = 0;
-  // Spawn both players at opposite ends of the arena, out of immediate contact.
-  p.x = index === 0 ? -3 : 3;
-  p.y = 0;
-  const spawn=mapSpawn(room.map);p.z = index === 0 ? spawn : -spawn;
-  p.yaw = index === 0 ? 0 : Math.PI;
+  p.recoilHeat = 0;
+  p.dead = false;
+  const spawn=mapSpawn(room.map);
+  if (isTeamsMode(room)) {
+    const sidePlayers=[...room.players.values()].filter(candidate=>candidate.team===p.team);
+    const sideIndex=Math.max(0,sidePlayers.indexOf(p));
+    p.x=sideIndex===0?-4:4;
+    p.y=0;
+    p.z=p.team==='red'?spawn:-spawn;
+    p.yaw=p.team==='red'?0:Math.PI;
+  } else {
+    p.x = index === 0 ? -3 : 3;
+    p.y = 0;
+    p.z = index === 0 ? spawn : -spawn;
+    p.yaw = index === 0 ? 0 : Math.PI;
+  }
   p.pitch = 0;
 }
 function beginRound(room) {
-  if (!rooms.has(room.code) || room.players.size !== 2 || [...room.players.values()].some(p=>p.connected===false)) return;
+  if (!rooms.has(room.code) || !roomIsReady(room)) return;
   room.phaseBeforeDisconnect=null;room.remainingPhaseMs=0;
   if (room.timer) clearTimeout(room.timer);
   room.round += 1;
@@ -722,7 +747,7 @@ function beginRound(room) {
   room.timer = setTimeout(() => startLive(room), BUY_MS);
 }
 function startLive(room) {
-  if (!rooms.has(room.code) || room.players.size !== 2 || [...room.players.values()].some(p=>p.connected===false) || room.phase !== 'buy') return;
+  if (!rooms.has(room.code) || !roomIsReady(room) || room.phase !== 'buy') return;
   room.phase = 'live';
   room.phaseEndsAt = Date.now() + ROUND_MS;
   room.liveEndsAt = room.phaseEndsAt;
@@ -730,7 +755,18 @@ function startLive(room) {
   room.timer = setTimeout(() => resolveTimedRound(room), ROUND_MS);
 }
 function resolveTimedRound(room) {
-  if (!room || room.phase !== 'live' || room.players.size !== 2) return;
+  if (!room || room.phase !== 'live' || !roomIsReady(room)) return;
+  if (isTeamsMode(room)) {
+    const totals={red:0,blue:0};
+    for (const player of room.players.values()) if (player.hp>0) totals[player.team]+=player.hp+player.armor*.25;
+    if (Math.abs(totals.red-totals.blue)<1) endRound(room,null,'시간 종료 · 팀 체력 동률');
+    else {
+      const winningTeam=totals.red>totals.blue?'red':'blue';
+      const winner=[...room.players.entries()].find(([,player])=>player.team===winningTeam&&player.hp>0)?.[0]||null;
+      endRound(room,winner,`시간 종료 · ${winningTeam==='red'?'레드':'블루'} 팀 체력 우세`);
+    }
+    return;
+  }
   const entries = [...room.players.entries()];
   const [idA,a] = entries[0], [idB,b] = entries[1];
   const ratioA = a.hp + a.armor * .25, ratioB = b.hp + b.armor * .25;
@@ -757,37 +793,48 @@ function restoreRoomPhaseAfterDisconnect(room) {
     room.liveEndsAt = 0;
   }
 }
+function emitKillPresentation(room,killerId,victimId,skinId=null) {
+  const killer=room?.players.get(killerId),victim=room?.players.get(victimId);
+  if(!killer||!victim)return;
+  const killPayload={killerId,victimId,durationMs:5000,skinId:skinId||killer.equippedSkins?.[killer.weapon]||null,
+    killer:{x:killer.x,y:killer.y||0,z:killer.z,yaw:killer.yaw,pitch:killer.pitch,weapon:killer.weapon,name:killer.name},
+    victim:{x:victim.x,y:victim.y||0,z:victim.z,yaw:victim.yaw,pitch:victim.pitch,name:victim.name}};
+  io.to(victimId).emit('killCamStart',killPayload);
+  io.to(killerId).emit('killerKillEffect',killPayload);
+  io.to(killerId).emit('killerFreedom',{durationMs:5000,killerId});
+}
 function endRound(room, winnerId, reason='적 처치', killInfo=null) {
   if (!room || room.phase !== 'live') return;
   if (room.timer) clearTimeout(room.timer);
   room.phase='ended';room.lastWinnerId=winnerId;room.lastReason=reason;
-  let matchOver=false;
-  if (winnerId && room.players.has(winnerId)) room.players.get(winnerId).score += 1;
-  if ([...room.players.values()].some(p=>p.score>=WINS_TO_MATCH)) matchOver=true;
   const winner = winnerId ? room.players.get(winnerId) : null;
-  if (killInfo && winner && killInfo.victimId && room.players.has(killInfo.victimId)) {
-    const victim=room.players.get(killInfo.victimId);
-    const killPayload={killerId:winnerId,victimId:killInfo.victimId,durationMs:5000,skinId:killInfo.skinId||winner.equippedSkins?.[winner.weapon]||null,killer:{x:winner.x,y:winner.y||0,z:winner.z,yaw:winner.yaw,pitch:winner.pitch,weapon:winner.weapon,name:winner.name},victim:{x:victim.x,y:victim.y||0,z:victim.z,yaw:victim.yaw,pitch:victim.pitch,name:victim.name}};
-    // Only the eliminated player receives the killcam overlay and first-person replay.
-    io.to(killInfo.victimId).emit('killCamStart',killPayload);
-    // The killer sees the victim's skin effect but remains free to reposition during the replay window.
-    io.to(winnerId).emit('killerKillEffect',killPayload);
-    io.to(winnerId).emit('killerFreedom',{durationMs:5000,killerId:winnerId});
+  const winnerTeam = winner?.team || null;
+  room.lastWinnerTeam=winnerTeam;
+  let matchOver=false;
+  if (isTeamsMode(room)) {
+    if (winnerTeam) room.teamScores[winnerTeam]=(room.teamScores[winnerTeam]||0)+1;
+    for (const player of room.players.values()) player.score=room.teamScores[player.team]||0;
+    matchOver=!!winnerTeam&&(room.teamScores[winnerTeam]||0)>=WINS_TO_MATCH;
+  } else {
+    if (winner) winner.score += 1;
+    matchOver = [...room.players.values()].some(p=>p.score>=WINS_TO_MATCH);
   }
-  if (winner?.accountId) {
+  const scoreSnapshot=roomScoreSnapshot(room);
+  const winningPlayers=winner ? [...room.players.values()].filter(p=>isTeamsMode(room)?p.team===winnerTeam:p.id===winnerId) : [];
+  for (const player of winningPlayers) if(player.accountId) {
     void (async () => {
-      let profile = await awardAccountXP(winner.accountId, 50); // 50 XP for each round won.
-      if (matchOver) profile = await awardAccountXP(winner.accountId, 200); // Additional match-win XP.
-      if (profile) io.to(winner.id).emit('accountUpdated', { account: profile });
+      let profile = await awardAccountXP(player.accountId, 50);
+      if (matchOver) profile = await awardAccountXP(player.accountId, 200);
+      if (profile) io.to(player.id).emit('accountUpdated', { account: profile });
     })().catch(error => console.error('[accounts] online XP award failed:', error?.message || error));
   }
   for (const [id,p] of room.players) {
-    const won = winnerId===id;
+    const won = !!winner && (isTeamsMode(room)?p.team===winnerTeam:id===winnerId);
     const roundBonus=Math.max(0,room.round-1);
     const reward = won?(ROUND_WIN_REWARD+roundBonus*ROUND_WIN_STEP):(ROUND_LOSS_REWARD+roundBonus*ROUND_LOSS_STEP);
     if(room.mode==='unlimited') p.money=999999; else p.money += reward;
     io.to(id).emit('roundResult', {
-      winnerId, reason, scores:Object.fromEntries([...room.players.entries()].map(([pid,pl])=>[pid,pl.score])),
+      winnerId, winnerTeam, reason, scores:scoreSnapshot, teamScores:room.teamScores||null,
       selfMoney:p.money, reward, matchOver, round:room.round, nextRoundInMs:0, killCamMs:killInfo?5000:0,
     });
   }
@@ -795,7 +842,6 @@ function endRound(room, winnerId, reason='적 처치', killInfo=null) {
     room.phase='matchover';room.lastMatchOver=true;
     return;
   }
-  // The next round begins only when a player presses the explicit next-round button.
   room.timer=null;
 }
 function closeRoom(room) {
@@ -867,14 +913,15 @@ function resumePlayer(socket,payload) {
   if(oldId!==socket.id)room.players.delete(oldId);
   room.players.set(socket.id,p);socket.data.roomCode=code;socket.data.sessionId=sessionId;socket.join(code);
   if(oldId!==socket.id)io.to(code).emit('playerLeft',{id:oldId});
-  socket.emit('roomResumed',{code,map:room.map,rule:room.rule,phase:room.phase,round:room.round});
+  socket.emit('roomResumed',{code,map:room.map,rule:room.rule,mode:room.mode,teamMode:room.teamMode,phase:room.phase,round:room.round});
   socket.emit('playersSnapshot',playersSnapshot(room));
-  if(room.players.size===2&&[...room.players.values()].every(candidate=>candidate.connected!==false)){
+  if(room.phase==='waiting')emitRoomLobby(room);
+  if(room.phase!=='waiting'&&room.players.size===roomRequiredPlayers(room)&&[...room.players.values()].every(candidate=>candidate.connected!==false)){
     restoreRoomPhaseAfterDisconnect(room);
     io.to(code).emit('playerJoined',{id:socket.id,player:publicPlayer(p)});
     if(room.phase==='waiting')emitRoomLobby(room);
     else if(room.phase==='ended'||room.phase==='matchover'){
-      for(const [pid,player] of room.players){io.to(pid).emit('roundResult',{winnerId:room.lastWinnerId??null,reason:room.lastReason||'라운드 종료',scores:Object.fromEntries([...room.players.entries()].map(([key,value])=>[key,value.score])),selfMoney:player.money,reward:0,matchOver:room.phase==='matchover',round:room.round,nextRoundInMs:0});}
+      for(const [pid,player] of room.players){io.to(pid).emit('roundResult',{winnerId:room.lastWinnerId??null,reason:room.lastReason||'라운드 종료',scores:roomScoreSnapshot(room),teamScores:room.teamScores||null,winnerTeam:room.lastWinnerTeam||null,selfMoney:player.money,reward:0,matchOver:room.phase==='matchover',round:room.round,nextRoundInMs:0});}
     } else emitState(room);
   }
 }
@@ -892,8 +939,8 @@ io.on('connection', socket => {
     }
     leaveRoom(socket,false);
     const code=code6();
-    const p={id:socket.id,sessionId,name,device,accountId:authenticatedAccount?.id??null,level:Math.max(1,Number(authenticatedAccount?.level)||1),profileId:String(authenticatedAccount?.profile_id??authenticatedAccount?.profileId??'default'),nameColor:String(authenticatedAccount?.name_color??authenticatedAccount?.nameColor??'default'),equippedSkins:parseJsonValue(authenticatedAccount?.equipped_skins??authenticatedAccount?.equippedSkins,{}),connected:true,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol','knife'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0,activeBurstId:null,burstNextSeq:1,burstStartedAt:0,reconnectTimer:null};
-    const room={code,rule:requestedRule,map:requestedMap,mode:'classic',hostId:socket.id,players:new Map([[socket.id,p]]),phase:'waiting',round:0,phaseEndsAt:0,liveEndsAt:0,timer:null,hasStarted:false};
+    const p={id:socket.id,sessionId,name,device,accountId:authenticatedAccount?.id??null,level:Math.max(1,Number(authenticatedAccount?.level)||1),profileId:String(authenticatedAccount?.profile_id??authenticatedAccount?.profileId??'default'),nameColor:String(authenticatedAccount?.name_color??authenticatedAccount?.nameColor??'default'),equippedSkins:parseJsonValue(authenticatedAccount?.equipped_skins??authenticatedAccount?.equippedSkins,{}),team:'red',connected:true,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol','knife'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0,activeBurstId:null,burstNextSeq:1,burstStartedAt:0,reconnectTimer:null};
+    const room={code,rule:requestedRule,map:requestedMap,mode:'classic',teamMode:'1v1',teamScores:{red:0,blue:0},hostId:socket.id,players:new Map([[socket.id,p]]),phase:'waiting',round:0,phaseEndsAt:0,liveEndsAt:0,timer:null,hasStarted:false};
     rooms.set(code,room);socket.data.roomCode=code;socket.join(code);
     socket.emit('roomCreated',{code,rule:requestedRule,device,map:room.map,mode:room.mode,hostId:room.hostId});
     emitRoomLobby(room);
@@ -903,7 +950,8 @@ io.on('connection', socket => {
     const code=String(payload?.code||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
     const room=rooms.get(code);
     if (!room) {socket.emit('roomError',{message:'방을 찾을 수 없습니다. 코드가 정확한지 확인하세요.'});return;}
-    if (room.players.size>=2) {socket.emit('roomError',{message:'이미 두 명이 참가한 방입니다.'});return;}
+    if (room.phase!=='waiting') {socket.emit('roomError',{message:'이미 게임이 시작된 방에는 참가할 수 없습니다.'});return;}
+    if (room.players.size>=roomRequiredPlayers(room)) {socket.emit('roomError',{message:`이미 ${roomRequiredPlayers(room)}명이 참가한 방입니다.`});return;}
     const device=payload?.device==='mobile'?'mobile':'pc';
     const sessionId=safeSessionId(payload?.sessionId);
     if (!compatible(room.rule,device)) {
@@ -912,7 +960,8 @@ io.on('connection', socket => {
     }
     leaveRoom(socket,false);
     const name=safeName(payload?.name);
-    const p={id:socket.id,sessionId,name,device,accountId:authenticatedAccount?.id??null,level:Math.max(1,Number(authenticatedAccount?.level)||1),profileId:String(authenticatedAccount?.profile_id??authenticatedAccount?.profileId??'default'),nameColor:String(authenticatedAccount?.name_color??authenticatedAccount?.nameColor??'default'),equippedSkins:parseJsonValue(authenticatedAccount?.equipped_skins??authenticatedAccount?.equippedSkins,{}),connected:true,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol','knife'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0,activeBurstId:null,burstNextSeq:1,burstStartedAt:0,reconnectTimer:null};
+    const counts=roomTeamCounts(room);const assignedTeam=counts.red<=counts.blue?'red':'blue';
+    const p={id:socket.id,sessionId,name,device,accountId:authenticatedAccount?.id??null,level:Math.max(1,Number(authenticatedAccount?.level)||1),profileId:String(authenticatedAccount?.profile_id??authenticatedAccount?.profileId??'default'),nameColor:String(authenticatedAccount?.name_color??authenticatedAccount?.nameColor??'default'),equippedSkins:parseJsonValue(authenticatedAccount?.equipped_skins??authenticatedAccount?.equippedSkins,{}),team:assignedTeam,connected:true,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol','knife'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0,activeBurstId:null,burstNextSeq:1,burstStartedAt:0,reconnectTimer:null};
     room.players.set(socket.id,p);socket.data.roomCode=code;socket.join(code);
     socket.emit('roomJoined',{code,rule:room.rule,device,map:room.map,mode:room.mode,hostId:room.hostId});
     socket.to(code).emit('playerJoined',{id:socket.id,player:publicPlayer(p)});
@@ -921,15 +970,34 @@ io.on('connection', socket => {
   });
   socket.on('updateRoomSettings',payload=>{
     const room=rooms.get(socket.data.roomCode);
-    if(!room||socket.id!==room.hostId||room.phase!=='waiting'||room.players.size>2)return;
+    if(!room||socket.id!==room.hostId||room.phase!=='waiting')return;
+    const requestedTeamMode=payload?.teamMode==='2v2'?'2v2':'1v1';
+    const requestedLimit=requestedTeamMode==='2v2'?4:2;
+    if(room.players.size>requestedLimit){socket.emit('roomError',{message:'현재 참가 인원이 많아 모드를 변경할 수 없습니다. 먼저 인원을 줄여 주세요.'});return;}
     const mode=['classic','unlimited','knife'].includes(payload?.mode)?payload.mode:room.mode;
     const map=['arena','palace','city'].includes(payload?.map)?payload.map:room.map;
+    if(requestedTeamMode!==room.teamMode){
+      room.teamMode=requestedTeamMode;
+      [...room.players.values()].forEach((player,index)=>{player.team=index%2===0?'red':'blue';});
+    }
     room.mode=mode;room.map=map;emitRoomLobby(room);
+  });
+  socket.on('assignPlayerTeam',payload=>{
+    const room=rooms.get(socket.data.roomCode);
+    if(!room||socket.id!==room.hostId||room.phase!=='waiting'||room.teamMode!=='2v2')return;
+    const targetId=String(payload?.playerId||'');const team=payload?.team==='blue'?'blue':'red';
+    const target=room.players.get(targetId);if(!target)return;
+    if(target.team===team)return;
+    const full=[...room.players.entries()].filter(([id,player])=>id!==targetId&&player.team===team);
+    target.team=team;
+    if(full.length>=2){const [swapId,swapPlayer]=full[full.length-1];swapPlayer.team=payload?.swap==='none'?swapPlayer.team:(team==='red'?'blue':'red');}
+    emitRoomLobby(room);
   });
   socket.on('startMatch',()=>{
     const room=rooms.get(socket.data.roomCode);
-    if(!room||socket.id!==room.hostId||room.phase!=='waiting'||room.players.size!==2||[...room.players.values()].some(p=>p.connected===false))return;
-    room.hasStarted=true;io.to(room.code).emit('matchStarting',{map:room.map,mode:room.mode,hostId:room.hostId});beginRound(room);
+    if(!room||socket.id!==room.hostId||room.phase!=='waiting')return;
+    if(!roomIsReady(room)){socket.emit('roomError',{message:room.teamMode==='2v2'?'4명이 참가하고 레드 2명·블루 2명으로 팀을 배치해야 시작할 수 있습니다.':'두 명이 참가해야 시작할 수 있습니다.'});emitRoomLobby(room);return;}
+    room.hasStarted=true;io.to(room.code).emit('matchStarting',{map:room.map,mode:room.mode,teamMode:room.teamMode,hostId:room.hostId});beginRound(room);
   });
   socket.on('resumeRoom', payload => resumePlayer(socket,payload));
   socket.on('move', payload => {
@@ -937,7 +1005,7 @@ io.on('connection', socket => {
     const x=Number(payload.x),y=Number(payload.y??0),z=Number(payload.z),yaw=Number(payload.yaw),pitch=Number(payload.pitch);
     if (![x,y,z,yaw,pitch].every(Number.isFinite))return;
     const bound=mapBounds(room.map);p.x=Math.max(-bound,Math.min(bound,x));p.y=Math.max(0,Math.min(8,y));p.z=Math.max(-bound,Math.min(bound,z));p.yaw=Math.max(-Math.PI*2,Math.min(Math.PI*2,yaw));p.pitch=Math.max(-1.35,Math.min(1.35,pitch));
-    socket.to(room.code).emit('playerMoved',{id:socket.id,x:p.x,y:p.y,z:p.z,yaw:p.yaw,pitch:p.pitch,name:p.name,hp:p.hp,weapon:p.weapon,skinId:p.equippedSkins?.[p.weapon]||null,equippedSkins:p.equippedSkins||{},device:p.device});
+    socket.to(room.code).emit('playerMoved',{id:socket.id,x:p.x,y:p.y,z:p.z,yaw:p.yaw,pitch:p.pitch,name:p.name,hp:p.hp,team:p.team,weapon:p.weapon,skinId:p.equippedSkins?.[p.weapon]||null,equippedSkins:p.equippedSkins||{},device:p.device});
   });
   socket.on('footstep', () => {
     const room=rooms.get(socket.data.roomCode);const p=playerById(room,socket.id);if(!room||!p||p.connected===false||room.phase!=='live')return;
@@ -1011,60 +1079,79 @@ io.on('connection', socket => {
     if(!o||!d||![o.x,o.y,o.z,d.x,d.y,d.z].every(v=>Number.isFinite(Number(v))))return;
     const dirLen=Math.hypot(Number(d.x),Number(d.y),Number(d.z));if(dirLen<.7||dirLen>1.3)return;
     const origin={x:Number(o.x),y:Number(o.y),z:Number(o.z)};const direction={x:Number(d.x)/dirLen,y:Number(d.y)/dirLen,z:Number(d.z)/dirLen};
-    let targetEntry=[...room.players.entries()].find(([id2,p])=>id2!==socket.id&&p.hp>0);
-    if(id==='knife'&&targetEntry){const [,target]=targetEntry;const targetDistance=Math.hypot((Number(target.x)||0)-origin.x,(Number(target.y)||0)+1.08-origin.y,(Number(target.z)||0)-origin.z);if(targetDistance>(Number(w.range)||2.65))targetEntry=null;}
-    // Firearms have no hard gameplay range cutoff. Accuracy becomes less reliable with distance.
+    const enemyEntries=[...room.players.entries()].filter(([id2,p])=>id2!==socket.id&&p.hp>0&&(!isTeamsMode(room)||p.team!==shooter.team));
+    const inRangeEntries=id==='knife'?enemyEntries.filter(([,target])=>Math.hypot((Number(target.x)||0)-origin.x,(Number(target.y)||0)+1.08-origin.y,(Number(target.z)||0)-origin.z)<=(Number(w.range)||2.65)):enemyEntries;
     let end={x:origin.x+direction.x*MAX_SHOT_DISTANCE,y:origin.y+direction.y*MAX_SHOT_DISTANCE,z:origin.z+direction.z*MAX_SHOT_DISTANCE};
-    let hit=null,totalDamage=0,closestHitDistance=Infinity;
-    if(targetEntry){
-      const [targetId,target]=targetEntry;
-      const baseY=Number(target.y)||0, tx=Number(target.x)||0, tz=Number(target.z)||0;
-      const parts=[
-        {part:'head',center:{x:tx,y:baseY+1.67,z:tz},radii:{x:.23,y:.25,z:.23},multiplier:getHitMultiplier('head')},
-        {part:'torso',center:{x:tx,y:baseY+1.08,z:tz},radii:{x:.40,y:.43,z:.30},multiplier:getHitMultiplier('torso')},
-        {part:'legs',center:{x:tx,y:baseY+.39,z:tz},radii:{x:.34,y:.40,z:.31},multiplier:getHitMultiplier('legs')},
-      ];
-      const ellipsoidDistance=(rayDirection,center,radii)=>{
-        const ox=(origin.x-center.x)/radii.x, oy=(origin.y-center.y)/radii.y, oz=(origin.z-center.z)/radii.z;
-        const dx=rayDirection.x/radii.x, dy=rayDirection.y/radii.y, dz=rayDirection.z/radii.z;
-        const a=dx*dx+dy*dy+dz*dz,b=2*(ox*dx+oy*dy+oz*dz),c=ox*ox+oy*oy+oz*oz-1,disc=b*b-4*a*c;
-        if(a<1e-9||disc<0)return null;const root=Math.sqrt(disc);let t=(-b-root)/(2*a);if(t<0)t=(-b+root)/(2*a);const maxDistance=id==='knife'?(Number(w.range)||2.65):MAX_SHOT_DISTANCE;return t>=0&&t<=maxDistance?t:null;
-      };
-      const pelletCount=id==='shotgun'?(w.pellets||10):1;
-      const rightLen=Math.hypot(direction.z,direction.x)||1;const right={x:direction.z/rightLen,y:0,z:-direction.x/rightLen};
-      const up={x:right.y*direction.z-right.z*direction.y,y:right.z*direction.x-right.x*direction.z,z:right.x*direction.y-right.y*direction.x};
-      const upLen=Math.hypot(up.x,up.y,up.z)||1;up.x/=upLen;up.y/=upLen;up.z/=upLen;
-      const targetDistance = Math.hypot(tx-origin.x, baseY+1.05-origin.y, tz-origin.z);
-      const distanceBloom = id==='knife' ? 0 : Math.max(0,targetDistance-8)*(w.distanceSpread||.0001) + (shooter.recoilHeat||0)*(w.recoil||.01)*.11;
-      for(let pellet=0;pellet<pelletCount;pellet++){
-        let rayDirection=direction;
-        if(id!=='knife' && (id==='shotgun' || distanceBloom>0.00001)) {
-          const baseSpread = id==='shotgun' ? (w.spread||.105) : 0;
-          const angle=Math.random()*Math.PI*2,r=Math.sqrt(Math.random())*(baseSpread+distanceBloom);
-          const x=direction.x+right.x*Math.cos(angle)*r+up.x*Math.sin(angle)*r;
-          const y=direction.y+right.y*Math.cos(angle)*r+up.y*Math.sin(angle)*r;
-          const z=direction.z+right.z*Math.cos(angle)*r+up.z*Math.sin(angle)*r;const len=Math.hypot(x,y,z)||1;rayDirection={x:x/len,y:y/len,z:z/len};
+    const hitsByTarget=new Map();let closestHitDistance=Infinity;
+    const pelletCount=id==='shotgun'?(w.pellets||10):1;
+    const rightLen=Math.hypot(direction.z,direction.x)||1;const right={x:direction.z/rightLen,y:0,z:-direction.x/rightLen};
+    const up={x:right.y*direction.z-right.z*direction.y,y:right.z*direction.x-right.x*direction.z,z:right.x*direction.y-right.y*direction.x};
+    const upLen=Math.hypot(up.x,up.y,up.z)||1;up.x/=upLen;up.y/=upLen;up.z/=upLen;
+    const ellipsoidDistance=(rayDirection,center,radii,maxDistance)=>{
+      const ox=(origin.x-center.x)/radii.x, oy=(origin.y-center.y)/radii.y, oz=(origin.z-center.z)/radii.z;
+      const dx=rayDirection.x/radii.x, dy=rayDirection.y/radii.y, dz=rayDirection.z/radii.z;
+      const a=dx*dx+dy*dy+dz*dz,b=2*(ox*dx+oy*dy+oz*dz),c=ox*ox+oy*oy+oz*oz-1,disc=b*b-4*a*c;
+      if(a<1e-9||disc<0)return null;const root=Math.sqrt(disc);let t=(-b-root)/(2*a);if(t<0)t=(-b+root)/(2*a);return t>=0&&t<=maxDistance?t:null;
+    };
+    const maxBloom=inRangeEntries.reduce((max,[,target])=>{
+      const distance=Math.hypot((Number(target.x)||0)-origin.x,(Number(target.y)||0)+1.05-origin.y,(Number(target.z)||0)-origin.z);
+      return Math.max(max,id==='knife'?0:Math.max(0,distance-8)*(w.distanceSpread||.0001)+(shooter.recoilHeat||0)*(w.recoil||.01)*.11);
+    },0);
+    for(let pellet=0;pellet<pelletCount;pellet++){
+      let rayDirection=direction;
+      if(id!=='knife'&&(id==='shotgun'||maxBloom>0.00001)){
+        const baseSpread=id==='shotgun'?(w.spread||.105):0;
+        const angle=Math.random()*Math.PI*2,r=Math.sqrt(Math.random())*(baseSpread+maxBloom);
+        const x=direction.x+right.x*Math.cos(angle)*r+up.x*Math.sin(angle)*r;
+        const y=direction.y+right.y*Math.cos(angle)*r+up.y*Math.sin(angle)*r;
+        const z=direction.z+right.z*Math.cos(angle)*r+up.z*Math.sin(angle)*r;const len=Math.hypot(x,y,z)||1;rayDirection={x:x/len,y:y/len,z:z/len};
+      }
+      let nearest=null;
+      for(const [targetId,target] of inRangeEntries){
+        const baseY=Number(target.y)||0,tx=Number(target.x)||0,tz=Number(target.z)||0;
+        const parts=[
+          {part:'head',center:{x:tx,y:baseY+1.67,z:tz},radii:{x:.23,y:.25,z:.23},multiplier:getHitMultiplier('head')},
+          {part:'torso',center:{x:tx,y:baseY+1.08,z:tz},radii:{x:.40,y:.43,z:.30},multiplier:getHitMultiplier('torso')},
+          {part:'legs',center:{x:tx,y:baseY+.39,z:tz},radii:{x:.34,y:.40,z:.31},multiplier:getHitMultiplier('legs')},
+        ];
+        const maxDistance=id==='knife'?(Number(w.range)||2.65):MAX_SHOT_DISTANCE;
+        for(const part of parts){
+          const distance=ellipsoidDistance(rayDirection,part.center,part.radii,maxDistance);
+          if(distance==null||isShotBlocked(origin,rayDirection,distance,room.map))continue;
+          if(!nearest||distance<nearest.distance)nearest={id:targetId,p:target,part:part.part,multiplier:part.multiplier,distance,rayDirection};
         }
-        let nearestPart=null;
-        for(const part of parts){const distance=ellipsoidDistance(rayDirection,part.center,part.radii);if(distance==null||isShotBlocked(origin,rayDirection,distance,room.map))continue;if(!nearestPart||distance<nearestPart.distance)nearestPart={...part,distance};}
-        if(nearestPart){
-          const pelletDamage=id==='knife'?40:w.damage*(nearestPart.multiplier||1);
-          totalDamage+=pelletDamage;
-          if(nearestPart.distance<closestHitDistance){closestHitDistance=nearestPart.distance;hit={id:targetId,p:target,part:nearestPart.part,multiplier:nearestPart.multiplier};end={x:origin.x+rayDirection.x*nearestPart.distance,y:origin.y+rayDirection.y*nearestPart.distance,z:origin.z+rayDirection.z*nearestPart.distance};}
-        }
+      }
+      if(nearest){
+        const pelletDamage=id==='knife'?40:w.damage*(nearest.multiplier||1);
+        const previous=hitsByTarget.get(nearest.id)||{id:nearest.id,p:nearest.p,damage:0,part:nearest.part};
+        previous.damage+=pelletDamage;previous.part=nearest.part;hitsByTarget.set(nearest.id,previous);
+        if(nearest.distance<closestHitDistance){closestHitDistance=nearest.distance;end={x:origin.x+nearest.rayDirection.x*nearest.distance,y:origin.y+nearest.rayDirection.y*nearest.distance,z:origin.z+nearest.rayDirection.z*nearest.distance};}
       }
     }
     // One tracer per trigger; distance affects spread, not maximum firearm range.
     io.to(room.code).emit('shotFx',{id:socket.id,weaponId:id,origin,end,skinId:shooter.equippedSkins?.[id]||null});
-    if(!hit||totalDamage<=0)return;
-    const damage=totalDamage;
-    const t=hit.p;let left=damage;if(t.armor>0){const absorbRatio=t.armorTier==='heavy'?.60:.35;const absorbed=Math.min(t.armor,damage*absorbRatio);t.armor-=absorbed;left-=absorbed;if(t.armor<=0){t.armor=0;t.armorTier='none';}}t.hp=Math.max(0,t.hp-left);
-    const killed=t.hp<=0;
-    if(killed)shooter.money+=KILL_REWARD+Math.max(0,room.round-1)*KILL_REWARD_STEP;
-    io.to(room.code).emit('damage',{attackerId:socket.id,targetId:hit.id,hp:t.hp,armor:t.armor,armorTier:t.armorTier,killed,damage,hitPart:hit.part||'torso',pelletsHit:id==='shotgun'?Math.max(1,Math.round(damage/Math.max(1,w.damage))):1});
-    for(const [pid,p] of room.players)if(pid===hit.id)io.to(pid).emit('selfState',selfPayload(p));
+    if(!hitsByTarget.size)return;
+    let finalKillInfo=null;
+    for(const hit of hitsByTarget.values()){
+      if(room.phase!=='live')break;
+      const t=hit.p;const damage=hit.damage;let left=damage;
+      if(t.armor>0){const absorbRatio=t.armorTier==='heavy'?.60:.35;const absorbed=Math.min(t.armor,damage*absorbRatio);t.armor-=absorbed;left-=absorbed;if(t.armor<=0){t.armor=0;t.armorTier='none';}}
+      t.hp=Math.max(0,t.hp-left);
+      const killed=t.hp<=0;
+      if(killed){t.dead=true;shooter.money+=KILL_REWARD+Math.max(0,room.round-1)*KILL_REWARD_STEP;}
+      io.to(room.code).emit('damage',{attackerId:socket.id,targetId:hit.id,hp:t.hp,armor:t.armor,armorTier:t.armorTier,killed,damage,hitPart:hit.part||'torso',pelletsHit:id==='shotgun'?Math.max(1,Math.round(damage/Math.max(1,w.damage))):1});
+      io.to(hit.id).emit('selfState',selfPayload(t));
+      if(killed){
+        const skinId=shooter.equippedSkins?.[shooter.weapon]||null;
+        emitKillPresentation(room,socket.id,hit.id,skinId);
+        finalKillInfo={victimId:hit.id,skinId};
+        if(!isTeamsMode(room)||![...room.players.values()].some(player=>player.team===t.team&&player.hp>0)){
+          endRound(room,socket.id,`${shooter.name} 처치 성공`,finalKillInfo);
+          break;
+        }
+      }
+    }
     socket.emit('selfState',selfPayload(shooter));
-    if(killed)endRound(room,socket.id,`${shooter.name} 처치 성공`,{victimId:hit.id,skinId:shooter.equippedSkins?.[shooter.weapon]||null});
     } catch (error) {
       console.error('[NEON STRIKE] fire handler error:', error?.stack || error);
       socket.emit('roomMessage',{message:'사격 처리 중 오류가 발생했습니다. 연결은 유지됩니다.'});
@@ -1072,7 +1159,7 @@ io.on('connection', socket => {
   });
   socket.on('nextRound',()=>{
     const room=rooms.get(socket.data.roomCode);
-    if(!room||room.players.size!==2||[...room.players.values()].some(p=>p.connected===false)||room.phase!=='ended')return;
+    if(!room||!roomIsReady(room)||room.phase!=='ended')return;
     if([...room.players.values()].some(p=>p.score>=WINS_TO_MATCH))return;
     if(room.timer)clearTimeout(room.timer);
     room.timer=null;
@@ -1087,7 +1174,7 @@ io.on('connection', socket => {
   });
   if(socket.recovered&&socket.data.roomCode){
     const room=rooms.get(socket.data.roomCode);const p=room?.players.get(socket.id);
-    if(p){p.connected=true;if(p.reconnectTimer)clearTimeout(p.reconnectTimer);p.reconnectTimer=null;socket.join(room.code);if(room.players.size===2&&[...room.players.values()].every(candidate=>candidate.connected!==false))restoreRoomPhaseAfterDisconnect(room);socket.emit('roomResumed',{code:room.code,map:room.map,rule:room.rule,phase:room.phase,round:room.round});if(room.players.size===2&&[...room.players.values()].every(candidate=>candidate.connected!==false)){if(room.phase==='waiting')emitRoomLobby(room);else if(room.phase==='ended'||room.phase==='matchover'){for(const [pid,player] of room.players)io.to(pid).emit('roundResult',{winnerId:room.lastWinnerId??null,reason:room.lastReason||'라운드 종료',scores:Object.fromEntries([...room.players.entries()].map(([key,value])=>[key,value.score])),selfMoney:player.money,reward:0,matchOver:room.phase==='matchover',round:room.round,nextRoundInMs:0});}else emitState(room);}}
+    if(p){p.connected=true;if(p.reconnectTimer)clearTimeout(p.reconnectTimer);p.reconnectTimer=null;socket.join(room.code);if(room.phase!=='waiting'&&room.players.size===roomRequiredPlayers(room)&&[...room.players.values()].every(candidate=>candidate.connected!==false))restoreRoomPhaseAfterDisconnect(room);if(room.phase==='waiting')emitRoomLobby(room);socket.emit('roomResumed',{code:room.code,map:room.map,rule:room.rule,mode:room.mode,teamMode:room.teamMode,phase:room.phase,round:room.round});if(room.phase!=='waiting'&&room.players.size===roomRequiredPlayers(room)&&[...room.players.values()].every(candidate=>candidate.connected!==false)){if(room.phase==='waiting')emitRoomLobby(room);else if(room.phase==='ended'||room.phase==='matchover'){for(const [pid,player] of room.players)io.to(pid).emit('roundResult',{winnerId:room.lastWinnerId??null,reason:room.lastReason||'라운드 종료',scores:roomScoreSnapshot(room),teamScores:room.teamScores||null,winnerTeam:room.lastWinnerTeam||null,selfMoney:player.money,reward:0,matchOver:room.phase==='matchover',round:room.round,nextRoundInMs:0});}else emitState(room);}}
   }
 });
 
