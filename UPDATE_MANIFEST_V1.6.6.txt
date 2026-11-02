@@ -1,0 +1,11 @@
+NEON STRIKE v1.6.6 UPDATE ONLY
+
+Changed files:
+- package.json
+- server/index.js
+- src/main.js
+- src/style.css
+- public/sw.js
+- UPDATE_V1.6.6_KO.md
+
+This is a patch archive, not a full project. Overlay the included files onto the existing v1.6.5 project. Do not delete public/models.
