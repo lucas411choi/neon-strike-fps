@@ -45,7 +45,7 @@ const state = {
   keys:new Set(), touchMove:{x:0,y:0}, canJump:true,
   lastShot:0, reloading:false, reloadUntil:0, lastFrame:performance.now(), fpsFrames:0, fpsStamp:0, recoilPitch:0,
   phaseEnd:0, roundLimit:0, botList:[], trainingTargets:[], remotePlayers:new Map(), shotFx:[], muzzleUntil:0,
-  roomCode:'', socket:null, socketReady:false, paused:false, resultShown:false,
+  roomCode:'', roomLobbyData:null, socket:null, socketReady:false, paused:false, resultShown:false,
   buyPrimaryThisRound:false, armorPurchased:false, matchOver:false, botFireTimers:[],
   pointerLocked:false, mobileLook:null, audio:null, noiseBuffer:null, currentToastTimer:0, zoomed:false, baseFov:76, localNextRoundTimer:null,
   fireHeld:false, sniperMustRelease:false, lastEmptyToast:0, recoilHeat:0, viewKick:0, walkCycle:0, walkIntensity:0, footstepAccumulator:0, lastFootstepSound:0,
@@ -316,6 +316,15 @@ let skinPreviewDragging = false;
 let skinPreviewPointer = { id: null, x: 0, y: 0 };
 function getAuthToken(){return state.authToken||'';}
 function accountMessage(id,message,type=''){const el=$(id);if(!el)return;el.textContent=message||'';el.classList.toggle('error',type==='error');el.classList.toggle('success',type==='success');}
+async function saveAccountCosmetics(){
+  if(!state.account||!getAuthToken()){accountMessage('account-profile-message','로그인 후 저장할 수 있습니다.','error');return;}
+  const button=$('account-cosmetics-save');if(button)button.disabled=true;
+  try{
+    const response=await fetch('/api/account/cosmetics',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${getAuthToken()}`,'Cache-Control':'no-cache'},cache:'no-store',body:JSON.stringify({profileId:$('account-profile-select')?.value||'default',nameColor:$('account-name-color-select')?.value||'default'})});
+    const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||'프로필 설정을 저장하지 못했습니다.');
+    if(data.account){state.account=data.account;renderAccountPanel();}accountMessage('account-profile-message','프로필과 이름 색상이 계정에 저장되었습니다.','success');
+  }catch(error){accountMessage('account-profile-message',error.message,'error');}finally{if(button)button.disabled=false;}
+}
 function renderAccountPanel(){
   const loggedIn=!!state.account;
   $('account-auth-panel')?.classList.toggle('hidden',loggedIn);
@@ -327,6 +336,10 @@ function renderAccountPanel(){
   if(!loggedIn)return;
   const account=state.account,level=Math.max(1,Number(account.level)||1),xp=Math.max(0,Number(account.xp)||0),needed=level*XP_PER_LEVEL;
   $('account-profile-name').textContent=account.username;
+  const avatar=$('account-avatar');if(avatar){avatar.textContent=account.profileId==='pumpkin'?'🎃':'NS';avatar.classList.toggle('pumpkin-avatar',account.profileId==='pumpkin');}
+  const displayName=$('account-profile-name');if(displayName)displayName.style.color=account.nameColor==='orange'?'#ff963b':'';
+  const profileSelect=$('account-profile-select');if(profileSelect){profileSelect.value=account.ownedProfiles?.includes(account.profileId)?account.profileId:'default';for(const option of profileSelect.options)if(option.value==='pumpkin')option.disabled=!(account.ownedProfiles||[]).includes('pumpkin');}
+  const colorSelect=$('account-name-color-select');if(colorSelect){colorSelect.value=account.ownedNameColors?.includes(account.nameColor)?account.nameColor:'default';for(const option of colorSelect.options)if(option.value==='orange')option.disabled=!(account.ownedNameColors||[]).includes('orange');}
   $('account-level').textContent=`LV. ${level}`;
   $('account-xp').textContent=`${xp} / ${needed} XP`;
   $('account-next-level').textContent=`다음 레벨까지 ${Math.max(0,needed-xp)} XP`;
@@ -442,18 +455,13 @@ function renderStoreCurrentPage(){
 }
 function renderShopPage(){
   const bundles=$('store-bundle-grid'),daily=$('store-daily-grid');if(!bundles||!daily)return;
-  const owned=new Set(Array.isArray(state.account?.ownedSkins)?state.account.ownedSkins:[]);const loggedIn=!!state.account&&!!getAuthToken();
-  const rollButton=$('store-roll-button');
-  const allSkinsOwned=STORE_SKINS.every(skin=>owned.has(skin.id));
-  const hasRollPoints=(Number(state.account?.neonPoints)||0)>=STORE_ROLL_COST;
-  if(rollButton){rollButton.disabled=!loggedIn||allSkinsOwned||!hasRollPoints||gachaRequestBusy;rollButton.innerHTML=allSkinsOwned?'모든 스킨 보유 완료':!loggedIn?'로그인 후 뽑기':'보급 상자 뽑기 <span>↗</span>';}
-  const rollStatus=$('store-roll-status');
-  if(rollStatus){rollStatus.textContent=allSkinsOwned?'현재 모든 스킨을 모두 보유하고 있습니다.':!loggedIn?'로그인 후 보급 상자를 이용할 수 있습니다.':!hasRollPoints?`뽑기에 ${STORE_ROLL_COST} NP가 필요합니다.`:'미보유 스킨 중 하나가 무작위로 지급됩니다.';}
+  const owned=new Set(state.account?.ownedSkins||[]);const loggedIn=!!state.account&&!!getAuthToken();
   bundles.innerHTML=STORE_BUNDLES.map((bundle,index)=>{
-    const alreadyOwned=bundle.skinIds.every(id=>owned.has(id));
-    const count=bundle.skinIds.filter(id=>!owned.has(id)).length;
-    const ownedCount=bundle.skinIds.length-count;const price=Math.max(0,bundle.price-ownedCount*60);
-    return `<article class="store-bundle-card bundle-${bundle.theme} ${index===0?'bundle-featured':''}"><div class="bundle-ribbon">${index===0?'FEATURED LIMITED BUNDLE':'LIMITED DROP'}</div><div class="bundle-visual">${bundle.skinIds.slice(0,index===0?4:3).map(id=>{const skin=getStoreSkin(id);return `<span class="bundle-mini theme-${skin?.theme||'classic'}">${skin?.weaponId==='knife'?'◈':skin?.weaponId==='sniper'?'⌁':'▰'}</span>`;}).join('')}</div><div class="bundle-copy"><small>${bundle.name}</small><h3>${bundle.displayName}</h3><p>${bundle.description}</p><div class="bundle-price">${ownedCount?`<del>${bundle.price.toLocaleString('en-US')}</del> `:''}${price.toLocaleString('en-US')} <span>NP</span>${ownedCount?` <small>보유 스킨 ${ownedCount}개 · -${(ownedCount*60).toLocaleString('en-US')} NP</small>`:''}</div><button class="store-primary-button" data-bundle-purchase="${bundle.id}" ${!loggedIn||alreadyOwned?'disabled':''}>${alreadyOwned?'전부 보유 중':`번들 구매 · ${count}개 획득`} <span>↗</span></button></div></article>`;
+    const ownedProfiles=state.account?.ownedProfiles||['default'];const ownedColors=state.account?.ownedNameColors||['default'];
+    const missingSkins=bundle.skinIds.filter(id=>!owned.has(id));const missingProfiles=(bundle.profileIds||[]).filter(id=>!ownedProfiles.includes(id));const missingColors=(bundle.nameColorIds||[]).filter(id=>!ownedColors.includes(id));
+    const alreadyOwned=!missingSkins.length&&!missingProfiles.length&&!missingColors.length;const ownedCount=bundle.skinIds.length-missingSkins.length;const price=Math.max(0,bundle.price-ownedCount*60);
+    const art=[...bundle.skinIds.slice(0,4).map(id=>{const skin=getStoreSkin(id);return `<span class="bundle-mini theme-${skin?.theme||'classic'}">${skin?.weaponId==='knife'?'◈':skin?.weaponId==='sniper'?'⌁':'▰'}</span>`;}),'<span class="bundle-mini pumpkin-mini">🎃</span>'].join('');
+    return `<article class="store-bundle-card bundle-${bundle.theme} bundle-featured halloween-bundle-feature"><div class="bundle-ribbon">FEATURED LIMITED BUNDLE</div><div class="bundle-visual">${art}</div><div class="bundle-copy"><small>${bundle.name}</small><h3>${bundle.displayName}</h3><p>${bundle.description}</p><div class="bundle-extras"><span class="bundle-extra">🎃 호박 프로필</span><span class="bundle-extra orange-extra">▰ 주황색 이름 색상</span></div><div class="bundle-price">${ownedCount?`<del>${bundle.price.toLocaleString('en-US')}</del> `:''}${price.toLocaleString('en-US')} <span>NP</span>${ownedCount?` <small>보유 스킨 ${ownedCount}개 · -${(ownedCount*60).toLocaleString('en-US')} NP</small>`:''}</div><button class="store-primary-button" data-bundle-purchase="${bundle.id}" ${!loggedIn||alreadyOwned?'disabled':''}>${alreadyOwned?'모든 구성품 보유 중':`번들 구매 · 스킨 ${missingSkins.length}종 + 프로필 꾸미기`} <span>↗</span></button></div></article>`;
   }).join('');
   const dailyIds=storeState.dailySkinIds||[];
   daily.innerHTML=dailyIds.length?dailyIds.map(id=>{
@@ -461,7 +469,11 @@ function renderShopPage(){
     const has=owned.has(skin.id);
     return `<article class="daily-skin-card rarity-${skin.rarity}">${skinPreviewMarkup(skin)}<div class="daily-skin-copy"><small>${skin.rarity.toUpperCase()} · ${skin.weaponId.toUpperCase()}</small><b>${skin.displayName}</b><span>${skin.price} NP</span><button data-daily-purchase="${skin.id}" ${!loggedIn||has?'disabled':''}>${has?'보유 중':'구매하기'}</button></div></article>`;
   }).join(''):'<div class="store-empty-message">로그인하면 오늘의 스킨 3종을 불러옵니다.</div>';
-  if(!loggedIn)setStoreFeedback('계정에 로그인해야 번들 구매, 스킨 뽑기, 코드 사용이 가능합니다.');
+  const allSkinsOwned=STORE_SKINS.every(skin=>owned.has(skin.id));
+  const rollButton=$('store-roll-button');
+  if(rollButton){rollButton.disabled=!loggedIn||allSkinsOwned;rollButton.innerHTML=allSkinsOwned?'모든 스킨 보유 완료':'보급 상자 뽑기 <span>↗</span>';}
+  if(allSkinsOwned)setStoreFeedback('현재 모든 스킨을 모두 보유하고 있습니다.','success');
+  else if(!loggedIn)setStoreFeedback('계정에 로그인해야 번들 구매, 스킨 뽑기, 코드 사용이 가능합니다.');
 }
 function renderOwnedSkins(){
   const weaponPanel=$('skins-weapon-select-panel'), detailPanel=$('skins-detail-panel');
@@ -523,7 +535,7 @@ function renderQuestPanel(){
 }
 async function buyStoreProduct(productType,productId){
   if(storeBusy)return;if(!storeAuthRequired())return;storeBusy=true;
-  try{const data=await storeRequest('/api/store/buy',{productType,productId});setStoreFeedback(`${data.productName} 구매 완료 · ${data.cost} NP 사용`,'success');showToast(`${data.purchasedSkinIds.length}개 스킨을 획득했습니다.`,1900);renderStoreCurrentPage();}
+  try{const data=await storeRequest('/api/store/buy',{productType,productId});setStoreFeedback(`${data.productName} 구매 완료 · ${data.cost} NP 사용`,'success');const rewards=[`${(data.purchasedSkinIds||[]).length}개 스킨`,...(data.purchasedProfileIds||[]).map(()=> '호박 프로필'),...(data.purchasedNameColorIds||[]).map(()=> '주황색 이름')].join(' · ');showToast(`${rewards} 획득`,2400);renderStoreCurrentPage();}
   catch(error){setStoreFeedback(error.message,'error');showToast(error.message,2200);}
   finally{storeBusy=false;}
 }
@@ -542,8 +554,7 @@ async function equipOwnedSkin(skinId,weaponId=null){
 const delay = ms => new Promise(resolve=>setTimeout(resolve,ms));
 async function rollStoreSkin(){
   if(gachaRequestBusy)return;if(!storeAuthRequired())return;
-  const ownedNow=new Set(Array.isArray(state.account?.ownedSkins)?state.account.ownedSkins:[]);
-  if(STORE_SKINS.every(skin=>ownedNow.has(skin.id))){showToast('현재 모든 스킨을 모두 보유하고 있습니다.',2200);renderStoreCurrentPage();return;}
+  if(STORE_SKINS.every(skin=>(state.account?.ownedSkins||[]).includes(skin.id))){setStoreFeedback('현재 모든 스킨을 모두 보유하고 있습니다.','success');renderShopPage();return;}
   if((Number(state.account?.neonPoints)||0)<STORE_ROLL_COST){showToast(`네온 포인트 ${STORE_ROLL_COST} NP가 필요합니다.`);return;}
   gachaRequestBusy=true;const overlay=$('gacha-overlay'),stage=$('gacha-stage'),finish=$('gacha-finish');
   overlay.classList.remove('hidden');stage.classList.remove('revealed');stage.classList.add('playing');overlay.classList.add('playing');finish.disabled=true;finish.textContent='신호 전송 중…';$('gacha-phase-label').textContent='지구에서 보급 신호를 전송합니다';$('gacha-title').textContent='보급 신호를 기다리는 중';$('gacha-copy').textContent='궤도 수송선이 신호를 수신하고 보급 상자를 투하합니다.';$('gacha-reveal-card').classList.add('hidden');
@@ -552,10 +563,9 @@ async function rollStoreSkin(){
     await delay(900);$('gacha-phase-label').textContent='궤도 수송선이 신호를 수신했습니다';
     await delay(1500);$('gacha-phase-label').textContent='보급 상자 대기권 진입';
     await delay(1550);const data=await pending;await refreshStoreState({silent:true});
-    const returnedSkinId=data.skinId||data.skin?.id||data.result?.skinId||data.reward?.skinId||'';
-    const rewardSkin=getStoreSkin(returnedSkinId)||(data.skin&&typeof data.skin==='object'?data.skin:null);
-    if(!rewardSkin?.id)throw new Error('서버가 보급 스킨 정보를 돌려주지 않았습니다. 서버의 server/index.js도 함께 업데이트한 뒤 다시 시도하세요.');
-    stage.classList.remove('playing');stage.classList.add('revealed');const card=$('gacha-reveal-card');card.classList.remove('hidden');card.className=`gacha-reveal-card rarity-${rewardSkin.rarity||'normal'}`;card.innerHTML=`${skinPreviewMarkup(rewardSkin)}<small>${String(rewardSkin.rarity||'normal').toUpperCase()} DROP</small><b>${rewardSkin.displayName||rewardSkin.name||'보급 스킨'}</b><p>${rewardSkin.description||'신규 스킨을 획득했습니다.'}</p>`;
+    const awarded=getStoreSkin(data?.skin?.id||data?.skinId)||data?.skin;
+    if(!awarded?.id||!awarded?.rarity)throw new Error('서버가 보급 스킨 정보를 올바르게 반환하지 않았습니다. 서버 파일도 함께 배포했는지 확인하세요.');
+    stage.classList.remove('playing');stage.classList.add('revealed');const card=$('gacha-reveal-card');card.classList.remove('hidden');card.className=`gacha-reveal-card rarity-${awarded.rarity}`;card.innerHTML=`${skinPreviewMarkup(awarded)}<small>${String(awarded.rarity).toUpperCase()} DROP</small><b>${awarded.displayName}</b><p>${awarded.description}</p>`;
     $('gacha-phase-label').textContent='보급품 확보 완료';$('gacha-title').textContent='스킨을 획득했습니다!';$('gacha-copy').textContent='획득한 스킨은 계정에 저장되었습니다. 스킨 메뉴에서 장착할 수 있습니다.';finish.disabled=false;finish.textContent='확인';renderStoreCurrentPage();
   }catch(error){stage.classList.remove('playing');$('gacha-title').textContent='보급 요청 실패';$('gacha-copy').textContent=error.message;finish.disabled=false;finish.textContent='닫기';}
   finally{gachaRequestBusy=false;}
@@ -593,7 +603,7 @@ const SKIN_MODEL_CONFIG = {
   classic_shotgun:{weaponId:'shotgun',url:'/models/skins/classic-shotgun.glb',scale:.30,remoteScale:.19,authored:true},
   classic_rifle:{weaponId:'rifle',url:'/models/skins/classic-rifle.glb',scale:.28,remoteScale:.18,authored:true},
   classic_dmr:{weaponId:'dmr',url:'/models/skins/classic-dmr.glb',scale:.27,remoteScale:.17,authored:true},
-  classic_sniper:{weaponId:'sniper',url:'/models/skins/classic-sniper.glb',scale:.31,remoteScale:.17,authored:true},
+  classic_sniper:{weaponId:'sniper',url:'/models/skins/classic-sniper.glb',scale:.23,remoteScale:.15,authored:true},
   classic_lmg:{weaponId:'lmg',url:'/models/skins/classic-lmg.glb',scale:.26,remoteScale:.17,authored:true},
   classic_burst:{weaponId:'burst',url:'/models/skins/classic-burst.glb',scale:.29,remoteScale:.18,authored:true},
   classic_knife:{weaponId:'knife',url:'/models/skins/classic-knife.glb',scale:.43,remoteScale:.23,authored:true},
@@ -601,7 +611,7 @@ const SKIN_MODEL_CONFIG = {
   halloween_dmr:{weaponId:'dmr',url:'/models/skins/halloween-dmr.glb',scale:.27,remoteScale:.17,authored:true},
   halloween_lmg:{weaponId:'lmg',url:'/models/skins/halloween-lmg.glb',scale:.26,remoteScale:.17,authored:true},
   prime_knife:{weaponId:'knife',url:'/models/skins/prime1-karambit.glb',scale:.43,remoteScale:.23,inspect:'karambit-spin',authored:true},
-  prime_sniper:{weaponId:'sniper',url:'/models/skins/prime1-sniper.glb',scale:.36,remoteScale:.185,inspect:'sniper-present',authored:true},
+  prime_sniper:{weaponId:'sniper',url:'/models/skins/prime1-sniper.glb',scale:.23,remoteScale:.15,inspect:'sniper-present',authored:true},
 };
 function getWeaponModelSource(weaponId, skinId = null) {
   return (skinId && skinWeaponModelSources.get(skinId)) || weaponModelSources.get(weaponId) || null;
@@ -613,7 +623,7 @@ const WEAPON_MODEL_CONFIG = {
   shotgun:  { scale: .30, remoteScale: .19, offset: [.32, -.23, -.58] },
   rifle:    { scale: .28, remoteScale: .18, offset: [.32, -.23, -.58] },
   dmr:      { scale: .27, remoteScale: .17, offset: [.32, -.23, -.58] },
-  sniper:   { scale: .31, remoteScale: .17, offset: [.34, -.245, -.68] },
+  sniper:   { scale: .23, remoteScale: .15, offset: [.32, -.23, -.58] },
   lmg:      { scale: .26, remoteScale: .17, offset: [.32, -.23, -.58] },
   burst:    { scale: .29, remoteScale: .18, offset: [.32, -.23, -.58] },
   knife:    { scale: .43, remoteScale: .23, offset: [.32, -.27, -.60] },
@@ -891,27 +901,6 @@ function applyCustomWeaponModel(weaponId) {
     model.position.set(...config.offset);
     gunRoot.add(model);
   }
-  if (equippedSkinId === 'prime_sniper') {
-    model.userData.inspectBasePosition = model.position.clone();
-    model.userData.inspectBaseRotation = model.rotation.clone();
-    const oldHalo = gunRoot.userData.primeSniperHalo;
-    if (oldHalo) {
-      oldHalo.parent?.remove(oldHalo);
-      oldHalo.traverse(o => { o.geometry?.dispose(); if (Array.isArray(o.material)) o.material.forEach(m=>m.dispose()); else o.material?.dispose(); });
-    }
-    const halo = new THREE.Group();
-    halo.name = 'PRIME1_SNIPER_INSPECT_HALO';
-    const haloGold = new THREE.MeshBasicMaterial({ color:0xffd36b, transparent:true, opacity:.82, depthWrite:false, blending:THREE.AdditiveBlending });
-    const haloWhite = new THREE.MeshBasicMaterial({ color:0xfff4c4, transparent:true, opacity:.66, depthWrite:false, blending:THREE.AdditiveBlending });
-    const ringA = new THREE.Mesh(new THREE.TorusGeometry(.48,.009,8,64),haloGold);
-    const ringB = new THREE.Mesh(new THREE.TorusGeometry(.62,.006,8,64),haloWhite);
-    ringA.rotation.set(.55,.30,.18); ringB.rotation.set(-.72,.15,-.38);
-    halo.add(ringA,ringB);
-    const glow = new THREE.PointLight(0xffd36b, 5.5, 2.8, 2);
-    glow.position.set(0,.10,.10); halo.add(glow);
-    halo.position.copy(model.position); halo.visible=false;
-    gunRoot.add(halo); gunRoot.userData.primeSniperHalo=halo;
-  }
   applyWeaponSkinVisual(model, equippedSkinId, weaponId);
   const magazineNodes = [];
   model.traverse(object => {
@@ -1102,13 +1091,6 @@ function buildGun(id) {
     leftHand=box(.20,-.355,-.63,.14,.09,.17,gloveMat);
   }else if(w.slot==='sidearm'){
     leftSleeve=box(-.02,-.57,-.34,.14,.18,.22,sleeveMat);leftHand=box(.115,-.45,-.53,.13,.09,.14,gloveMat);leftSleeve.visible=false;leftHand.visible=false;
-  }
-  if(id==='sniper'&&leftSleeve&&leftHand){
-    // Sniper support grip is moved under the forward handguard; keep exactly one support hand and one trigger hand.
-    leftSleeve.position.set(.055,-.515,-.635);
-    leftHand.position.set(.205,-.405,-.875);
-    rightSleeve.position.set(.435,-.475,-.245);
-    rightHand.position.set(.365,-.365,-.515);
   }
   let reloadMagazine=null,reloadInsertMagazine=null;
   if(w.slot!=='melee'){
@@ -1397,7 +1379,7 @@ function setModeUI(){menu.classList.add('hidden');hud.classList.remove('hidden')
 function backToMenu(){
   state.fireHeld=false;state.sniperMustRelease=false;
   if(state.localNextRoundTimer){clearTimeout(state.localNextRoundTimer);state.localNextRoundTimer=null;}
-  setZoom(false);state.mode='menu';state.phase='menu';state.paused=false;state.keys.clear();state.roomCode='';
+  setZoom(false);state.mode='menu';state.phase='menu';state.paused=false;state.keys.clear();state.roomCode='';state.roomLobbyData=null;
   if(document.pointerLockElement)document.exitPointerLock();
   if(state.socket){state.socket.emit('leaveRoom');state.socket.disconnect();state.socket=null;state.socketReady=false;}
   clearRemotePlayers();clearBots();menu.classList.remove('hidden');hud.classList.add('hidden');buyMenu.classList.add('hidden');pauseMenu.classList.add('hidden');endScreen.classList.add('hidden');touchControls.classList.add('hidden');$('training-weapon-button')?.classList.add('hidden');
@@ -1918,17 +1900,17 @@ function handleOnlineRoundResult(data){
 
 function beginOnline(){
   if((state.rule==='pc'&&state.device!=='pc')||(state.rule==='mobile'&&state.device!=='mobile')){showToast(state.rule==='pc'?'PC끼리 모드는 PC를 선택하세요.':'모바일끼리 모드는 모바일을 선택하세요.');return;}
-  initAudio();state.mode='online';state.name=($('player-name').value.trim()||'PLAYER').slice(0,16);state.money=450;state.hp=100;state.armor=0;state.armorTier='none';state.selfScore=0;state.enemyScore=0;state.round=0;state.currentWeapon='pistol';state.owned=new Set(['pistol','knife']);state.ammo={};for(const w of WEAPONS)state.ammo[w.id]={mag:w.mag,reserve:w.reserve};state.pos.set(0,0,27);state.yaw=Math.PI;state.pitch=0;state.buyPrimaryThisRound=false;state.phase='waiting';state.roomCode='';clearBots();clearRemotePlayers();clearTrainingTargets();resetKillCam();setModeUI();$('phase-label').textContent='CONNECTING';$('objective-label').textContent='WAITING FOR OPPONENT';updateHUD();
-  const socket=io({transports:['websocket','polling'],tryAllTransports:true,upgrade:true,reconnection:true,reconnectionAttempts:Infinity,reconnectionDelay:500,reconnectionDelayMax:4000,timeout:20000});state.socket=socket;let connectCount=0;
+  initAudio();state.mode='online';state.name=($('player-name').value.trim()||'PLAYER').slice(0,16);state.money=450;state.hp=100;state.armor=0;state.armorTier='none';state.selfScore=0;state.enemyScore=0;state.round=0;state.currentWeapon='pistol';state.owned=new Set(['pistol','knife']);state.ammo={};for(const w of WEAPONS)state.ammo[w.id]={mag:w.mag,reserve:w.reserve};state.pos.set(0,0,27);state.yaw=Math.PI;state.pitch=0;state.buyPrimaryThisRound=false;state.phase='waiting';state.roomCode='';state.roomLobbyData=null;clearBots();clearRemotePlayers();clearTrainingTargets();resetKillCam();setModeUI();$('phase-label').textContent='CONNECTING';$('objective-label').textContent='WAITING FOR OPPONENT';updateHUD();
+  const socket=io({transports:['websocket','polling'],tryAllTransports:true,upgrade:true,reconnection:true,reconnectionAttempts:Infinity,reconnectionDelay:500,reconnectionDelayMax:4000,timeout:20000});state.socket=socket;let connectCount=0;registerRoomLobbySocket(socket);
   socket.on('connect',()=>{const reconnect=connectCount++>0;state.socketReady=true;updateHUD();if(reconnect&&!socket.recovered&&state.roomCode)socket.emit('resumeRoom',{code:state.roomCode,sessionId:CLIENT_SESSION_ID});});
   socket.on('disconnect',reason=>{state.socketReady=false;updateHUD();if(state.mode==='online'&&reason!=='io client disconnect')showToast('온라인 연결을 복구하는 중입니다…',2600);});
   socket.on('connect_error',()=>{state.socketReady=false;updateHUD();setMenuStatus('온라인 서버에 연결할 수 없습니다. 서버가 배포되어 있는지 확인하세요.');showToast('온라인 서버 연결 실패. 공개 배포 주소에서 접속했는지 확인하세요.',3200);});
   socket.on('roomCreated',data=>{if(data.map&&state.mapId!==data.map)buildMap(data.map);state.roomCode=data.code;state.phase='waiting';$('phase-label').textContent='WAITING';$('objective-label').textContent='WAITING FOR OPPONENT';showToast(`방 생성 완료 · 코드 ${data.code} · 친구에게 코드 공유`,4000);showRoomWait(data.code);updateHUD();});
   socket.on('roomJoined',data=>{if(data.map&&state.mapId!==data.map)buildMap(data.map);state.roomCode=data.code;showRoomWait(data.code);});
-  socket.on('roomResumed',data=>{if(data.map&&state.mapId!==data.map)buildMap(data.map);state.roomCode=data.code;hideRoomWait();showToast('온라인 연결이 복구됐습니다.',1800);updateHUD();});
+  socket.on('roomResumed',data=>{if(data.map&&state.mapId!==data.map)buildMap(data.map);state.roomCode=data.code;if(data.phase==='waiting'){state.roomLobbyData=null;showRoomWait(data.code);}else hideRoomWait();showToast('온라인 연결이 복구됐습니다.',1800);updateHUD();});
   socket.on('killCamStart',data=>beginKillCam(data));
   socket.on('roomError',data=>{showToast(data.message||'방에 참가하지 못했습니다.',3200);state.phase='waiting';});
-  socket.on('playerJoined',data=>{updateRemotePlayer(data.id,data.player);hideRoomWait();showToast(`${data.player.name||'상대'} 접속 · 라운드 준비`,2000);});
+  socket.on('playerJoined',data=>{updateRemotePlayer(data.id,data.player);showToast(`${data.player.name||'상대'} 참가 완료`,1500);});
   socket.on('playerLeft',data=>{const r=state.remotePlayers.get(data.id);if(r){unregisterTarget(data.id);disposeGroup(r.root);state.remotePlayers.delete(data.id);}showToast('상대 플레이어 연결이 종료됐습니다.',3000);state.phase='waiting';$('phase-label').textContent='WAITING';});
   socket.on('playersSnapshot',data=>{for(const [id,p] of Object.entries(data||{}))updateRemotePlayer(id,p);});
   socket.on('playerMoved',data=>updateRemotePlayer(data.id,data));
@@ -1948,15 +1930,61 @@ function beginOnline(){
   socket.on('accountUpdated',applyAccountUpdated);
   socket.emit('createRoom',{name:state.name,device:state.device,rule:state.rule,map:state.selectedMap,sessionId:CLIENT_SESSION_ID,authToken:getAuthToken()});
   }
-function showRoomWait(code){let panel=$('room-wait');if(!panel){panel=document.createElement('div');panel.id='room-wait';panel.className='room-wait';panel.innerHTML='<div class="room-wait-card"><small>PRIVATE MATCH / INVITE</small><h3>친구를 기다리는 중</h3><p>아래 6자리 코드를 친구에게 공유하세요.</p><strong id="wait-code">------</strong><button id="copy-room-code" class="solid-button">방 코드 복사</button><button id="cancel-room-wait" class="outline-button full-button">메인 메뉴로</button></div>';document.body.append(panel);$('copy-room-code').addEventListener('click',()=>navigator.clipboard?.writeText(state.roomCode).then(()=>showToast('방 코드를 복사했습니다.')).catch(()=>showToast(`방 코드: ${state.roomCode}`)));$('cancel-room-wait').addEventListener('click',backToMenu);}
-  $('wait-code').textContent=code||'------';panel.classList.remove('hidden');}
+function escapeRoomText(value){return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
+function renderRoomLobby(data){
+  state.roomLobbyData=data||state.roomLobbyData;if(!state.roomLobbyData)return;
+  const info=state.roomLobbyData,panel=$('room-wait');if(!panel)return;
+  const isHost=info.hostId===state.socket?.id;const players=Array.isArray(info.players)?info.players:[];
+  const playerCard=(player,emptyLabel)=>{
+    if(!player)return `<div class="room-player-empty">${emptyLabel}</div>`;
+    const avatar=player.profileId==='pumpkin'?'🎃':'NS';const color=player.nameColor==='orange'?'#ff963b':'#edf6ff';
+    return `<div class="room-player"><div class="room-player-avatar ${player.profileId==='pumpkin'?'pumpkin-avatar':''}">${avatar}</div><div class="room-player-copy"><b style="color:${color}">${escapeRoomText(player.name||'PLAYER')}</b><small>LV. ${Math.max(1,Number(player.level)||1)} · ${player.connected===false?'연결 복구 중':'ONLINE'}</small></div></div>`;
+  };
+  const modeNames={classic:'클래식 모드',unlimited:'무제한 크레딧 모드',knife:'나이프 모드'};const mapNames={arena:'아레나',palace:'경복궁',city:'시티'};
+  const me=players.find(player=>player.id===state.socket?.id);const opponent=players.find(player=>player.id!==state.socket?.id);
+  const first=players.find(player=>player.id===info.hostId)||players[0]||null;const second=players.find(player=>player.id!==first?.id)||null;
+  panel.innerHTML=`<div class="room-lobby-card">
+    <div class="room-lobby-top"><div><small>NEON STRIKE / PRIVATE 1 VS 1</small><h3>${isHost?'방 설정 및 팀 확인':'대전 대기실'}</h3><p class="room-lobby-copy">${players.length<2?'친구가 참가하면 양 팀을 확인하고 방장이 게임을 시작할 수 있습니다.':'팀 배치가 완료됐습니다. 방장이 설정을 확인한 뒤 게임을 시작합니다.'}</p></div><div class="room-lobby-code">${escapeRoomText(info.code||state.roomCode)}</div></div>
+    <div class="room-lobby-settings"><div class="room-lobby-setting"><label for="room-mode-select">GAME MODE ${isHost?'· HOST ONLY':'· 방장 설정'}</label><select id="room-mode-select" data-room-setting="mode" ${isHost?'':'disabled'}><option value="classic" ${info.mode==='classic'?'selected':''}>클래식 모드 (현재 방식)</option><option value="unlimited" ${info.mode==='unlimited'?'selected':''}>무제한 크레딧 모드</option><option value="knife" ${info.mode==='knife'?'selected':''}>나이프 모드</option></select></div>
+    <div class="room-lobby-setting"><label for="room-map-select">MAP ${isHost?'· HOST ONLY':'· 방장 설정'}</label><select id="room-map-select" data-room-setting="map" ${isHost?'':'disabled'}><option value="arena" ${info.map==='arena'?'selected':''}>아레나</option><option value="palace" ${info.map==='palace'?'selected':''}>경복궁</option><option value="city" ${info.map==='city'?'selected':''}>시티</option></select></div></div>
+    <div class="room-lobby-teams"><section class="room-team red"><div class="room-team-head"><span>RED TEAM</span><small>${first?'PLAYER 1':'WAITING'}</small></div>${playerCard(first,'방장 참가 대기')}</section><section class="room-team blue"><div class="room-team-head"><span>BLUE TEAM</span><small>${second?'PLAYER 2':'WAITING'}</small></div>${playerCard(second,'상대 참가 대기')}</section></div>
+    <p class="room-lobby-note">선택 모드: ${modeNames[info.mode]||modeNames.classic} · 선택 맵: ${mapNames[info.map]||mapNames.arena} · ${isHost?'방장만 모드와 맵을 변경할 수 있습니다.':'방장이 설정을 변경하고 시작합니다.'}</p>
+    <div class="room-lobby-actions"><button id="copy-room-code" class="outline-button">방 코드 복사</button>${isHost?`<button id="start-room-match" class="solid-button" ${players.length!==2?'disabled':''}>게임 시작</button>`:'<button class="solid-button" disabled>방장 시작 대기 중</button>'}<button id="cancel-room-wait" class="outline-button">나가기</button></div>
+  </div>`;
+  panel.classList.remove('hidden');
+}
+function bindRoomLobbyControls(panel){
+  if(panel.dataset.bound==='1')return;panel.dataset.bound='1';
+  panel.addEventListener('change',event=>{
+    const control=event.target.closest('[data-room-setting]');if(!control||!state.socketReady||!state.roomLobbyData||state.roomLobbyData.hostId!==state.socket?.id)return;
+    const mode=panel.querySelector('[data-room-setting=mode]')?.value||state.roomLobbyData.mode||'classic';const map=panel.querySelector('[data-room-setting=map]')?.value||state.roomLobbyData.map||'arena';
+    state.socket.emit('updateRoomSettings',{mode,map});
+  });
+  panel.addEventListener('click',event=>{
+    if(event.target.closest('#copy-room-code'))navigator.clipboard?.writeText(state.roomCode).then(()=>showToast('방 코드를 복사했습니다.')).catch(()=>showToast(`방 코드: ${state.roomCode}`));
+    if(event.target.closest('#cancel-room-wait'))backToMenu();
+    if(event.target.closest('#start-room-match')){if(state.roomLobbyData?.hostId!==state.socket?.id){showToast('방장만 게임을 시작할 수 있습니다.');return;}if((state.roomLobbyData?.players||[]).length!==2){showToast('상대가 참가할 때까지 기다리세요.');return;}event.target.closest('#start-room-match').disabled=true;state.socket.emit('startMatch');}
+  });
+}
+function showRoomWait(code){
+  let panel=$('room-wait');if(!panel){panel=document.createElement('div');panel.id='room-wait';panel.className='room-wait';document.body.append(panel);}
+  bindRoomLobbyControls(panel);
+  if(!state.roomLobbyData)renderRoomLobby({code:code||state.roomCode,hostId:state.socket?.id,map:state.selectedMap,mode:'classic',players:[]});else renderRoomLobby({...state.roomLobbyData,code:code||state.roomLobbyData.code});
+}
 function hideRoomWait(){const p=$('room-wait');if(p)p.classList.add('hidden');}
-function joinOnline(){const code=$('room-code').value.trim().toUpperCase().replace(/[^A-Z0-9]/g,'');if(code.length!==6){showToast('6자리 방 코드를 입력하세요.');return;}initAudio();state.mode='online';state.name=($('player-name').value.trim()||'PLAYER').slice(0,16);state.rule=state.rule||'crossplay';state.money=450;state.hp=100;state.armor=0;state.armorTier='none';state.selfScore=0;state.enemyScore=0;state.round=0;state.currentWeapon='pistol';state.owned=new Set(['pistol','knife']);state.phase='waiting';state.roomCode='';clearBots();clearRemotePlayers();clearTrainingTargets();resetKillCam();setModeUI();updateHUD();
-  const socket=io({transports:['websocket','polling'],tryAllTransports:true,upgrade:true,reconnection:true,reconnectionAttempts:Infinity,reconnectionDelay:500,reconnectionDelayMax:4000,timeout:20000});state.socket=socket;let connectCount=0;socket.on('connect',()=>{const reconnect=connectCount++>0;state.socketReady=true;updateHUD();if(!reconnect)socket.emit('joinRoom',{code,name:state.name,device:state.device,map:state.selectedMap,sessionId:CLIENT_SESSION_ID,authToken:getAuthToken()});else if(!socket.recovered&&state.roomCode)socket.emit('resumeRoom',{code:state.roomCode,sessionId:CLIENT_SESSION_ID});});socket.on('disconnect',reason=>{state.socketReady=false;updateHUD();if(state.mode==='online'&&reason!=='io client disconnect')showToast('온라인 연결을 복구하는 중입니다…',2600);});socket.on('connect_error',()=>{state.socketReady=false;showToast('온라인 서버 연결 실패. 배포된 게임 주소인지 확인하세요.',3200);});
+function registerRoomLobbySocket(socket){
+  socket.on('roomLobby',data=>{state.roomLobbyData=data;if(data.map)state.selectedMap=data.map;renderRoomLobby(data);});
+  socket.on('matchStarting',data=>{state.roomLobbyData=null;if(data.map)state.selectedMap=data.map;if(data.map&&state.mapId!==data.map)buildMap(data.map);hideRoomWait();});
+  socket.on('killerKillEffect',data=>beginKillerSkinEffect(data));
+  socket.on('killerFreedom',data=>{state.killCamKillerId=data.killerId||socket.id;state.killerFreedomUntil=performance.now()+Math.max(0,Number(data.durationMs)||5000);state.killCamActive=false;state.keys.clear();$('killcam-label')?.classList.add('hidden');});
+}
+
+function joinOnline(){const code=$('room-code').value.trim().toUpperCase().replace(/[^A-Z0-9]/g,'');if(code.length!==6){showToast('6자리 방 코드를 입력하세요.');return;}initAudio();state.mode='online';state.name=($('player-name').value.trim()||'PLAYER').slice(0,16);state.rule=state.rule||'crossplay';state.money=450;state.hp=100;state.armor=0;state.armorTier='none';state.selfScore=0;state.enemyScore=0;state.round=0;state.currentWeapon='pistol';state.owned=new Set(['pistol','knife']);state.phase='waiting';state.roomCode='';state.roomLobbyData=null;clearBots();clearRemotePlayers();clearTrainingTargets();resetKillCam();setModeUI();updateHUD();
+  const socket=io({transports:['websocket','polling'],tryAllTransports:true,upgrade:true,reconnection:true,reconnectionAttempts:Infinity,reconnectionDelay:500,reconnectionDelayMax:4000,timeout:20000});state.socket=socket;let connectCount=0;registerRoomLobbySocket(socket);socket.on('connect',()=>{const reconnect=connectCount++>0;state.socketReady=true;updateHUD();if(!reconnect)socket.emit('joinRoom',{code,name:state.name,device:state.device,map:state.selectedMap,sessionId:CLIENT_SESSION_ID,authToken:getAuthToken()});else if(!socket.recovered&&state.roomCode)socket.emit('resumeRoom',{code:state.roomCode,sessionId:CLIENT_SESSION_ID});});socket.on('disconnect',reason=>{state.socketReady=false;updateHUD();if(state.mode==='online'&&reason!=='io client disconnect')showToast('온라인 연결을 복구하는 중입니다…',2600);});socket.on('connect_error',()=>{state.socketReady=false;showToast('온라인 서버 연결 실패. 배포된 게임 주소인지 확인하세요.',3200);});
   // Reuse identical room listeners by registering a lightweight join-mode bridge.
   socket.on('roomError',d=>showToast(d.message||'방 입장 실패',3200));socket.on('accountUpdated',applyAccountUpdated);socket.on('roomJoined',d=>{if(d.map&&state.mapId!==d.map)buildMap(d.map);state.roomCode=d.code;showRoomWait(d.code);});
-  socket.on('roomResumed',d=>{if(d.map&&state.mapId!==d.map)buildMap(d.map);state.roomCode=d.code;hideRoomWait();showToast('온라인 연결이 복구됐습니다.',1800);updateHUD();});socket.on('killCamStart',d=>beginKillCam(d));socket.on('killerKillEffect',d=>beginKillerSkinEffect(d));socket.on('killerFreedom',d=>{state.killCamKillerId=d.killerId||socket.id;state.killerFreedomUntil=performance.now()+Math.max(0,Number(d.durationMs)||5000);state.killCamActive=false;$('killcam-label')?.classList.add('hidden');});
-  socket.on('playerJoined',d=>{updateRemotePlayer(d.id,d.player);hideRoomWait();});socket.on('playerLeft',d=>{const r=state.remotePlayers.get(d.id);if(r){unregisterTarget(d.id);disposeGroup(r.root);state.remotePlayers.delete(d.id);}state.phase='waiting';});socket.on('playerMoved',d=>updateRemotePlayer(d.id,d));socket.on('playerWeapon',d=>updateRemoteWeaponModel(d.id,d.weapon));socket.on('playersSnapshot',d=>{for(const[id,p]of Object.entries(d||{}))if(id!==socket.id)updateRemotePlayer(id,p);});
+  socket.on('roomResumed',d=>{if(d.map&&state.mapId!==d.map)buildMap(d.map);state.roomCode=d.code;if(d.phase==='waiting'){state.roomLobbyData=null;showRoomWait(d.code);}else hideRoomWait();showToast('온라인 연결이 복구됐습니다.',1800);updateHUD();});socket.on('killCamStart',d=>beginKillCam(d));
+  socket.on('playerJoined',d=>{updateRemotePlayer(d.id,d.player);});socket.on('playerLeft',d=>{const r=state.remotePlayers.get(d.id);if(r){unregisterTarget(d.id);disposeGroup(r.root);state.remotePlayers.delete(d.id);}state.phase='waiting';});socket.on('playerMoved',d=>updateRemotePlayer(d.id,d));socket.on('playerWeapon',d=>updateRemoteWeaponModel(d.id,d.weapon));socket.on('playersSnapshot',d=>{for(const[id,p]of Object.entries(d||{}))if(id!==socket.id)updateRemotePlayer(id,p);});
   socket.on('roundState',d=>{clearTrainingTargets();if(d.map&&state.mapId!==d.map)buildMap(d.map);hideRoomWait();endScreen.classList.add('hidden');state.phase=d.phase;state.round=d.round;state.phaseEnd=d.endsAt;state.roundLimit=d.roundEndsAt||0;state.selfScore=d.scores?.[socket.id]||0;state.enemyScore=Object.entries(d.scores||{}).filter(([id])=>id!==socket.id).reduce((a,[,v])=>a+v,0);state.money=d.self?.money??650;state.hp=d.self?.hp??100;state.armor=d.self?.armor??0;state.armorTier=d.self?.armorTier??'none';state.currentWeapon=d.self?.weapon||'pistol';state.owned=new Set(d.self?.ownedWeapons||['pistol',...(state.currentWeapon!=='pistol'?[state.currentWeapon]:[])]);state.buyPrimaryThisRound=!!d.self?.boughtPrimary;state.pos.set(d.self?.x??0,d.self?.y??0,d.self?.z??27);state.yaw=d.self?.yaw??state.yaw;state.pitch=d.self?.pitch??0;state.reloading=false;state.reloadWeaponId=null;makeAmmoFor(state.currentWeapon,true);clearRemotePlayers();for(const[id,player]of Object.entries(d.players||{}))if(id!==socket.id)updateRemotePlayer(id,player);buildGun(state.currentWeapon);if(d.phase==='buy')openBuy();else closeBuy();$('phase-label').textContent=d.phase==='buy'?'BUY PHASE':'LIVE';updateHUD();});
   socket.on('roundPhase',d=>{state.phase=d.phase;state.phaseEnd=d.endsAt;if(d.phase==='live')state.roundLimit=d.endsAt;$('phase-label').textContent=d.phase==='buy'?'BUY PHASE':'LIVE';if(d.phase==='buy')openBuy();else closeBuy();});socket.on('selfState',d=>{state.money=d.money??state.money;state.hp=d.hp??state.hp;state.armor=d.armor??state.armor;state.armorTier=d.armorTier??state.armorTier;if(d.ownedWeapons)for(const weaponId of d.ownedWeapons)state.owned.add(weaponId);if(d.weapon&&d.weapon!==state.currentWeapon){state.currentWeapon=d.weapon;buildGun(d.weapon);}state.buyPrimaryThisRound=!!d.boughtPrimary;updateHUD();});
   socket.on('buyResult',d=>{if(!d.ok){showToast(d.message||'구매할 수 없습니다.');return;}state.money=d.money;state.armor=d.armor??state.armor;state.armorTier=d.armorTier??state.armorTier;if(d.ownedWeapons)for(const weaponId of d.ownedWeapons)state.owned.add(weaponId);if(d.weapon&&d.weapon!==state.currentWeapon){state.currentWeapon=d.weapon;makeAmmoFor(d.weapon,true);buildGun(d.weapon);}state.buyPrimaryThisRound=!!d.boughtPrimary;state.armorPurchased=!!d.armorPurchased;soundBuy();updateHUD();});socket.on('shotFx',d=>{if(d.id!==socket.id){if(d.weaponId!=='knife')addShotFx(new THREE.Vector3(d.origin.x,d.origin.y,d.origin.z),new THREE.Vector3(d.end.x,d.end.y,d.end.z),d.skinId==='prime_sniper'?0xffd267:0xff718a);soundShot(d.weaponId,d.skinId);if(d.skinId==='prime_sniper')soundPrimeSniperShot();else if(String(d.skinId||'').startsWith('halloween_'))soundHalloweenShot(d.weaponId,d.skinId);}});socket.on('damage',d=>{if(d.targetId===socket.id){state.hp=d.hp;state.armor=d.armor??state.armor;state.armorTier=d.armorTier??state.armorTier;updateHUD();soundHit();}if(d.targetId!==socket.id){const target=state.remotePlayers.get(d.targetId);if(target)flashCharacter(target.root);}if(d.attackerId===socket.id&&d.targetId!==socket.id){$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),110);soundHit();}if(d.killed&&d.attackerId===socket.id){soundKill();$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),900);}});socket.on('footstep',d=>{if(d.id===socket.id)return;const remote=state.remotePlayers.get(d.id);if(!remote)return;const dist=remote.root.position.distanceTo(state.pos);if(dist<23)soundFootstep({volume:Math.max(.015,.11*(1-dist/25)),remote:true});});
@@ -1969,7 +1997,7 @@ function setupEvents(){
   document.querySelectorAll('[data-rule]').forEach(b=>b.addEventListener('click',()=>setRule(b.dataset.rule)));
   document.querySelectorAll('[data-lobby-tab]').forEach(b=>b.addEventListener('click',()=>setLobbyPage(b.dataset.lobbyTab)));
   document.querySelectorAll('[data-account-mode]').forEach(b=>b.addEventListener('click',()=>{state.accountMode=b.dataset.accountMode;accountMessage('account-auth-message',state.accountMode==='register'?'아이디와 비밀번호를 입력해 가입하세요.':'가입한 아이디와 비밀번호로 로그인하세요.');renderAccountPanel();}));
-  $('account-auth-form')?.addEventListener('submit',submitAccountAuth);$('account-logout')?.addEventListener('click',logoutAccount);
+  $('account-auth-form')?.addEventListener('submit',submitAccountAuth);$('account-logout')?.addEventListener('click',logoutAccount);$('account-cosmetics-save')?.addEventListener('click',saveAccountCosmetics);
   $('store-code-form')?.addEventListener('submit',redeemStoreCode);
   $('store-roll-button')?.addEventListener('click',rollStoreSkin);
   $('gacha-finish')?.addEventListener('click',closeGacha);$('gacha-close')?.addEventListener('click',closeGacha);
@@ -2079,10 +2107,7 @@ function updateWorld(dt,now){
     const drawT=clamp01((now-motion.drawAt)/(reduceMotion?80:440)), drawOffset=(1-easeOut(drawT));
     const fireAge=now-motion.fireAt, fireKick=fireAge>=0&&fireAge<180?Math.exp(-fireAge/52):0;
     let inspectX=0,inspectY=0,inspectZ=0,inspectRot=0;
-    const primeSniperEquipped=activeWeapon.id==='sniper'&&state.account?.equippedSkins?.sniper==='prime_sniper';
-    const primeSniperInspectDuration=3400;
-    const primeSniperInspectActive=!!(primeSniperEquipped&&motion.inspectAt&&now-motion.inspectAt>=0&&now-motion.inspectAt<primeSniperInspectDuration);
-    if(!primeSniperEquipped&&motion.inspectAt&&now-motion.inspectAt<2200){const it=(now-motion.inspectAt)/2200;inspectY=Math.sin(Math.PI*it)*.065;inspectX=Math.sin(Math.PI*it)*.09;inspectRot=Math.sin(Math.PI*it)*.38;}
+    if(motion.inspectAt&&now-motion.inspectAt<(activeWeapon.id==='sniper'&&state.account?.equippedSkins?.sniper==='prime_sniper'?2500:2200)){const inspectDuration=activeWeapon.id==='sniper'&&state.account?.equippedSkins?.sniper==='prime_sniper'?2500:2200;const it=(now-motion.inspectAt)/inspectDuration;inspectY=Math.sin(Math.PI*it)*.065;inspectX=Math.sin(Math.PI*it)*.09;inspectRot=Math.sin(Math.PI*it)*.38;}
     const reloadProgress=state.reloading&&activeWeapon.reload>0?clamp01((now-(motion.reloadAt||now))/(activeWeapon.reload*1000)):0;
     const reloadWave=state.reloading?Math.sin(Math.PI*reloadProgress):0;
     const knifeAge=now-motion.knifeAt, knifeActive=activeWeapon.id==='knife'&&knifeAge>=0&&knifeAge<420;
@@ -2104,26 +2129,9 @@ function updateWorld(dt,now){
     gunRoot.rotation.x=-fireKick*.10+reloadWave*.11+(knifeActive?knifeMove.rx*knifeWave:0);
     gunRoot.rotation.y=inspectRot+reloadWave*.05+(knifeActive?knifeMove.ry*knifeWave:0);
     gunRoot.rotation.z=-drawOffset*.42+Math.sin(state.walkCycle)*.018*state.walkIntensity+inspectRot*.45+reloadWave*(activeWeapon.slot==='sidearm'?.16:.06)+(knifeActive?knifeMove.rz*knifeWave:0);
-    // PRIME 1 sniper floats independently of both hands, spins in the air, glows, then eases back into the original grip position.
-    const primeSniperModel=gunRoot.userData.customWeaponModel;
-    const primeSniperHalo=gunRoot.userData.primeSniperHalo;
-    if(primeSniperModel?.userData?.inspectBasePosition&&primeSniperModel?.userData?.inspectBaseRotation){
-      const basePosition=primeSniperModel.userData.inspectBasePosition;
-      const baseRotation=primeSniperModel.userData.inspectBaseRotation;
-      if(primeSniperInspectActive){
-        const t=clamp01((now-motion.inspectAt)/primeSniperInspectDuration);
-        const envelope=Math.sin(Math.PI*t);
-        const spin=t*Math.PI*2;
-        const floatY=.43*envelope + Math.sin(spin*2.2)*.055*envelope;
-        primeSniperModel.position.set(basePosition.x-.16*envelope+Math.sin(spin*1.35)*.11*envelope,basePosition.y+floatY,basePosition.z+.18*envelope+Math.cos(spin*1.7)*.07*envelope);
-        primeSniperModel.rotation.set(baseRotation.x+Math.sin(spin*1.1)*.58*envelope,baseRotation.y+Math.sin(spin*1.65)*.82*envelope,baseRotation.z+Math.sin(spin*1.35)*.42*envelope);
-        if(primeSniperHalo){primeSniperHalo.visible=true;primeSniperHalo.position.copy(primeSniperModel.position);primeSniperHalo.rotation.set(.48+spin*.25,.22+spin*.38,spin*.55);const glow=primeSniperHalo.children.find(o=>o.isPointLight);if(glow)glow.intensity=4.0+Math.sin(spin*2)*2.2;}
-      }else{
-        primeSniperModel.position.copy(basePosition);primeSniperModel.rotation.copy(baseRotation);
-        if(primeSniperHalo)primeSniperHalo.visible=false;
-      }
-    }
     // Spin the karambit around the handle's finger loop, with several fast multi-axis rotations.
+    const primeSniperInspect=activeWeapon.id==='sniper'&&state.account?.equippedSkins?.sniper==='prime_sniper'&&motion.inspectAt&&now-motion.inspectAt<2500;
+    if(primeSniperInspect){const st=clamp01((now-motion.inspectAt)/2500);inspectY+=Math.sin(Math.PI*st)*.16;inspectX+=Math.sin(Math.PI*st*2)*.10;inspectRot+=Math.sin(Math.PI*st*2)*.62;}
     const primeSpinPivot=gunRoot.userData.primeSpinPivot;
     if(primeSpinPivot&&activeWeapon.id==='knife'&&state.account?.equippedSkins?.knife==='prime_knife'){
       const inspectAge=now-motion.inspectAt;
@@ -2152,11 +2160,11 @@ function updateWorld(dt,now){
         const base=primeSpinPivot.userData.basePosition;if(base)primeSpinPivot.position.copy(base);
       }
     }
-    const hands=gunRoot.userData||{};const hideHandsForPrimeInspect=primeSniperInspectActive;const showSupportHand=(activeWeapon.slot==='primary'||(state.reloading&&activeWeapon.slot==='sidearm'))&&!hideHandsForPrimeInspect;
+    const hands=gunRoot.userData||{};const showSupportHand=activeWeapon.slot==='primary'||(state.reloading&&activeWeapon.slot==='sidearm');
     if(hands.leftSleeve){hands.leftSleeve.visible=showSupportHand;const br=hands.leftSleeve.userData.baseRotation;if(br){hands.leftSleeve.rotation.x=br.x+reloadWave*.42+fireKick*.12;hands.leftSleeve.rotation.z=br.z-reloadWave*.28;}}
     if(hands.leftHand){hands.leftHand.visible=showSupportHand;const br=hands.leftHand.userData.baseRotation;if(br){hands.leftHand.rotation.x=br.x+reloadWave*.52;hands.leftHand.rotation.z=br.z-reloadWave*.22;}}
-    if(hands.rightSleeve){hands.rightSleeve.visible=!hideHandsForPrimeInspect;const br=hands.rightSleeve.userData.baseRotation;if(br)hands.rightSleeve.rotation.x=br.x-fireKick*.22+reloadWave*.12;}
-    if(hands.rightHand){hands.rightHand.visible=!hideHandsForPrimeInspect;const br=hands.rightHand.userData.baseRotation;if(br)hands.rightHand.rotation.x=br.x-fireKick*.27+reloadWave*.18;}
+    if(hands.rightSleeve){const br=hands.rightSleeve.userData.baseRotation;if(br)hands.rightSleeve.rotation.x=br.x-fireKick*.22+reloadWave*.12;}
+    if(hands.rightHand){const br=hands.rightHand.userData.baseRotation;if(br)hands.rightHand.rotation.x=br.x-fireKick*.27+reloadWave*.18;}
     // Magazine removal/insertion phases make the reload readable instead of only bobbing the weapon.
     const modelMagazines=hands.customWeaponModel?.userData?.magazineNodes || [];
     if(modelMagazines.length){
@@ -2177,7 +2185,7 @@ function updateWorld(dt,now){
       if(hands.reloadMagazine){const base=hands.reloadMagazine.userData.basePosition||new THREE.Vector3(.32,-.405,-.62);hands.reloadMagazine.position.copy(base);const removing=reloadProgress>=.22&&reloadProgress<.43;const magazineAbsent=reloadProgress>=.43&&reloadProgress<.58;const inserting=reloadProgress>=.58&&reloadProgress<.84;hands.reloadMagazine.visible=!magazineAbsent&&!inserting;if(removing){const k=(reloadProgress-.22)/.21;hands.reloadMagazine.position.x-=k*.10;hands.reloadMagazine.position.y-=k*.25;hands.reloadMagazine.rotation.x=k*.45;}else hands.reloadMagazine.rotation.x=0;}
       if(hands.reloadInsertMagazine){const entering=state.reloading&&reloadProgress>=.48&&reloadProgress<.84;hands.reloadInsertMagazine.visible=entering;if(entering){const k=clamp01((reloadProgress-.48)/.36);const slot=hands.reloadInsertMagazine.userData.slotPosition;hands.reloadInsertMagazine.position.set(.13+(slot.x-.13)*easeOut(k),-.68+(slot.y+.68)*easeOut(k),-.51+(slot.z+.51)*easeOut(k));hands.reloadInsertMagazine.rotation.x=(1-k)*-.28;}else hands.reloadInsertMagazine.rotation.x=0;}
     }
-    gunRoot.visible=state.phase==='live'||state.phase==='buy';
+    gunRoot.visible=state.phase==='live'||state.phase==='buy'||hasKillerMovementGrace();
     // A burst trigger sends three paced server-authoritative bullets. Sniper still requires a fresh click.
     if(state.burstRemaining>0&&now>=state.burstNextAt&&state.phase==='live'&&!state.paused)doShoot(true);
     else if(state.fireHeld&&!state.sniperMustRelease&&activeWeapon.id!=='sniper'&&state.phase==='live'&&!state.paused&&now-state.lastShot>=activeWeapon.rate*1000)doShoot();
