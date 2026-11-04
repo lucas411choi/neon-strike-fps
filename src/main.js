@@ -336,10 +336,14 @@ function renderAccountPanel(){
   if(!loggedIn)return;
   const account=state.account,level=Math.max(1,Number(account.level)||1),xp=Math.max(0,Number(account.xp)||0),needed=level*XP_PER_LEVEL;
   $('account-profile-name').textContent=account.username;
-  const avatar=$('account-avatar');if(avatar){avatar.textContent=account.profileId==='pumpkin'?'🎃':'NS';avatar.classList.toggle('pumpkin-avatar',account.profileId==='pumpkin');}
-  const displayName=$('account-profile-name');if(displayName)displayName.style.color=account.nameColor==='orange'?'#ff963b':'';
-  const profileSelect=$('account-profile-select');if(profileSelect){profileSelect.value=account.ownedProfiles?.includes(account.profileId)?account.profileId:'default';for(const option of profileSelect.options)if(option.value==='pumpkin')option.disabled=!(account.ownedProfiles||[]).includes('pumpkin');}
-  const colorSelect=$('account-name-color-select');if(colorSelect){colorSelect.value=account.ownedNameColors?.includes(account.nameColor)?account.nameColor:'default';for(const option of colorSelect.options)if(option.value==='orange')option.disabled=!(account.ownedNameColors||[]).includes('orange');}
+  const avatar=$('account-avatar');if(avatar){
+    avatar.classList.toggle('pumpkin-avatar',account.profileId==='pumpkin');avatar.classList.toggle('oni-avatar',account.profileId==='oni');
+    if(account.profileId==='oni')avatar.innerHTML='<img src="/images/profiles/oni-profile.png" alt="도깨비 프로필">';
+    else avatar.textContent=account.profileId==='pumpkin'?'🎃':'NS';
+  }
+  const displayName=$('account-profile-name');if(displayName)displayName.style.color=account.nameColor==='orange'?'#ff963b':account.nameColor==='green'?'#42ff9b':'';
+  const profileSelect=$('account-profile-select');if(profileSelect){profileSelect.value=account.ownedProfiles?.includes(account.profileId)?account.profileId:'default';for(const option of profileSelect.options)if(['pumpkin','oni'].includes(option.value))option.disabled=!(account.ownedProfiles||[]).includes(option.value);}
+  const colorSelect=$('account-name-color-select');if(colorSelect){colorSelect.value=account.ownedNameColors?.includes(account.nameColor)?account.nameColor:'default';for(const option of colorSelect.options)if(['orange','green'].includes(option.value))option.disabled=!(account.ownedNameColors||[]).includes(option.value);}
   $('account-level').textContent=`LV. ${level}`;
   $('account-xp').textContent=`${xp} / ${needed} XP`;
   $('account-next-level').textContent=`다음 레벨까지 ${Math.max(0,needed-xp)} XP`;
@@ -456,12 +460,14 @@ function renderStoreCurrentPage(){
 function renderShopPage(){
   const bundles=$('store-bundle-grid'),daily=$('store-daily-grid');if(!bundles||!daily)return;
   const owned=new Set(state.account?.ownedSkins||[]);const loggedIn=!!state.account&&!!getAuthToken();
-  bundles.innerHTML=STORE_BUNDLES.map((bundle,index)=>{
+  bundles.innerHTML=STORE_BUNDLES.map(bundle=>{
     const ownedProfiles=state.account?.ownedProfiles||['default'];const ownedColors=state.account?.ownedNameColors||['default'];
     const missingSkins=bundle.skinIds.filter(id=>!owned.has(id));const missingProfiles=(bundle.profileIds||[]).filter(id=>!ownedProfiles.includes(id));const missingColors=(bundle.nameColorIds||[]).filter(id=>!ownedColors.includes(id));
     const alreadyOwned=!missingSkins.length&&!missingProfiles.length&&!missingColors.length;const ownedCount=bundle.skinIds.length-missingSkins.length;const price=Math.max(0,bundle.price-ownedCount*60);
-    const art=[...bundle.skinIds.slice(0,4).map(id=>{const skin=getStoreSkin(id);return `<span class="bundle-mini theme-${skin?.theme||'classic'}">${skin?.weaponId==='knife'?'◈':skin?.weaponId==='sniper'?'⌁':'▰'}</span>`;}),'<span class="bundle-mini pumpkin-mini">🎃</span>'].join('');
-    return `<article class="store-bundle-card bundle-${bundle.theme} bundle-featured halloween-bundle-feature"><div class="bundle-ribbon">FEATURED LIMITED BUNDLE</div><div class="bundle-visual">${art}</div><div class="bundle-copy"><small>${bundle.name}</small><h3>${bundle.displayName}</h3><p>${bundle.description}</p><div class="bundle-extras"><span class="bundle-extra">🎃 호박 프로필</span><span class="bundle-extra orange-extra">▰ 주황색 이름 색상</span></div><div class="bundle-price">${ownedCount?`<del>${bundle.price.toLocaleString('en-US')}</del> `:''}${price.toLocaleString('en-US')} <span>NP</span>${ownedCount?` <small>보유 스킨 ${ownedCount}개 · -${(ownedCount*60).toLocaleString('en-US')} NP</small>`:''}</div><button class="store-primary-button" data-bundle-purchase="${bundle.id}" ${!loggedIn||alreadyOwned?'disabled':''}>${alreadyOwned?'모든 구성품 보유 중':`번들 구매 · 스킨 ${missingSkins.length}종 + 프로필 꾸미기`} <span>↗</span></button></div></article>`;
+    const icons=bundle.skinIds.map(id=>{const skin=getStoreSkin(id);return `<span class="bundle-mini theme-${skin?.theme||'classic'}">${skin?.weaponId==='knife'?'⚔':skin?.weaponId==='revolver'?'◉':'▰'}</span>`;});
+    if(bundle.profileIds?.includes('oni'))icons.push('<span class="bundle-mini oni-profile-mini">👹</span>');
+    const extras=[...(bundle.profileIds||[]).map(id=>id==='oni'?'<span class="bundle-extra oni-extra">👹 도깨비 프로필 · 초록 불꽃 눈</span>':id==='pumpkin'?'<span class="bundle-extra">🎃 호박 프로필</span>':''),...(bundle.nameColorIds||[]).map(id=>id==='green'?'<span class="bundle-extra oni-extra">▰ 초록색 이름 색상</span>':id==='orange'?'<span class="bundle-extra orange-extra">▰ 주황색 이름 색상</span>':'')].filter(Boolean).join('');
+    return `<article class="store-bundle-card bundle-${bundle.theme} bundle-featured ${bundle.theme==='oni'?'oni-bundle-feature':''}"><div class="bundle-ribbon">PREMIUM · LIMITED</div><div class="bundle-visual">${icons.join('')}</div><div class="bundle-copy"><small>${bundle.name}</small><h3>${bundle.displayName}</h3><p>${bundle.description}</p><div class="bundle-extras">${extras}</div><div class="bundle-price">${ownedCount?`<del>${bundle.price.toLocaleString('en-US')}</del> `:''}${price.toLocaleString('en-US')} <span>NP</span>${ownedCount?` <small>보유 스킨 ${ownedCount}개 · -${(ownedCount*60).toLocaleString('en-US')} NP</small>`:''}</div><button class="store-primary-button" data-bundle-purchase="${bundle.id}" ${!loggedIn||alreadyOwned?'disabled':''}>${alreadyOwned?'모든 구성품 보유 중':`번들 구매 · ${missingSkins.length}개 스킨 + 프로필 꾸미기`} <span>↗</span></button></div></article>`;
   }).join('');
   const dailyIds=storeState.dailySkinIds||[];
   daily.innerHTML=dailyIds.length?dailyIds.map(id=>{
@@ -612,6 +618,9 @@ const SKIN_MODEL_CONFIG = {
   halloween_lmg:{weaponId:'lmg',url:'/models/skins/halloween-lmg.glb',scale:.26,remoteScale:.17,authored:true},
   prime_knife:{weaponId:'knife',url:'/models/skins/prime1-karambit.glb',scale:.43,remoteScale:.23,inspect:'karambit-spin',authored:true},
   prime_sniper:{weaponId:'sniper',url:'/models/skins/prime1-sniper.glb',scale:.23,remoteScale:.15,inspect:'sniper-present',authored:true},
+  oni_burst:{weaponId:'burst',url:'/models/skins/oni-burst.glb',scale:.30,remoteScale:.19,inspect:'oni-eye-aura',authored:true},
+  oni_revolver:{weaponId:'revolver',url:'/models/skins/oni-revolver.glb',scale:.38,remoteScale:.24,inspect:'oni-eye-aura',authored:true},
+  oni_katana:{weaponId:'knife',url:'/models/skins/oni-katana.glb',scale:.43,remoteScale:.23,inspect:'oni-sheath-draw',authored:true},
 };
 function getWeaponModelSource(weaponId, skinId = null) {
   return (skinId && skinWeaponModelSources.get(skinId)) || weaponModelSources.get(weaponId) || null;
@@ -852,11 +861,12 @@ function applyProceduralSkinPalette(weaponId, mainMat, darkMat, accentMat) {
     'halloween-ghost':[0xe5efec,0x849393,0xc4f3ed],
     'halloween-pumpkin':[0xd97026,0x263b24,0xffb941],
     'prime-gold':[0xdcb24b,0x392a14,0xffe5a0],
+    oni:[0x8b2027,0x10151a,0x36f58f],
   }[skin.theme];
   if(!palette)return;
   mainMat.color.setHex(palette[0]);darkMat.color.setHex(palette[1]);accentMat.color.setHex(palette[2]);
-  mainMat.metalness=skin.theme==='classic'?.84:skin.theme==='prime-gold'?.95:.45;
-  accentMat.emissive.setHex(skin.theme==='prime-gold'?0x8e5b12:skin.theme==='classic'?0x000000:0x288a80);
+  mainMat.metalness=skin.theme==='classic'?.84:(skin.theme==='prime-gold'||skin.theme==='oni')?.95:.45;
+  accentMat.emissive.setHex(skin.theme==='prime-gold'?0x8e5b12:skin.theme==='oni'?0x19c96d:skin.theme==='classic'?0x000000:0x288a80);
   accentMat.emissiveIntensity=skin.theme==='classic'?.05:.75;
 }
 
@@ -1515,9 +1525,10 @@ function spawnTrainingTargets(){
 function updateTrainingTargets(now=Date.now()){
   for(const target of state.trainingTargets){
     if(target.root.userData.primeDissolveAt){updatePrimeGoldDissolve(target.root,performance.now());}
+    else if(target.root.userData.oniDissolveAt){updateOniDissolveRoot(target.root,performance.now());}
     else if(target.root.userData.ghostLiftAt)updateGhostLiftRoot(target.root,performance.now());
     else if(!target.alive&&target.fallenAt){const t=Math.min(1,(performance.now()-target.fallenAt)/520);target.root.rotation.z=Math.sin(t*Math.PI/2)*1.34*(target.fallDirection||1);target.root.position.y=target.baseY-Math.sin(t*Math.PI/2)*.22;}
-    if(!target.alive&&target.respawnAt&&now>=target.respawnAt){restoreCharacterHitFlash(target.root);target.hp=target.maxHp;target.alive=true;target.respawnAt=0;target.fallenAt=0;delete target.root.userData.killFallAt;delete target.root.userData.primeDissolveAt;delete target.root.userData.ghostLiftAt;target.root.rotation.set(0,Math.PI,0);target.root.position.y=target.baseY;if(target.baseScale)target.root.scale.copy(target.baseScale);target.root.visible=true;registerTarget(target.root,target.id);}
+    if(!target.alive&&target.respawnAt&&now>=target.respawnAt){restoreCharacterHitFlash(target.root);target.hp=target.maxHp;target.alive=true;target.respawnAt=0;target.fallenAt=0;delete target.root.userData.killFallAt;delete target.root.userData.primeDissolveAt;delete target.root.userData.ghostLiftAt;delete target.root.userData.oniDissolveAt;target.root.rotation.set(0,Math.PI,0);target.root.position.y=target.baseY;if(target.baseScale)target.root.scale.copy(target.baseScale);target.root.visible=true;registerTarget(target.root,target.id);}
   }
 }
 function renderTrainingWeapons(){
@@ -1660,7 +1671,7 @@ function doShoot(fromBurst=false){
   }
   if(w.id!=='knife')addShotFx(origin,hitPoint,w.id==='sniper'?0xffdfb5:0x73f8e4);
   if(state.mode==='training'&&localDamageByTarget.size){
-    for(const [targetId,damage] of localDamageByTarget){const target=state.trainingTargets.find(t=>t.id===targetId&&t.alive);if(!target)continue;target.hp-=damage;soundHit();$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),100);if(target.hp<=0){target.hp=0;target.alive=false;const isDummy=target.id.startsWith('practice-dummy-');target.respawnAt=Date.now()+(isDummy?5000:3000);target.fallenAt=isDummy?performance.now():0;target.fallDirection=(target.root.position.x-state.pos.x)>=0?1:-1;unregisterTarget(target.id);if(isDummy){restoreCharacterHitFlash(target.root);const skinId=state.account?.equippedSkins?.[state.currentWeapon]||null;if(skinId&&getStoreSkin(skinId)?.killEffect){spawnSkinKillEffect({skinId,victim:{x:target.root.position.x,y:target.root.position.y,z:target.root.position.z}});if(skinId==='prime_knife'||skinId==='prime_sniper')beginPrimeGoldDissolve(target.root);else if(getStoreSkin(skinId)?.killEffect==='ghost-lift')beginGhostLift(target.root);else {target.root.userData.killFallAt=performance.now();target.root.userData.killFallStartZ=target.root.rotation.z;target.root.userData.killFallStartY=target.root.position.y;target.root.userData.killFallDirection=target.fallDirection;}}else{target.root.userData.killFallAt=performance.now();target.root.userData.killFallStartZ=target.root.rotation.z;target.root.userData.killFallStartY=target.root.position.y;target.root.userData.killFallDirection=target.fallDirection;}}else target.root.visible=false;void awardTrainingXP();soundKill();$('kill-banner').innerHTML=`${target.name.toUpperCase()} RESET <small>RESPAWN ${isDummy?5:3} SEC · +10 XP</small>`;$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),900);}}
+    for(const [targetId,damage] of localDamageByTarget){const target=state.trainingTargets.find(t=>t.id===targetId&&t.alive);if(!target)continue;target.hp-=damage;soundHit();$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),100);if(target.hp<=0){target.hp=0;target.alive=false;const isDummy=target.id.startsWith('practice-dummy-');target.respawnAt=Date.now()+(isDummy?5000:3000);target.fallenAt=isDummy?performance.now():0;target.fallDirection=(target.root.position.x-state.pos.x)>=0?1:-1;unregisterTarget(target.id);if(isDummy){restoreCharacterHitFlash(target.root);const skinId=state.account?.equippedSkins?.[state.currentWeapon]||null;if(skinId&&getStoreSkin(skinId)?.killEffect){spawnSkinKillEffect({skinId,victim:{x:target.root.position.x,y:target.root.position.y,z:target.root.position.z}});if(skinId==='prime_knife'||skinId==='prime_sniper')beginPrimeGoldDissolve(target.root);else if(getStoreSkin(skinId)?.killEffect==='oni-stab-dissolve')beginOniDissolve(target.root);else if(getStoreSkin(skinId)?.killEffect==='ghost-lift')beginGhostLift(target.root);else {target.root.userData.killFallAt=performance.now();target.root.userData.killFallStartZ=target.root.rotation.z;target.root.userData.killFallStartY=target.root.position.y;target.root.userData.killFallDirection=target.fallDirection;}}else{target.root.userData.killFallAt=performance.now();target.root.userData.killFallStartZ=target.root.rotation.z;target.root.userData.killFallStartY=target.root.position.y;target.root.userData.killFallDirection=target.fallDirection;}}else target.root.visible=false;void awardTrainingXP();soundKill();$('kill-banner').innerHTML=`${target.name.toUpperCase()} RESET <small>RESPAWN ${isDummy?5:3} SEC · +10 XP</small>`;$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),900);}}
   }
   if(state.mode==='ai'&&localDamageByTarget.size){for(const [targetId,damage] of localDamageByTarget){const bot=state.botList.find(b=>b.id===targetId&&b.alive);if(!bot)continue;bot.hp-=damage;flashCharacter(bot.root);soundHit();$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),100);if(bot.hp<=0){bot.hp=0;bot.alive=false;bot.root.visible=false;unregisterTarget(bot.id);state.money+=75;soundKill();$('kill-banner').innerHTML=`${bot.name} ELIMINATED <small>+75 CR</small>`;$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),850);updateHUD();}}if(state.botList.every(b=>!b.alive))endLocalRound(true,'상대 플레이어를 처치했습니다.');}
   if(state.mode==='online'&&state.socketReady){const serverAim=direction;const payload={weaponId:w.id,origin:{x:origin.x,y:origin.y,z:origin.z},direction:{x:serverAim.x,y:serverAim.y,z:serverAim.z}};if(w.id==='burst'){payload.burstId=burstIdForShot;payload.burstSeq=burstSeqForShot;}state.socket.emit('fire',payload);}
@@ -1790,6 +1801,32 @@ function updatePrimeGoldDissolve(root,now){
   }
   return true;
 }
+function beginOniDissolve(root){
+  if(!root||root.userData.oniDissolveAt)return;restoreCharacterHitFlash(root);
+  root.traverse(object=>{if(!object.isMesh)return;const original=object.material;const jadeify=mat=>{const copy=mat.clone();if(copy.color)copy.color.setHex(0x168653);if(copy.emissive)copy.emissive.setHex(0x27ff91);copy.emissiveIntensity=1.8;copy.transparent=true;copy.depthWrite=false;copy.opacity=1;return copy;};object.userData.oniOriginalMaterial=original;object.material=Array.isArray(original)?original.map(jadeify):jadeify(original);});
+  root.userData.oniDissolveAt=performance.now();root.userData.oniDissolveDuration=2350;root.userData.oniBaseScale=root.scale.clone();root.userData.oniBaseY=root.position.y;
+}
+function updateOniDissolveRoot(root,now){
+  const start=root?.userData.oniDissolveAt;if(!start)return false;const t=Math.max(0,Math.min(1,(now-start)/(root.userData.oniDissolveDuration||2350)));const ease=t*t*(3-2*t);const base=root.userData.oniBaseScale||new THREE.Vector3(1,1,1);
+  root.scale.set(base.x*(1-.28*ease),base.y*(1-.88*ease),base.z*(1-.28*ease));root.position.y=(root.userData.oniBaseY||0)-.18*ease;root.rotation.y+=.012;
+  root.traverse(object=>{if(!object.isMesh)return;for(const mat of (Array.isArray(object.material)?object.material:[object.material]))if(mat&&'opacity' in mat)mat.opacity=Math.max(0,1-ease);});
+  if(t>=1){root.visible=false;root.traverse(object=>{if(!object.isMesh||!Object.hasOwn(object.userData,'oniOriginalMaterial'))return;const current=object.material;for(const mat of (Array.isArray(current)?current:[current]))mat?.dispose?.();object.material=object.userData.oniOriginalMaterial;delete object.userData.oniOriginalMaterial;});delete root.userData.oniDissolveAt;return true;}return true;
+}
+function buildOniApparition(group){
+  const spirit=new THREE.Group();spirit.name='ONI_SPIRIT_ASSAILANT';group.add(spirit);
+  const cloak=new THREE.Mesh(new THREE.ConeGeometry(.38,1.18,9,1,true),new THREE.MeshStandardMaterial({color:0x0b5039,emissive:0x0fae61,emissiveIntensity:.75,transparent:true,opacity:.78,side:THREE.DoubleSide,roughness:.4}));cloak.position.y=.76;spirit.add(cloak);
+  const head=new THREE.Mesh(new THREE.SphereGeometry(.27,16,12),new THREE.MeshStandardMaterial({color:0x24151b,metalness:.5,roughness:.27,emissive:0x062b1b}));head.position.set(0,1.48,0);head.scale.set(1,.92,.72);spirit.add(head);
+  const mask=new THREE.Mesh(new THREE.SphereGeometry(.22,16,10),new THREE.MeshStandardMaterial({color:0x9e2431,metalness:.55,roughness:.24}));mask.position.set(0,1.46,.17);mask.scale.set(1,.78,.45);spirit.add(mask);
+  const eyeMat=new THREE.MeshBasicMaterial({color:0x61ff9d});for(const x of [-.09,.09]){const eye=new THREE.Mesh(new THREE.SphereGeometry(.035,8,6),eyeMat);eye.position.set(x,1.49,.275);spirit.add(eye);}
+  for(const side of [-1,1]){const horn=new THREE.Mesh(new THREE.ConeGeometry(.07,.29,8),new THREE.MeshStandardMaterial({color:0xd4a34d,metalness:.82,roughness:.2,emissive:0x1a0e02}));horn.position.set(side*.18,1.71,.09);horn.rotation.z=-side*.34;spirit.add(horn);}
+  const sword=new THREE.Group();sword.name='ONI_SPIRIT_KATANA';spirit.add(sword);
+  const blade=new THREE.Mesh(new THREE.BoxGeometry(.82,.035,.012),new THREE.MeshStandardMaterial({color:0xc9e9d9,metalness:.92,roughness:.14,emissive:0x16d879,emissiveIntensity:.4}));blade.position.x=.40;sword.add(blade);
+  const edge=new THREE.Mesh(new THREE.BoxGeometry(.78,.008,.018),new THREE.MeshBasicMaterial({color:0x55ff9e}));edge.position.set(.40,-.018,.008);sword.add(edge);
+  const hilt=new THREE.Mesh(new THREE.CylinderGeometry(.027,.027,.23,8),new THREE.MeshStandardMaterial({color:0x2a141b,metalness:.5}));hilt.rotation.z=Math.PI/2;hilt.position.x=-.10;sword.add(hilt);
+  const guard=new THREE.Mesh(new THREE.TorusGeometry(.065,.012,6,18),new THREE.MeshStandardMaterial({color:0xd9a64b,metalness:.9}));guard.position.x=-.20;guard.rotation.y=Math.PI/2;sword.add(guard);
+  sword.position.set(.42,1.25,.25);sword.rotation.z=-.72;spirit.position.x=-.62;group.userData.oniSpirit=spirit;group.userData.oniSword=sword;
+}
+
 function spawnSkinKillEffect(data){
   const skin=getStoreSkin(data.skinId);
   const isPrimeGold=data.skinId==='prime_knife'||data.skinId==='prime_sniper';
@@ -1797,7 +1834,7 @@ function spawnSkinKillEffect(data){
   if(!effectType)return;
   const victim=data.victim||{};
   const origin=new THREE.Vector3(Number(victim.x)||0,Number(victim.y)||0,Number(victim.z)||0);
-  const group=new THREE.Group();group.position.copy(origin);group.name=`KILL_EFFECT_${effectType}`;scene.add(group);
+  const group=new THREE.Group();group.position.copy(origin);group.name=`KILL_EFFECT_${effectType}`;if(effectType==='oni-stab-dissolve')group.rotation.y=Number(data.killer?.yaw)||0;scene.add(group);
   if(effectType==='prime-gold-dissolve'){
     const goldCore=new THREE.Mesh(new THREE.SphereGeometry(.52,18,14),new THREE.MeshBasicMaterial({color:0xffd45b,transparent:true,opacity:.27,blending:THREE.AdditiveBlending,depthWrite:false}));goldCore.position.y=1.0;goldCore.scale.set(.82,1.65,.82);group.add(goldCore);
     const ringMat=new THREE.MeshBasicMaterial({color:0xffdf7a,transparent:true,opacity:.88,blending:THREE.AdditiveBlending,depthWrite:false});
@@ -1827,12 +1864,18 @@ function spawnSkinKillEffect(data){
     const glow=new THREE.Mesh(new THREE.SphereGeometry(.42,12,10),new THREE.MeshStandardMaterial({color:0xeaf8f6,emissive:0x8adbd7,emissiveIntensity:1.8,transparent:true,opacity:.9,roughness:.25}));glow.position.y=1.7;glow.scale.set(.8,1.15,.65);group.add(glow);
     const tail=new THREE.Mesh(new THREE.ConeGeometry(.32,.75,12),new THREE.MeshStandardMaterial({color:0xdaf3ef,emissive:0x3c8d89,emissiveIntensity:.7,transparent:true,opacity:.72,side:THREE.DoubleSide}));tail.position.y=1.15;tail.rotation.x=Math.PI;group.add(tail);
     for(let i=0;i<3;i++){const eye=new THREE.Mesh(new THREE.SphereGeometry(.045,8,6),new THREE.MeshBasicMaterial({color:0x14242e}));eye.position.set(i===0?-.11:.11,1.77,.36);group.add(eye);}
+  }else if(effectType==='oni-stab-dissolve'){
+    buildOniApparition(group);
+    const haloMat=new THREE.MeshBasicMaterial({color:0x35ff8f,transparent:true,opacity:.65,blending:THREE.AdditiveBlending,depthWrite:false});
+    for(let i=0;i<3;i++){const ring=new THREE.Mesh(new THREE.TorusGeometry(.42+i*.11,.012,6,44),haloMat.clone());ring.position.y=.45+i*.48;ring.rotation.x=Math.PI/2;group.add(ring);}
+    const count=190,positions=new Float32Array(count*3),vel=new Float32Array(count*3);for(let i=0;i<count;i++){const a=Math.random()*Math.PI*2,r=.10+Math.random()*.62;positions[i*3]=Math.cos(a)*r;positions[i*3+1]=.18+Math.random()*1.5;positions[i*3+2]=Math.sin(a)*r;vel[i*3]=Math.cos(a)*(.18+Math.random()*.85);vel[i*3+1]=.25+Math.random()*1.0;vel[i*3+2]=Math.sin(a)*(.18+Math.random()*.85);}
+    const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(positions,3));const dust=new THREE.Points(geo,new THREE.PointsMaterial({color:0x42ff9b,size:.045,transparent:true,opacity:.95,blending:THREE.AdditiveBlending,depthWrite:false}));group.add(dust);group.userData.oniDust={dust,base:positions.slice(),vel};
   }else if(effectType==='gold-arrows'){
     const gold=new THREE.MeshStandardMaterial({color:0xffd56b,emissive:0xffb51c,emissiveIntensity:1.8,metalness:.8,roughness:.18});
     for(let i=0;i<9;i++){const arrow=new THREE.Mesh(new THREE.ConeGeometry(.07,.66,5),gold.clone());const angle=i*Math.PI*2/9;arrow.position.set(Math.cos(angle)*(.35+(i%3)*.14),.8+(i%4)*.22,Math.sin(angle)*(.35+(i%3)*.14));arrow.rotation.set(Math.PI/2,0,-angle);group.add(arrow);}
     const flash=new THREE.Mesh(new THREE.SphereGeometry(.7,12,8),new THREE.MeshBasicMaterial({color:0xffdf84,transparent:true,opacity:.32,depthWrite:false}));flash.position.y=1;group.add(flash);
   }
-  state.killEffects.push({group,type:effectType,started:performance.now(),duration:effectType==='ghost-lift'?5000:effectType==='prime-gold-dissolve'?5000:2600,origin:origin.clone()});
+  state.killEffects.push({group,type:effectType,started:performance.now(),duration:effectType==='ghost-lift'?5000:effectType==='prime-gold-dissolve'?5000:effectType==='oni-stab-dissolve'?3200:2600,origin:origin.clone()});
 }
 function beginGhostLift(root){
   if(!root||root.userData.ghostLiftAt)return;
@@ -1853,6 +1896,7 @@ function beginKillerSkinEffect(data){
   restoreCharacterHitFlash(victim.root);
   victim.target.copy(victim.root.position);unregisterTarget(data.victimId);
   if(data.skinId==='prime_knife'||data.skinId==='prime_sniper')beginPrimeGoldDissolve(victim.root);
+  else if(getStoreSkin(data.skinId)?.killEffect==='oni-stab-dissolve')beginOniDissolve(victim.root);
   else if(getStoreSkin(data.skinId)?.killEffect==='ghost-lift')beginGhostLift(victim.root);
   else{victim.root.userData.killFallAt=performance.now();victim.root.userData.killFallStartZ=victim.root.rotation.z;victim.root.userData.killFallStartY=victim.root.position.y;victim.root.userData.killFallDirection=(victim.root.position.x-data.killer.x)>=0?1:-1;}
 }
@@ -1870,6 +1914,8 @@ function beginKillCam(data){
     if(data.skinId==='prime_knife'||data.skinId==='prime_sniper'){
       unregisterTarget(data.victimId);
       beginPrimeGoldDissolve(victim.root);
+    }else if(getStoreSkin(data.skinId)?.killEffect==='oni-stab-dissolve'){
+      unregisterTarget(data.victimId);beginOniDissolve(victim.root);
     }else{
       victim.root.userData.killFallAt=performance.now();victim.root.userData.killFallStartZ=victim.root.rotation.z;victim.root.userData.killFallStartY=victim.root.position.y;victim.root.userData.killFallDirection=(victim.root.position.x-data.killer.x)>=0?1:-1;
     }
@@ -1949,12 +1995,12 @@ function renderRoomLobby(data){
   const isHost=info.hostId===state.socket?.id;const players=Array.isArray(info.players)?info.players:[];
   const teamMode=info.teamMode==='2v2'?'2v2':'1v1';const slotCount=teamMode==='2v2'?2:1;
   const red=players.filter(player=>player.team==='red');const blue=players.filter(player=>player.team==='blue');
-  const avatar=(player)=>player.profileId==='pumpkin'?'🎃':'NS';
+  const avatar=(player)=>player.profileId==='oni'?'<img src="/images/profiles/oni-profile.png" alt="도깨비">':player.profileId==='pumpkin'?'🎃':'NS';
   const playerCard=(player,team,index)=>{
     if(!player)return `<div class="room-player-empty">${team==='red'?'레드':'블루'} ${index+1} 참가 대기</div>`;
-    const color=player.nameColor==='orange'?'#ff963b':'#edf6ff';
+    const color=player.nameColor==='orange'?'#ff963b':player.nameColor==='green'?'#42ff9b':'#edf6ff';
     const teamSelect=isHost&&teamMode==='2v2'?`<select class="room-player-team" data-player-team="${escapeRoomText(player.id)}" aria-label="${escapeRoomText(player.name)} 팀 변경"><option value="red" ${player.team==='red'?'selected':''}>RED 팀</option><option value="blue" ${player.team==='blue'?'selected':''}>BLUE 팀</option></select>`:'';
-    return `<div class="room-player"><div class="room-player-avatar ${player.profileId==='pumpkin'?'pumpkin-avatar':''}">${avatar(player)}</div><div class="room-player-copy"><b style="color:${color}">${escapeRoomText(player.name||'PLAYER')}</b><small>LV. ${Math.max(1,Number(player.level)||1)} · ${player.connected===false?'연결 복구 중':'ONLINE'} · ${player.id===info.hostId?'HOST':''}</small>${teamSelect}</div></div>`;
+    return `<div class="room-player"><div class="room-player-avatar ${player.profileId==='pumpkin'?'pumpkin-avatar':player.profileId==='oni'?'oni-avatar':''}">${avatar(player)}</div><div class="room-player-copy"><b style="color:${color}">${escapeRoomText(player.name||'PLAYER')}</b><small>LV. ${Math.max(1,Number(player.level)||1)} · ${player.connected===false?'연결 복구 중':'ONLINE'} · ${player.id===info.hostId?'HOST':''}</small>${teamSelect}</div></div>`;
   };
   const slots=(team,items)=>Array.from({length:slotCount},(_,index)=>playerCard(items[index],team,index)).join('');
   const modeNames={classic:'클래식 모드',unlimited:'무제한 크레딧 모드',knife:'나이프 모드'};const mapNames={arena:'아레나',palace:'경복궁',city:'시티'};
@@ -2067,7 +2113,7 @@ function setupEvents(){
       if(state.mode!=='menu'&&state.phase!=='ended'&&state.phase!=='matchover'){state.paused=true;pauseMenu.classList.remove('hidden');if(document.pointerLockElement)document.exitPointerLock();}return;
     }
     if(state.mode==='menu'||(state.phase==='ended'&&!hasKillerMovementGrace())||state.paused)return;
-    if(e.code==='KeyE'&&!e.repeat&&(state.phase==='live'||hasKillerMovementGrace())){state.weaponMotion.inspectAt=performance.now();showToast(state.currentWeapon==='knife'&&state.account?.equippedSkins?.knife==='prime_knife'?'프라임 1 카람빗 관찰':'무기 관찰',850);return;}
+    if(e.code==='KeyE'&&!e.repeat&&(state.phase==='live'||hasKillerMovementGrace())){state.weaponMotion.inspectAt=performance.now();const activeSkin=state.account?.equippedSkins?.[state.currentWeapon];showToast(activeSkin==='oni_katana'?'오니마루 장검 발도':activeSkin==='oni_burst'||activeSkin==='oni_revolver'?'도깨비 영혼 발광':state.currentWeapon==='knife'&&activeSkin==='prime_knife'?'프라임 1 카람빗 관찰':'무기 관찰',850);return;}
     state.keys.add(e.code);
     if(e.code==='KeyR')reloadWeapon();if(e.code==='KeyQ')toggleZoom();if(e.code==='KeyT'&&state.mode==='training')openTrainingWeapons();if(/^Digit[1-9]$/.test(e.code))switchWeaponByNumber(Number(e.code.slice(-1)));
     if(e.code==='KeyB'&&state.phase==='buy')openBuy();
@@ -2088,6 +2134,49 @@ function setupEvents(){
   window.addEventListener('resize',()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight);resizeWeaponPreview();resizeSkinPreview();});
 }
 
+function ensureOniInspectAura(){
+  if(gunRoot.userData.oniInspectAura)return gunRoot.userData.oniInspectAura;
+  const group=new THREE.Group();group.name='ONI_INSPECT_JADE_AURA';group.position.set(.36,-.10,-.58);group.visible=false;gunRoot.add(group);
+  const ringMat=new THREE.MeshBasicMaterial({color:0x42ff9b,transparent:true,opacity:.72,blending:THREE.AdditiveBlending,depthWrite:false});
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(.31,.012,6,40),ringMat);ring.rotation.x=.5;group.add(ring);
+  const core=new THREE.Mesh(new THREE.SphereGeometry(.12,12,8),new THREE.MeshBasicMaterial({color:0x35ff9e,transparent:true,opacity:.2,blending:THREE.AdditiveBlending,depthWrite:false}));group.add(core);
+  const bladeGlow=new THREE.Mesh(new THREE.BoxGeometry(.92,.012,.018),new THREE.MeshBasicMaterial({color:0x48ff9c,transparent:true,opacity:.0,blending:THREE.AdditiveBlending,depthWrite:false}));bladeGlow.position.x=.20;group.add(bladeGlow);
+  const count=44,positions=new Float32Array(count*3);for(let i=0;i<count;i++){const a=Math.random()*Math.PI*2,r=.10+Math.random()*.30;positions[i*3]=Math.cos(a)*r;positions[i*3+1]=(Math.random()-.5)*.5;positions[i*3+2]=Math.sin(a)*r;}
+  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(positions,3));
+  const dust=new THREE.Points(geo,new THREE.PointsMaterial({color:0x4dff9f,size:.025,sizeAttenuation:true,transparent:true,opacity:.85,blending:THREE.AdditiveBlending,depthWrite:false}));group.add(dust);
+  gunRoot.userData.oniInspectAura={group,ring,core,bladeGlow,dust,started:0};return gunRoot.userData.oniInspectAura;
+}
+function updateOniWeaponInspect(now,activeWeapon,motion){
+  const skinId=state.account?.equippedSkins?.[activeWeapon.id]||null;
+  const isOniGun=(activeWeapon.id==='burst'&&skinId==='oni_burst')||(activeWeapon.id==='revolver'&&skinId==='oni_revolver');
+  const isOniKatana=activeWeapon.id==='knife'&&skinId==='oni_katana';
+  const age=motion.inspectAt?now-motion.inspectAt:Infinity;
+  const active=age>=0&&age<(isOniKatana?3000:2200)&&(isOniGun||isOniKatana);
+  const model=gunRoot.userData.customWeaponModel;
+  if(model){
+    model.traverse(object=>{
+      if(!object.isMesh||!/(EYE_GLOW)/.test(object.name))return;
+      const materials=Array.isArray(object.material)?object.material:[object.material];
+      for(const mat of materials){if(!mat?.emissive)continue;const pulse=active?1.5+2.5*Math.pow(Math.sin(Math.PI*Math.min(1,age/(isOniKatana?3000:2200))),.65):.35;mat.emissiveIntensity=pulse;}
+    });
+    if(isOniKatana){
+      if(!model.userData.oniKatanaParts){
+        const bladeParts=[];const sheathParts=[];
+        model.traverse(object=>{if(!object.isMesh)return;if(object.name==='ONI_KATANA_BLADE'||object.name.startsWith('ONI_BLADE_')||object.name==='ONI_HABAKI'){object.userData.oniBasePosition=object.position.clone();bladeParts.push(object);}if(object.name.includes('SHEATH')||object.name.includes('SAYA')||object.name.startsWith('KATANA_ONI_')){object.userData.oniBaseScale=object.scale.clone();sheathParts.push(object);}});
+        model.userData.oniKatanaParts={bladeParts,sheathParts};for(const object of sheathParts)object.visible=false;
+      }
+      const parts=model.userData.oniKatanaParts;const t=active?Math.max(0,Math.min(1,age/3000)):0;
+      const smooth=v=>v*v*(3-2*v);let draw=0;
+      if(active){if(t<.18)draw=0;else if(t<.48)draw=.52*smooth((t-.18)/.30);else if(t<.72)draw=.52;else draw=.52*(1-smooth((t-.72)/.28));}
+      for(const object of parts.bladeParts){const base=object.userData.oniBasePosition;if(base)object.position.set(base.x+draw,base.y,base.z);}
+      for(const object of parts.sheathParts){object.visible=active;const base=object.userData.oniBaseScale;if(base)object.scale.copy(base).multiplyScalar(active?(.65+.35*smooth(Math.min(1,t/.16))):0.001);}
+    }
+  }
+  const aura=ensureOniInspectAura();
+  aura.group.visible=active&&(isOniGun||isOniKatana);
+  if(aura.group.visible){const t=Math.max(0,Math.min(1,age/(isOniKatana?3000:2200)));const envelope=Math.sin(Math.PI*t);aura.group.position.set(isOniKatana?.42:.36,isOniKatana?-.15:-.10,-.58);aura.group.scale.setScalar((isOniKatana?1.0:.72)+(isOniKatana?.16:.50)*envelope);aura.group.rotation.y+=isOniKatana?.012:.035;aura.ring.material.opacity=.18+.57*envelope;aura.core.material.opacity=.08+.30*envelope;aura.bladeGlow.material.opacity=isOniKatana?.22+.64*envelope:0;aura.dust.material.opacity=.18+.70*envelope;}
+}
+
 function updateWorld(dt,now){
   if(state.mode==='menu'){
     const mapIds=['arena','palace','city'];const cycle=Math.floor(now/10500)%mapIds.length;
@@ -2105,6 +2194,7 @@ function updateWorld(dt,now){
       if(state.killCamActive&&state.killCam&&id===state.killCam.killerId){state.killCam.killer.x=r.root.position.x;state.killCam.killer.y=r.root.position.y;state.killCam.killer.z=r.root.position.z;state.killCam.killer.yaw=r.yaw;}
       if(r.root.userData.ghostLiftAt){updateGhostLiftRoot(r.root,now);continue;}
       if(r.root.userData.primeDissolveAt){updatePrimeGoldDissolve(r.root,now);continue;}
+      if(r.root.userData.oniDissolveAt){updateOniDissolveRoot(r.root,now);continue;}
       const fallAt=r.root.userData.killFallAt;if(fallAt){const fallT=Math.min(1,(now-fallAt)/420);r.root.rotation.z=(r.root.userData.killFallStartZ||0)+Math.sin(fallT*Math.PI/2)*1.34*(r.root.userData.killFallDirection||1);r.root.position.y=(r.root.userData.killFallStartY||0)-Math.sin(fallT*Math.PI/2)*.22;continue;}
       const moving=Math.hypot(r.root.position.x-beforeX,r.root.position.z-beforeZ)>.001;
       const gait=r.root.userData;if(gait?.legs&&gait?.arms){if(moving){gait.walkPhase=(gait.walkPhase||0)+dt*12;const swing=Math.sin(gait.walkPhase)*.52;gait.legs[0].rotation.x=swing;gait.legs[1].rotation.x=-swing;gait.arms[0].rotation.x=-.62-swing*.33;gait.arms[1].rotation.x=-.62+swing*.33;r.root.position.y=(r.target.y||0)+Math.abs(Math.sin(gait.walkPhase*2))*.035;}else{gait.legs[0].rotation.x*=.75;gait.legs[1].rotation.x*=.75;gait.arms[0].rotation.x+=( -.62-gait.arms[0].rotation.x)*.25;gait.arms[1].rotation.x+=( -.62-gait.arms[1].rotation.x)*.25;r.root.position.y+=((r.target.y||0)-r.root.position.y)*.25;}}
@@ -2121,6 +2211,7 @@ function updateWorld(dt,now){
     const sway=state.walkIntensity>0?Math.sin(state.walkCycle)*.022*state.walkIntensity:0;
     if(state.killCamActive&&state.mode==='online'&&state.killCam&&state.socket?.id===state.killCam.victimId){const k=state.killCam.killer;camera.position.set(k.x,(k.y||0)+1.58,k.z);camera.rotation.order='YXZ';camera.rotation.y=k.yaw||0;camera.rotation.x=THREE.MathUtils.clamp(k.pitch||0,-1.3,1.3);gunRoot.visible=false;}else{camera.position.set(state.pos.x+sway*.24,state.pos.y+1.58+bob,state.pos.z);camera.rotation.order='YXZ';camera.rotation.y=state.yaw;camera.rotation.x=THREE.MathUtils.clamp(state.pitch+state.viewKick+state.recoilPitch,-1.3,1.3);}
     const activeWeapon=currentWeapon();
+    updateOniWeaponInspect(now,activeWeapon,state.weaponMotion);
     // Weapon draw, reload, recoil, inspect and melee-swing poses are procedural and allocation-free per frame.
     const motion=state.weaponMotion, clamp01=v=>Math.max(0,Math.min(1,v)), easeOut=v=>1-Math.pow(1-v,3);
     const drawT=clamp01((now-motion.drawAt)/(reduceMotion?80:440)), drawOffset=(1-easeOut(drawT));
@@ -2148,6 +2239,11 @@ function updateWorld(dt,now){
     gunRoot.rotation.x=-fireKick*.10+reloadWave*.11+(knifeActive?knifeMove.rx*knifeWave:0);
     gunRoot.rotation.y=inspectRot+reloadWave*.05+(knifeActive?knifeMove.ry*knifeWave:0);
     gunRoot.rotation.z=-drawOffset*.42+Math.sin(state.walkCycle)*.018*state.walkIntensity+inspectRot*.45+reloadWave*(activeWeapon.slot==='sidearm'?.16:.06)+(knifeActive?knifeMove.rz*knifeWave:0);
+    const oniKatanaAge=now-motion.inspectAt;
+    if(activeWeapon.id==='knife'&&state.account?.equippedSkins?.knife==='oni_katana'&&motion.inspectAt&&oniKatanaAge>=0&&oniKatanaAge<3000){
+      const t=clamp01(oniKatanaAge/3000),smooth=v=>v*v*(3-2*v);const drawPose=t<.22?smooth(t/.22):t<.72?1:1-smooth((t-.72)/.28);
+      gunRoot.position.x+=.055*drawPose;gunRoot.position.y+=.025*Math.sin(t*Math.PI);gunRoot.rotation.x-=.13*drawPose;gunRoot.rotation.y+=.10*drawPose;gunRoot.rotation.z+=.30*drawPose;
+    }
     // Spin the karambit around the handle's finger loop, with several fast multi-axis rotations.
     const primeSniperInspect=activeWeapon.id==='sniper'&&state.account?.equippedSkins?.sniper==='prime_sniper'&&motion.inspectAt&&now-motion.inspectAt<2500;
     if(primeSniperInspect){const st=clamp01((now-motion.inspectAt)/2500);inspectY+=Math.sin(Math.PI*st)*.16;inspectX+=Math.sin(Math.PI*st*2)*.10;inspectRot+=Math.sin(Math.PI*st*2)*.62;}
@@ -2238,6 +2334,12 @@ function updateWorld(dt,now){
       fx.group.traverse(o=>{if(o.isMesh&&o.material&&'opacity' in o.material){if(o.material.userData.baseOpacity==null)o.material.userData.baseOpacity=o.material.opacity;o.material.opacity=Math.max(0,o.material.userData.baseOpacity*(1-t*.9));}});
       fx.group.scale.setScalar(.84+t*.88);
       continue;
+    }
+    if(fx.type==='oni-stab-dissolve'){
+      const spirit=fx.group.userData.oniSpirit,sword=fx.group.userData.oniSword;
+      if(spirit){const approach=Math.min(1,t/.42),stab=t<.42?0:Math.min(1,(t-.42)/.18);spirit.position.x=-.62+approach*.50;spirit.position.y=Math.sin(approach*Math.PI)*.08;spirit.rotation.y=Math.sin(t*7)*.06;if(sword){sword.position.x=.42+stab*.22;sword.rotation.z=-.72+stab*.95;}}
+      const dust=fx.group.userData.oniDust;if(dust){const elapsed=(now-fx.started)/1000,attr=dust.dust.geometry.attributes.position;for(let k=0;k<attr.count;k++){const j=k*3;attr.array[j]=dust.base[j]+dust.vel[j]*elapsed;attr.array[j+1]=dust.base[j+1]+dust.vel[j+1]*elapsed;attr.array[j+2]=dust.base[j+2]+dust.vel[j+2]*elapsed;}attr.needsUpdate=true;dust.dust.material.opacity=Math.max(0,.95-t);}
+      const fade=t<.72?1:Math.max(0,1-(t-.72)/.28);fx.group.traverse(o=>{if(o.material&&'opacity' in o.material){if(o.userData.oniBaseOpacity==null)o.userData.oniBaseOpacity=o.material.opacity;o.material.opacity=o.userData.oniBaseOpacity*fade;}});fx.group.scale.setScalar(.9+t*.18);continue;
     }
     if(fx.type==='ghost-lift'){fx.group.position.y=fx.origin.y+t*5.2;fx.group.position.x=fx.origin.x+Math.sin(t*5)*.28;fx.group.traverse(o=>{if(o.material&&'opacity' in o.material)o.material.opacity=Math.max(0,.9-t*.9);});}
     else{fx.group.position.y=fx.origin.y+t*2.1;fx.group.scale.setScalar(1+t*.45);fx.group.traverse(o=>{if(o.material&&'opacity' in o.material)o.material.opacity=Math.max(0,.8-t*.8);});}

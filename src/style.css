@@ -227,3 +227,18 @@
 .room-lobby-actions button:disabled{opacity:.42;cursor:not-allowed;filter:saturate(.45)}
 @media(max-width:760px){.room-lobby-settings-3{grid-template-columns:1fr 1fr}.room-lobby-card-wide{max-height:calc(100dvh - 28px);overflow:auto}}
 @media(max-width:620px){.room-lobby-settings-3{grid-template-columns:1fr}.room-lobby-teams-2v2{grid-template-columns:1fr}.room-lobby-card-wide{padding:15px}.room-lobby-top{align-items:flex-start}.room-player-team{max-width:100%}}
+
+/* ONI premium bundle presentation */
+.oni-bundle-feature{border-color:#31e98d99!important;background:linear-gradient(145deg,#183c31,#17121b 68%,#090f18)!important;box-shadow:inset 0 0 36px #26ef7d12,0 0 22px #18a65b12}
+.oni-bundle-feature .bundle-ribbon{background:#1b925c!important;color:#e5fff0!important}
+.oni-bundle-feature .bundle-copy>small{color:#5bf5a5!important}
+.oni-bundle-feature .bundle-visual{background-image:linear-gradient(90deg,#06100db0,#07100c55),url('/images/bundles/oni-bundle-promo.png');background-size:cover;background-position:center 43%;min-height:188px}
+.oni-bundle-feature .bundle-mini{border-color:#5affaa66;background:linear-gradient(145deg,#3d1c25,#0b1c17);color:#74ffac;box-shadow:0 0 16px #25f78b1c}
+.oni-bundle-feature .bundle-mini.oni-profile-mini{color:#6effab;border-color:#4dff9b88;background:radial-gradient(circle,#155334,#111b20 70%)}
+.bundle-extra.oni-extra{border-color:#39ff9b72;background:#0b3a2788;color:#aaffcb}
+.theme-oni .store-skin-model{background:linear-gradient(135deg,#e7bf68 0 8%,#8d2028 9% 39%,#171921 40% 68%,#38f58f 69% 72%,#7a1825 73%);filter:drop-shadow(0 0 8px #31ee8a55)}
+.theme-oni .store-skin-model i{background:#56ff9f;box-shadow:0 0 10px #3fff9b}
+.oni-avatar{overflow:hidden;background:#0a2419!important;border-color:#48ff9a!important;box-shadow:0 0 16px #20ed7d2c}
+.oni-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+.room-player-avatar.oni-avatar img{width:100%;height:100%;object-fit:cover}
+.account-avatar.oni-avatar img{width:100%;height:100%;object-fit:cover}

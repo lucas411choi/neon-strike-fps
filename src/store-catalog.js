@@ -15,12 +15,15 @@ export const STORE_SKINS = Object.freeze([
   { id:'halloween_lmg', name:'PUMPKIN CANDY TITAN', displayName:'호박 사탕 TITAN LMG', weaponId:'lmg', rarity:'rare', price:200, bundleId:'halloween_2026_bundle', description:'호박 포구에서 사탕 에너지가 발사되는 LMG. 킬 모션: 유령이 상대를 하늘로 데려갑니다.', theme:'halloween-pumpkin', killEffect:'ghost-lift' },
   { id:'prime_knife', name:'PRIME GOLD KARAMBIT', displayName:'프라임 골드 카람빗', weaponId:'knife', rarity:'premium', price:300, bundleId:'prime_1_bundle', description:'황금 카람빗. 관찰 모션은 칼 돌리기, 휘두를 때 황금 오라, 킬 모션은 황금 화살과 빛.', theme:'prime-gold', inspect:'karambit-spin', killEffect:'gold-arrows' },
   { id:'prime_sniper', name:'PRIME GOLD LONGSHOT', displayName:'프라임 골드 LONGSHOT', weaponId:'sniper', rarity:'premium', price:300, bundleId:'prime_1_bundle', description:'고급스러운 금색 저격소총. 관찰 모션은 양손 들기, 킬 모션은 황금 화살과 빛.', theme:'prime-gold', inspect:'sniper-present', killEffect:'gold-arrows' },
+  { id:'oni_burst', name:'ONI SPIRIT BURST', displayName:'도깨비 영혼 버스트', weaponId:'burst', rarity:'premium', price:350, bundleId:'oni_bundle', description:'붉은 칠기와 금색 장식, 초록 불꽃 눈을 가진 도깨비 얼굴. 관찰 시 눈이 발광하며 초록 오라가 피어납니다.', theme:'oni', inspect:'oni-eye-aura', killEffect:'oni-stab-dissolve' },
+  { id:'oni_revolver', name:'ONI SPIRIT REVOLVER', displayName:'도깨비 영혼 리볼버', weaponId:'revolver', rarity:'premium', price:350, bundleId:'oni_bundle', description:'도깨비 가면과 비취색 실린더 에너지를 장착한 프리미엄 리볼버. 관찰 시 눈과 오라가 발광합니다.', theme:'oni', inspect:'oni-eye-aura', killEffect:'oni-stab-dissolve' },
+  { id:'oni_katana', name:'ONIMARU KATANA', displayName:'오니마루 장검', weaponId:'knife', rarity:'premium', price:400, bundleId:'oni_bundle', description:'붉은 칠기 칼집과 금색 장식, 비취빛 날을 가진 도깨비 장검. 칼집을 소환하고 수평으로 천천히 뽑아냅니다.', theme:'oni', inspect:'oni-sheath-draw', killEffect:'oni-stab-dissolve' },
 ]);
 
 export const STORE_BUNDLES = Object.freeze([
-  // Classic and Prime skins remain in STORE_SKINS and are still available through the daily shop / roll.
-  // Only the Halloween bundle is offered as a bundle product.
-  { id:'halloween_2026_bundle', name:'HALLOWEEN 2026', displayName:'핼러윈 2026', price:450, limited:true, theme:'halloween', description:'박하사탕 권총 · 유령천 RAIL DMR · 호박 사탕 TITAN LMG · 호박 프로필 · 주황색 이름 색상', skinIds:STORE_SKINS.filter(s=>s.bundleId==='halloween_2026_bundle').map(s=>s.id), profileIds:['pumpkin'], nameColorIds:['orange'] },
+  // The Halloween, Classic and Prime skin records remain available for existing owners / daily rotation.
+  // Only the new Oni premium bundle is sold as a bundle.
+  { id:'oni_bundle', name:'ONI 2026', displayName:'도깨비 번들', price:750, limited:true, theme:'oni', description:'도깨비 버스트 · 도깨비 리볼버 · 오니마루 장검 · 초록 불꽃 도깨비 프로필 · 초록색 이름 색상', skinIds:STORE_SKINS.filter(s=>s.bundleId==='oni_bundle').map(s=>s.id), profileIds:['oni'], nameColorIds:['green'] },
 ]);
 
 export const STORE_ROLL_COST = 150;
