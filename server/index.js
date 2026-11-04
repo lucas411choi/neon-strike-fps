@@ -365,10 +365,10 @@ app.post('/api/account/cosmetics', async (req, res) => {
     if (!account) return accountRequiredMessage(res);
     const profileId = String(req.body?.profileId || 'default');
     const nameColor = String(req.body?.nameColor || 'default');
-    if (!['default','pumpkin'].includes(profileId) || !['default','orange'].includes(nameColor)) return res.status(400).json({ error:'선택한 프로필 또는 이름 색상이 올바르지 않습니다.' });
+    if (!['default','pumpkin','oni'].includes(profileId) || !['default','orange','green'].includes(nameColor)) return res.status(400).json({ error:'선택한 프로필 또는 이름 색상이 올바르지 않습니다.' });
     const result = await mutateAccountState(account.id, model => {
-      if (!(model.ownedProfiles||['default']).includes(profileId)) return { ok:false, status:403, error:'보유하지 않은 프로필입니다. 핼러윈 번들에서 획득할 수 있습니다.' };
-      if (!(model.ownedNameColors||['default']).includes(nameColor)) return { ok:false, status:403, error:'보유하지 않은 이름 색상입니다. 핼러윈 번들에서 획득할 수 있습니다.' };
+      if (!(model.ownedProfiles||['default']).includes(profileId)) return { ok:false, status:403, error:'보유하지 않은 프로필입니다. 해당 프리미엄 번들에서 획득할 수 있습니다.' };
+      if (!(model.ownedNameColors||['default']).includes(nameColor)) return { ok:false, status:403, error:'보유하지 않은 이름 색상입니다. 해당 프리미엄 번들에서 획득할 수 있습니다.' };
       model.profileId = profileId; model.nameColor = nameColor;
       return { ok:true, profileId, nameColor };
     });
