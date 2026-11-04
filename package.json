@@ -1,9 +1,9 @@
 {
   "name": "neon-strike-fps",
-  "version": "1.6.6",
+  "version": "1.6.7",
   "private": true,
   "type": "module",
-  "description": "NEON STRIKE browser FPS with private 1v1/2v2 team rooms, server-authoritative friendly-fire filtering, persistent accounts and skins.",
+  "description": "NEON STRIKE browser FPS with 1v1/2v2 online rooms, Oni premium weapon skins and persistent account cosmetics.",
   "engines": {
     "node": ">=20.19.0"
   },

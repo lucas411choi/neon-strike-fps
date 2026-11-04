@@ -1,0 +1,20 @@
+NEON STRIKE v1.6.7 ONI UPDATE ONLY
+
+Overlay onto the existing v1.6.6 project.
+
+Changed files:
+- package.json
+- index.html
+- server/index.js
+- src/main.js
+- src/store-catalog.js
+- src/style.css
+- public/sw.js
+- public/models/skins/oni-burst.glb
+- public/models/skins/oni-revolver.glb
+- public/models/skins/oni-katana.glb
+- public/images/profiles/oni-profile.png
+- public/images/bundles/oni-bundle-promo.png
+- UPDATE_V1.6.7_ONI_KO.md
+
+The Halloween skin records are retained; only the Halloween bundle product is removed from the bundle sale catalog.
