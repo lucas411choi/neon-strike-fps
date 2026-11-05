@@ -1,9 +1,9 @@
 {
   "name": "neon-strike-fps",
-  "version": "1.6.8",
+  "version": "1.6.9",
   "private": true,
   "type": "module",
-  "description": "NEON STRIKE 1v1/2v2 FPS with improved weapon inspect animations and repeatable quests.",
+  "description": "NEON STRIKE 1v1/2v2 FPS with improved weapon inspect animations and repeatable quests and server-authoritative hitscan.",
   "engines": {
     "node": ">=20.19.0"
   },

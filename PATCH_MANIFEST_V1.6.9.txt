@@ -1,0 +1,14 @@
+NEON STRIKE v1.6.9 UPDATE ONLY
+
+Changed files:
+- server/index.js
+- src/main.js
+- index.html
+- src/style.css
+- public/sw.js
+- package.json
+- UPDATE_V1.6.9_KO.md
+- PATCH_MANIFEST_V1.6.9.txt
+
+Reuses all existing models from v1.6.7/v1.6.8. Do not delete public/models.
+Database migration is additive and preserves existing account records.
