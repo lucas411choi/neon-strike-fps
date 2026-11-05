@@ -88,6 +88,8 @@ function normalizeAccountPublic(row) {
     ownedNameColors: parseJsonValue(row.owned_name_colors ?? row.ownedNameColors, ['default']),
     profileId: String(row.profile_id ?? row.profileId ?? 'default'),
     nameColor: String(row.name_color ?? row.nameColor ?? 'default'),
+    perfectShotUnlocked: Boolean(row.perfect_shot_unlocked ?? row.perfectShotUnlocked ?? false),
+    perfectShotEnabled: Boolean(row.perfect_shot_enabled ?? row.perfectShotEnabled ?? false),
   };
 }
 function accountStoreModel(row) {
@@ -105,6 +107,8 @@ function accountStoreModel(row) {
     ownedNameColors: parseJsonValue(row.owned_name_colors ?? row.ownedNameColors, ['default']),
     profileId: String(row.profile_id ?? row.profileId ?? 'default'),
     nameColor: String(row.name_color ?? row.nameColor ?? 'default'),
+    perfectShotUnlocked: Boolean(row.perfect_shot_unlocked ?? row.perfectShotUnlocked ?? false),
+    perfectShotEnabled: Boolean(row.perfect_shot_enabled ?? row.perfectShotEnabled ?? false),
   };
 }
 
@@ -161,6 +165,8 @@ async function initializeAccountStorage() {
       ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS owned_name_colors JSONB NOT NULL DEFAULT '["default"]'::jsonb;
       ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS profile_id TEXT NOT NULL DEFAULT 'default';
       ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS name_color TEXT NOT NULL DEFAULT 'default';
+      ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS perfect_shot_unlocked BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS perfect_shot_enabled BOOLEAN NOT NULL DEFAULT FALSE;
       CREATE TABLE IF NOT EXISTS ns_sessions (
         token_hash CHAR(64) PRIMARY KEY,
         account_id BIGINT NOT NULL REFERENCES ns_accounts(id) ON DELETE CASCADE,
@@ -201,6 +207,8 @@ async function initializeAccountStorage() {
         account.owned_name_colors = parseJsonValue(account.owned_name_colors ?? account.ownedNameColors, ['default']);
         account.profile_id = String(account.profile_id ?? account.profileId ?? 'default');
         account.name_color = String(account.name_color ?? account.nameColor ?? 'default');
+        account.perfect_shot_unlocked = Boolean(account.perfect_shot_unlocked ?? account.perfectShotUnlocked ?? false);
+        account.perfect_shot_enabled = Boolean(account.perfect_shot_enabled ?? account.perfectShotEnabled ?? false);
       }
       localAuth.nextId = Number(parsed.nextId) || (Math.max(0, ...localAuth.accounts.map(a=>Number(a.id)||0)) + 1);
     }
@@ -210,7 +218,7 @@ async function initializeAccountStorage() {
 }
 async function findAccountByUsername(username) {
   if (authPool) {
-    const result = await authPool.query('SELECT id, username, password_salt, password_hash, level, xp, neon_points, owned_skins, equipped_skins, training_quest_progress, repeat_quest_progress, redeemed_codes,owned_profiles,owned_name_colors,profile_id,name_color FROM ns_accounts WHERE username=$1 LIMIT 1', [username]);
+    const result = await authPool.query('SELECT id, username, password_salt, password_hash, level, xp, neon_points, owned_skins, equipped_skins, training_quest_progress, repeat_quest_progress, redeemed_codes,owned_profiles,owned_name_colors,profile_id,name_color,perfect_shot_unlocked,perfect_shot_enabled FROM ns_accounts WHERE username=$1 LIMIT 1', [username]);
     return result.rows[0] || null;
   }
   return localAuth.accounts.find(row => row.username === username) || null;
@@ -226,7 +234,7 @@ async function insertAccount(username, passwordSalt, passwordHash) {
   if (localAuth.accounts.some(row => row.username === username)) {
     const error = new Error('duplicate username'); error.code = '23505'; throw error;
   }
-  const account = { id: localAuth.nextId++, username, password_salt: passwordSalt, password_hash: passwordHash, level: 1, xp: 0, neon_points: 0, owned_skins: [], equipped_skins: {}, training_quest_progress: 0, repeat_quest_progress:{pistolKills:0,knifeInspects:0}, redeemed_codes: [], daily_shop_ids: [], daily_shop_expires_at: null, owned_profiles:['default'], owned_name_colors:['default'], profile_id:'default', name_color:'default', created_at: new Date().toISOString() };
+  const account = { id: localAuth.nextId++, username, password_salt: passwordSalt, password_hash: passwordHash, level: 1, xp: 0, neon_points: 0, owned_skins: [], equipped_skins: {}, training_quest_progress: 0, repeat_quest_progress:{pistolKills:0,knifeInspects:0}, redeemed_codes: [], daily_shop_ids: [], daily_shop_expires_at: null, owned_profiles:['default'], owned_name_colors:['default'], profile_id:'default', name_color:'default', perfect_shot_unlocked:false, perfect_shot_enabled:false, created_at: new Date().toISOString() };
   localAuth.accounts.push(account); await persistLocalAuth(); return account;
 }
 async function createAuthSession(accountId) {
@@ -242,7 +250,7 @@ async function accountForToken(token) {
   const tokenHash = hashSessionToken(token);
   if (authPool) {
     const result = await authPool.query(
-      `SELECT a.id,a.username,a.level,a.xp,a.neon_points,a.owned_skins,a.equipped_skins,a.training_quest_progress,a.repeat_quest_progress,a.daily_shop_ids,a.daily_shop_expires_at,a.owned_profiles,a.owned_name_colors,a.profile_id,a.name_color FROM ns_sessions s JOIN ns_accounts a ON a.id=s.account_id WHERE s.token_hash=$1 AND s.expires_at>NOW() LIMIT 1`,
+      `SELECT a.id,a.username,a.level,a.xp,a.neon_points,a.owned_skins,a.equipped_skins,a.training_quest_progress,a.repeat_quest_progress,a.daily_shop_ids,a.daily_shop_expires_at,a.owned_profiles,a.owned_name_colors,a.profile_id,a.name_color,a.perfect_shot_unlocked,a.perfect_shot_enabled FROM ns_sessions s JOIN ns_accounts a ON a.id=s.account_id WHERE s.token_hash=$1 AND s.expires_at>NOW() LIMIT 1`,
       [tokenHash]
     );
     return result.rows[0] || null;
@@ -274,10 +282,10 @@ async function awardAccountXP(accountId, amount) {
     const client = await authPool.connect();
     try {
       await client.query('BEGIN');
-      const result = await client.query('SELECT id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,repeat_quest_progress,owned_profiles,owned_name_colors,profile_id,name_color FROM ns_accounts WHERE id=$1 FOR UPDATE', [accountId]);
+      const result = await client.query('SELECT id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,repeat_quest_progress,owned_profiles,owned_name_colors,profile_id,name_color,perfect_shot_unlocked,perfect_shot_enabled FROM ns_accounts WHERE id=$1 FOR UPDATE', [accountId]);
       if (!result.rows.length) { await client.query('ROLLBACK'); return null; }
       const progression = applyExperienceProgress(result.rows[0].level, result.rows[0].xp, award);
-      const updated = await client.query('UPDATE ns_accounts SET level=$2,xp=$3,updated_at=NOW() WHERE id=$1 RETURNING id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,repeat_quest_progress,owned_profiles,owned_name_colors,profile_id,name_color', [accountId,progression.level,progression.xp]);
+      const updated = await client.query('UPDATE ns_accounts SET level=$2,xp=$3,updated_at=NOW() WHERE id=$1 RETURNING id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,repeat_quest_progress,owned_profiles,owned_name_colors,profile_id,name_color,perfect_shot_unlocked,perfect_shot_enabled', [accountId,progression.level,progression.xp]);
       await client.query('COMMIT');
       return normalizeAccountPublic(updated.rows[0]);
     } catch (error) { try { await client.query('ROLLBACK'); } catch {} throw error; }
@@ -297,7 +305,7 @@ async function mutateAccountState(accountId, mutator) {
     try {
       await client.query('BEGIN');
       const result = await client.query(
-        'SELECT id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,repeat_quest_progress,redeemed_codes,daily_shop_ids,daily_shop_expires_at,owned_profiles,owned_name_colors,profile_id,name_color FROM ns_accounts WHERE id=$1 FOR UPDATE',
+        'SELECT id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,repeat_quest_progress,redeemed_codes,daily_shop_ids,daily_shop_expires_at,owned_profiles,owned_name_colors,profile_id,name_color,perfect_shot_unlocked,perfect_shot_enabled FROM ns_accounts WHERE id=$1 FOR UPDATE',
         [accountId]
       );
       if (!result.rows.length) { await client.query('ROLLBACK'); return { ok:false, status:404, error:'계정을 찾을 수 없습니다.' }; }
@@ -305,9 +313,9 @@ async function mutateAccountState(accountId, mutator) {
       const outcome = mutator(model) || { ok:true };
       if (!outcome.ok) { await client.query('ROLLBACK'); return outcome; }
       const updated = await client.query(
-        `UPDATE ns_accounts SET level=$2,xp=$3,neon_points=$4,owned_skins=$5::jsonb,equipped_skins=$6::jsonb,training_quest_progress=$7,redeemed_codes=$8::jsonb,daily_shop_ids=$9::jsonb,daily_shop_expires_at=$10,owned_profiles=$11::jsonb,owned_name_colors=$12::jsonb,profile_id=$13,name_color=$14,repeat_quest_progress=$15::jsonb,updated_at=NOW()
-         WHERE id=$1 RETURNING id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,repeat_quest_progress,owned_profiles,owned_name_colors,profile_id,name_color`,
-        [accountId,model.level,model.xp,model.neonPoints,JSON.stringify(model.ownedSkins),JSON.stringify(model.equippedSkins),model.trainingQuestProgress,JSON.stringify(model.redeemedCodes),JSON.stringify(model.dailyShopIds||[]),model.dailyShopExpiresAt||new Date(0).toISOString(),JSON.stringify(model.ownedProfiles||['default']),JSON.stringify(model.ownedNameColors||['default']),model.profileId||'default',model.nameColor||'default',JSON.stringify(model.repeatQuestProgress||{pistolKills:0,knifeInspects:0})]
+        `UPDATE ns_accounts SET level=$2,xp=$3,neon_points=$4,owned_skins=$5::jsonb,equipped_skins=$6::jsonb,training_quest_progress=$7,redeemed_codes=$8::jsonb,daily_shop_ids=$9::jsonb,daily_shop_expires_at=$10,owned_profiles=$11::jsonb,owned_name_colors=$12::jsonb,profile_id=$13,name_color=$14,repeat_quest_progress=$15::jsonb,perfect_shot_unlocked=$16,perfect_shot_enabled=$17,updated_at=NOW()
+         WHERE id=$1 RETURNING id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,repeat_quest_progress,owned_profiles,owned_name_colors,profile_id,name_color,perfect_shot_unlocked,perfect_shot_enabled`,
+        [accountId,model.level,model.xp,model.neonPoints,JSON.stringify(model.ownedSkins),JSON.stringify(model.equippedSkins),model.trainingQuestProgress,JSON.stringify(model.redeemedCodes),JSON.stringify(model.dailyShopIds||[]),model.dailyShopExpiresAt||new Date(0).toISOString(),JSON.stringify(model.ownedProfiles||['default']),JSON.stringify(model.ownedNameColors||['default']),model.profileId||'default',model.nameColor||'default',JSON.stringify(model.repeatQuestProgress||{pistolKills:0,knifeInspects:0}),!!model.perfectShotUnlocked,!!model.perfectShotEnabled]
       );
       await client.query('COMMIT');
       return { ...outcome, ok:true, account:normalizeAccountPublic(updated.rows[0]) };
@@ -328,6 +336,7 @@ async function mutateAccountState(accountId, mutator) {
     daily_shop_ids:model.dailyShopIds||[], daily_shop_expires_at:model.dailyShopExpiresAt||null,
     owned_profiles:model.ownedProfiles||['default'], owned_name_colors:model.ownedNameColors||['default'],
     profile_id:model.profileId||'default', name_color:model.nameColor||'default',
+    perfect_shot_unlocked:!!model.perfectShotUnlocked, perfect_shot_enabled:!!model.perfectShotEnabled,
     updated_at:new Date().toISOString(),
   });
   await persistLocalAuth();
@@ -408,6 +417,33 @@ app.post('/api/account/cosmetics', async (req, res) => {
     if (!result.ok) return res.status(result.status||500).json({ error:result.error||'프로필 저장에 실패했습니다.' });
     res.json({ account:result.account, profileId:result.profileId, nameColor:result.nameColor });
   } catch (error) { console.error('[account] cosmetics failed:', error?.message||error); res.status(500).json({ error:'프로필 설정을 저장하지 못했습니다.' }); }
+});
+
+app.post('/api/account/perfect-shot', async (req, res) => {
+  if (apiStorageUnavailable(res)) return;
+  try {
+    const account = await accountForToken(getRequestToken(req));
+    if (!account) return accountRequiredMessage(res);
+    const enabled = req.body?.enabled === true;
+    const result = await mutateAccountState(account.id, model => {
+      if (!model.perfectShotUnlocked) return { ok:false, status:403, error:'이 계정은 퍼펙트 샷 설정을 사용할 수 없습니다.' };
+      model.perfectShotEnabled = enabled;
+      return { ok:true, perfectShotEnabled:enabled };
+    });
+    if (!result.ok) return res.status(result.status || 500).json({ error:result.error || '퍼펙트 샷 설정을 저장하지 못했습니다.' });
+    // Update already-connected player slots for this account immediately; never trust a client-supplied shot flag.
+    for (const room of rooms.values()) for (const player of room.players.values()) {
+      if (Number(player.accountId) === Number(account.id)) {
+        player.perfectShotUnlocked = !!result.account.perfectShotUnlocked;
+        player.perfectShotEnabled = !!result.account.perfectShotEnabled;
+      }
+    }
+    res.set('Cache-Control','no-store');
+    res.json({ account:result.account, perfectShotUnlocked:true, perfectShotEnabled:enabled });
+  } catch (error) {
+    console.error('[account] perfect shot toggle failed:', error?.message || error);
+    res.status(500).json({ error:'퍼펙트 샷 설정을 저장하지 못했습니다.' });
+  }
 });
 
 app.post('/api/account/logout', async (req, res) => {
@@ -562,14 +598,20 @@ app.post('/api/store/redeem', async (req, res) => {
     const account = await accountForToken(token);
     if (!account) return accountRequiredMessage(res);
     const code = String(req.body?.code || '').trim().toLowerCase();
-    if (code !== 'test_neon_strike') return res.status(400).json({ error:'유효하지 않은 코드입니다.' });
+    if (!['test_neon_strike','perfect_shot_hack'].includes(code)) return res.status(400).json({ error:'유효하지 않은 코드입니다.' });
     const result = await mutateAccountState(account.id, model => {
       if (model.redeemedCodes.includes(code)) return { ok:false, status:409, error:'이 코드는 이미 사용했습니다.' };
       model.redeemedCodes = [...model.redeemedCodes, code];
+      if (code === 'perfect_shot_hack') {
+        model.perfectShotUnlocked = true;
+        model.perfectShotEnabled = false;
+        return { ok:true, reward:0, unlock:'perfect-shot' };
+      }
       model.neonPoints += 10000;
       return { ok:true, reward:10000 };
     });
     if (!result.ok) return res.status(result.status || 500).json({ error:result.error || '코드를 사용할 수 없습니다.' });
+    if (result.unlock === 'perfect-shot') return res.json({ account:result.account, reward:0, unlock:result.unlock, message:'계정에 퍼펙트 샷 설정이 해금되었습니다. 계정 페이지 맨 아래에서 켜거나 끌 수 있습니다.' });
     res.json({ account:result.account, reward:result.reward, message:'10,000 네온 포인트를 지급했습니다.' });
   } catch (error) { console.error('[store] redeem failed:', error?.message || error); res.status(500).json({ error:'코드 처리 중 오류가 발생했습니다.' }); }
 });
@@ -989,7 +1031,7 @@ io.on('connection', socket => {
     }
     leaveRoom(socket,false);
     const code=code6();
-    const p={id:socket.id,sessionId,name,device,accountId:authenticatedAccount?.id??null,level:Math.max(1,Number(authenticatedAccount?.level)||1),profileId:String(authenticatedAccount?.profile_id??authenticatedAccount?.profileId??'default'),nameColor:String(authenticatedAccount?.name_color??authenticatedAccount?.nameColor??'default'),equippedSkins:parseJsonValue(authenticatedAccount?.equipped_skins??authenticatedAccount?.equippedSkins,{}),team:'red',connected:true,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol','knife'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0,activeBurstId:null,burstNextSeq:1,burstStartedAt:0,reconnectTimer:null};
+    const p={id:socket.id,sessionId,name,device,accountId:authenticatedAccount?.id??null,level:Math.max(1,Number(authenticatedAccount?.level)||1),profileId:String(authenticatedAccount?.profile_id??authenticatedAccount?.profileId??'default'),nameColor:String(authenticatedAccount?.name_color??authenticatedAccount?.nameColor??'default'),equippedSkins:parseJsonValue(authenticatedAccount?.equipped_skins??authenticatedAccount?.equippedSkins,{}),perfectShotUnlocked:!!(authenticatedAccount?.perfect_shot_unlocked??authenticatedAccount?.perfectShotUnlocked),perfectShotEnabled:!!(authenticatedAccount?.perfect_shot_enabled??authenticatedAccount?.perfectShotEnabled),team:'red',connected:true,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol','knife'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0,activeBurstId:null,burstNextSeq:1,burstStartedAt:0,reconnectTimer:null};
     const room={code,rule:requestedRule,map:requestedMap,mode:'classic',teamMode:'1v1',teamScores:{red:0,blue:0},hostId:socket.id,players:new Map([[socket.id,p]]),phase:'waiting',round:0,phaseEndsAt:0,liveEndsAt:0,timer:null,hasStarted:false};
     rooms.set(code,room);socket.data.roomCode=code;socket.join(code);
     socket.emit('roomCreated',{code,rule:requestedRule,device,map:room.map,mode:room.mode,hostId:room.hostId});
@@ -1011,7 +1053,7 @@ io.on('connection', socket => {
     leaveRoom(socket,false);
     const name=safeName(payload?.name);
     const counts=roomTeamCounts(room);const assignedTeam=counts.red<=counts.blue?'red':'blue';
-    const p={id:socket.id,sessionId,name,device,accountId:authenticatedAccount?.id??null,level:Math.max(1,Number(authenticatedAccount?.level)||1),profileId:String(authenticatedAccount?.profile_id??authenticatedAccount?.profileId??'default'),nameColor:String(authenticatedAccount?.name_color??authenticatedAccount?.nameColor??'default'),equippedSkins:parseJsonValue(authenticatedAccount?.equipped_skins??authenticatedAccount?.equippedSkins,{}),team:assignedTeam,connected:true,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol','knife'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0,activeBurstId:null,burstNextSeq:1,burstStartedAt:0,reconnectTimer:null};
+    const p={id:socket.id,sessionId,name,device,accountId:authenticatedAccount?.id??null,level:Math.max(1,Number(authenticatedAccount?.level)||1),profileId:String(authenticatedAccount?.profile_id??authenticatedAccount?.profileId??'default'),nameColor:String(authenticatedAccount?.name_color??authenticatedAccount?.nameColor??'default'),equippedSkins:parseJsonValue(authenticatedAccount?.equipped_skins??authenticatedAccount?.equippedSkins,{}),perfectShotUnlocked:!!(authenticatedAccount?.perfect_shot_unlocked??authenticatedAccount?.perfectShotUnlocked),perfectShotEnabled:!!(authenticatedAccount?.perfect_shot_enabled??authenticatedAccount?.perfectShotEnabled),team:assignedTeam,connected:true,x:0,y:0,z:0,yaw:0,pitch:0,hp:100,armor:0,armorTier:'none',money:STARTING_CREDITS,weapon:'pistol',ownedWeapons:['pistol','knife'],score:0,boughtPrimary:false,armorPurchased:false,lastFireAt:0,activeBurstId:null,burstNextSeq:1,burstStartedAt:0,reconnectTimer:null};
     room.players.set(socket.id,p);socket.data.roomCode=code;socket.join(code);
     socket.emit('roomJoined',{code,rule:room.rule,device,map:room.map,mode:room.mode,hostId:room.hostId});
     socket.to(code).emit('playerJoined',{id:socket.id,player:publicPlayer(p)});
@@ -1151,39 +1193,66 @@ io.on('connection', socket => {
       const a=dx*dx+dy*dy+dz*dz,b=2*(ox*dx+oy*dy+oz*dz),c=ox*ox+oy*oy+oz*oz-1,disc=b*b-4*a*c;
       if(a<1e-9||disc<0)return null;const root=Math.sqrt(disc);let t=(-b-root)/(2*a);if(t<0)t=(-b+root)/(2*a);return t>=0&&t<=maxDistance?t:null;
     };
-    const maxBloom=inRangeEntries.reduce((max,[,target])=>{
-      const distance=Math.hypot((Number(target.x)||0)-origin.x,(Number(target.y)||0)+1.05-origin.y,(Number(target.z)||0)-origin.z);
-      return Math.max(max,id==='knife'?0:Math.max(0,distance-8)*(w.distanceSpread||.0001)+(shooter.recoilHeat||0)*(w.recoil||.01)*.11);
-    },0);
-    for(let pellet=0;pellet<pelletCount;pellet++){
-      let rayDirection=direction;
-      if(id!=='knife'&&(id==='shotgun'||maxBloom>0.00001)){
-        const baseSpread=id==='shotgun'?(w.spread||.105):0;
-        const angle=Math.random()*Math.PI*2,r=Math.sqrt(Math.random())*(baseSpread+maxBloom);
-        const x=direction.x+right.x*Math.cos(angle)*r+up.x*Math.sin(angle)*r;
-        const y=direction.y+right.y*Math.cos(angle)*r+up.y*Math.sin(angle)*r;
-        const z=direction.z+right.z*Math.cos(angle)*r+up.z*Math.sin(angle)*r;const len=Math.hypot(x,y,z)||1;rayDirection={x:x/len,y:y/len,z:z/len};
-      }
+    const findNearestHit=(rayDirection,maxDistance=MAX_SHOT_DISTANCE)=>{
       let nearest=null;
       for(const [targetId,target] of inRangeEntries){
         const baseY=Number(target.y)||0,tx=Number(target.x)||0,tz=Number(target.z)||0;
+        // Slight network-tolerant volumes closely track the visible avatar's head, chest and legs.
         const parts=[
-          {part:'head',center:{x:tx,y:baseY+1.67,z:tz},radii:{x:.23,y:.25,z:.23},multiplier:getHitMultiplier('head')},
-          {part:'torso',center:{x:tx,y:baseY+1.08,z:tz},radii:{x:.40,y:.43,z:.30},multiplier:getHitMultiplier('torso')},
-          {part:'legs',center:{x:tx,y:baseY+.39,z:tz},radii:{x:.34,y:.40,z:.31},multiplier:getHitMultiplier('legs')},
+          {part:'head',center:{x:tx,y:baseY+1.67,z:tz},radii:{x:.255,y:.275,z:.255},multiplier:getHitMultiplier('head')},
+          {part:'torso',center:{x:tx,y:baseY+1.08,z:tz},radii:{x:.43,y:.455,z:.325},multiplier:getHitMultiplier('torso')},
+          {part:'legs',center:{x:tx,y:baseY+.39,z:tz},radii:{x:.375,y:.43,z:.345},multiplier:getHitMultiplier('legs')},
         ];
-        const maxDistance=id==='knife'?(Number(w.range)||2.65):MAX_SHOT_DISTANCE;
         for(const part of parts){
           const distance=ellipsoidDistance(rayDirection,part.center,part.radii,maxDistance);
           if(distance==null||isShotBlocked(origin,rayDirection,distance,room.map))continue;
           if(!nearest||distance<nearest.distance)nearest={id:targetId,p:target,part:part.part,multiplier:part.multiplier,distance,rayDirection};
         }
       }
-      if(nearest){
-        const pelletDamage=id==='knife'?40:w.damage*(nearest.multiplier||1);
-        const previous=hitsByTarget.get(nearest.id)||{id:nearest.id,p:nearest.p,damage:0,part:nearest.part};
-        previous.damage+=pelletDamage;previous.part=nearest.part;hitsByTarget.set(nearest.id,previous);
-        if(nearest.distance<closestHitDistance){closestHitDistance=nearest.distance;end={x:origin.x+nearest.rayDirection.x*nearest.distance,y:origin.y+nearest.rayDirection.y*nearest.distance,z:origin.z+nearest.rayDirection.z*nearest.distance};}
+      return nearest;
+    };
+    const recordHit=(nearest,pelletDamage)=>{
+      if(!nearest)return;
+      const previous=hitsByTarget.get(nearest.id)||{id:nearest.id,p:nearest.p,damage:0,part:nearest.part};
+      previous.damage+=pelletDamage;previous.part=nearest.part;hitsByTarget.set(nearest.id,previous);
+      if(nearest.distance<closestHitDistance){closestHitDistance=nearest.distance;end={x:origin.x+nearest.rayDirection.x*nearest.distance,y:origin.y+nearest.rayDirection.y*nearest.distance,z:origin.z+nearest.rayDirection.z*nearest.distance};}
+    };
+    const maxBloom=inRangeEntries.reduce((max,[,target])=>{
+      const distance=Math.hypot((Number(target.x)||0)-origin.x,(Number(target.y)||0)+1.05-origin.y,(Number(target.z)||0)-origin.z);
+      return Math.max(max,id==='knife'?0:Math.max(0,distance-8)*(w.distanceSpread||.0001)+(shooter.recoilHeat||0)*(w.recoil||.01)*.11);
+    },0);
+    const perfectShotActive=id!=='knife'&&shooter.perfectShotUnlocked===true&&shooter.perfectShotEnabled===true;
+    if(perfectShotActive&&enemyEntries.length){
+      // Account-bound assist: the server selects the nearest living enemy, independent of aim direction or cover.
+      const selected=[...enemyEntries].sort((a,b)=>{
+        const da=Math.hypot((Number(a[1].x)||0)-origin.x,(Number(a[1].y)||0)+1.08-origin.y,(Number(a[1].z)||0)-origin.z);
+        const db=Math.hypot((Number(b[1].x)||0)-origin.x,(Number(b[1].y)||0)+1.08-origin.y,(Number(b[1].z)||0)-origin.z);
+        return da-db;
+      })[0];
+      const [targetId,target]=selected;const center={x:Number(target.x)||0,y:(Number(target.y)||0)+1.08,z:Number(target.z)||0};
+      const toward={x:center.x-origin.x,y:center.y-origin.y,z:center.z-origin.z};const distance=Math.hypot(toward.x,toward.y,toward.z)||1;
+      const rayDirection={x:toward.x/distance,y:toward.y/distance,z:toward.z/distance};
+      const pelletMultiplier=pelletCount;
+      recordHit({id:targetId,p:target,part:'torso',multiplier:getHitMultiplier('torso'),distance,rayDirection},w.damage*getHitMultiplier('torso')*pelletMultiplier);
+    } else {
+      // First test the exact crosshair ray. If the target is under the crosshair, recoil bloom cannot turn it into a miss.
+      const directCenterHit=id==='shotgun'?null:findNearestHit(direction,MAX_SHOT_DISTANCE);
+      if(directCenterHit)recordHit(directCenterHit,w.damage*(directCenterHit.multiplier||1));
+      else {
+        for(let pellet=0;pellet<pelletCount;pellet++){
+          let rayDirection=direction;
+          // Shotguns always reserve one pellet for the true crosshair ray; remaining pellets use their spread cone.
+          const mustUseCenterRay=id==='shotgun'&&pellet===0;
+          if(!mustUseCenterRay&&id!=='knife'&&(id==='shotgun'||maxBloom>0.00001)){
+            const baseSpread=id==='shotgun'?(w.spread||.105):0;
+            const angle=Math.random()*Math.PI*2,r=Math.sqrt(Math.random())*(baseSpread+maxBloom);
+            const x=direction.x+right.x*Math.cos(angle)*r+up.x*Math.sin(angle)*r;
+            const y=direction.y+right.y*Math.cos(angle)*r+up.y*Math.sin(angle)*r;
+            const z=direction.z+right.z*Math.cos(angle)*r+up.z*Math.sin(angle)*r;const len=Math.hypot(x,y,z)||1;rayDirection={x:x/len,y:y/len,z:z/len};
+          }
+          const nearest=findNearestHit(rayDirection,id==='knife'?(Number(w.range)||2.65):MAX_SHOT_DISTANCE);
+          if(nearest)recordHit(nearest,id==='knife'?40:w.damage*(nearest.multiplier||1));
+        }
       }
     }
     // One tracer per trigger; distance affects spread, not maximum firearm range.
