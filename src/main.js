@@ -49,7 +49,7 @@ const state = {
   buyPrimaryThisRound:false, armorPurchased:false, matchOver:false, botFireTimers:[],
   pointerLocked:false, mobileLook:null, audio:null, noiseBuffer:null, currentToastTimer:0, zoomed:false, baseFov:76, localNextRoundTimer:null,
   fireHeld:false, sniperMustRelease:false, lastEmptyToast:0, recoilHeat:0, viewKick:0, walkCycle:0, walkIntensity:0, footstepAccumulator:0, lastFootstepSound:0,
-  burstRemaining:0, burstNextAt:0, burstId:0, burstSeq:1, weaponMotion:{drawAt:performance.now(),inspectAt:0,fireAt:0,knifeAt:0,reloadAt:0},
+  burstRemaining:0, burstNextAt:0, burstId:0, burstSeq:1, weaponMotion:{drawAt:performance.now(),inspectAt:0,inspectWeaponId:null,inspectSkinId:null,fireAt:0,knifeAt:0,reloadAt:0},
   killCam:null, killCamActive:false, killCamKillerId:null, killerFreedomUntil:0, killEffects:[], primeMuzzleEffects:[], primeSlashEffects:[], roundResultTimer:null, roundResultPending:null, killCamTimer:null, killCamSavedWeapon:null,
 };
 for (const weapon of WEAPONS) state.ammo[weapon.id] = { mag: weapon.mag, reserve: weapon.reserve };
@@ -301,6 +301,7 @@ function setLobbyPage(page){
 }
 
 let trainingXpQueue = Promise.resolve();
+let knifeInspectQuestQueue = Promise.resolve();
 let storeState = { dailySkinIds: [], dailyDate: '', dailyExpiresAt:'', rollCost: STORE_ROLL_COST };
 let storeBusy = false;
 let gachaRequestBusy = false;
@@ -352,6 +353,7 @@ function renderAccountPanel(){
 }
 function setAccountSession(token,account){
   state.authToken=token||'';state.account=account||null;
+  if(state.currentWeapon)applyCustomWeaponModel(state.currentWeapon);
   try{if(state.authToken)localStorage.setItem(AUTH_TOKEN_KEY,state.authToken);else localStorage.removeItem(AUTH_TOKEN_KEY);}catch{}
   renderAccountPanel();
 }
@@ -363,7 +365,7 @@ async function loadStoredAccount(){
     const data=await response.json().catch(()=>({}));
     // Ignore stale network responses if the player logged in/out while this request was in flight.
     if(state.authToken!==token)return;
-    if(response.ok&&data.account){state.account=data.account;renderAccountPanel();}
+    if(response.ok&&data.account){state.account=data.account;renderAccountPanel();if(state.currentWeapon)applyCustomWeaponModel(state.currentWeapon);}
     else if(response.status===401){setAccountSession('',null);accountMessage('account-auth-message',data.error||'다시 로그인해 주세요.','error');}
     else if(response.status===503){accountMessage('account-auth-message',data.error||'계정 저장소가 준비되지 않았습니다.','error');}
     else if(!response.ok){accountMessage('account-auth-message',data.error||'계정 정보를 불러오지 못했습니다.','error');}
@@ -414,6 +416,36 @@ function awardTrainingXP(){
     }
   });
   return trainingXpQueue;
+}
+function triggerWeaponInspect(){
+  const weaponId=state.currentWeapon;
+  if(!WEAPON_BY_ID[weaponId])return false;
+  const skinId=state.account?.equippedSkins?.[weaponId]||gunRoot.userData.appliedSkinId||null;
+  state.weaponMotion.inspectAt=performance.now();
+  state.weaponMotion.inspectWeaponId=weaponId;
+  state.weaponMotion.inspectSkinId=skinId;
+  if(state.mode==='training'&&weaponId==='knife')void recordTrainingKnifeInspect();
+  if(state.mode==='online'&&state.socketReady&&state.socket){
+    state.socket.emit('weaponInspect',{weaponId,skinId});
+  }
+  const label=skinId==='oni_katana'?'오니마루 장검 발도':skinId==='oni_burst'||skinId==='oni_revolver'?'도깨비 영혼 발광':weaponId==='sniper'&&skinId==='prime_sniper'?'프라임 1 저격소총 관찰':weaponId==='knife'&&skinId==='prime_knife'?'프라임 1 카람빗 관찰':'무기 관찰';
+  showToast(label,850);
+  return true;
+}
+
+function recordTrainingKnifeInspect(){
+  const tokenAtInspect=getAuthToken();
+  if(!tokenAtInspect)return;
+  knifeInspectQuestQueue=knifeInspectQuestQueue.catch(()=>{}).then(async()=>{
+    try{
+      const response=await fetch('/api/quests/training-knife-inspect',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${tokenAtInspect}`,'Cache-Control':'no-cache'},body:JSON.stringify({reason:'training_knife_inspect'}),cache:'no-store'});
+      const data=await response.json().catch(()=>({}));
+      if(state.authToken!==tokenAtInspect)return;
+      if(response.ok&&data.account){state.account=data.account;if(state.lobbyPage==='account')renderAccountPanel();if(state.lobbyPage==='quests')renderQuestPanel();if(data.reward>0)showToast(`검술 관찰 계약 완료! +${data.reward} 네온 포인트`,2200);}
+      else if(response.status!==429&&response.status!==401)console.warn('[quests] knife inspect rejected:',data.error||response.status);
+    }catch(error){console.warn('[quests] knife inspect request failed:',error);}
+  });
+  return knifeInspectQuestQueue;
 }
 function applyAccountUpdated(payload){const account=payload?.account||payload;if(account&&account.username&&state.account&&Number(account.id)===Number(state.account.id)){state.account=account;if(state.lobbyPage==='account')renderAccountPanel();if(['shop','skins','quests'].includes(state.lobbyPage))renderStoreCurrentPage();}}
 function skinPreviewMarkup(skin){
@@ -534,10 +566,22 @@ function renderOwnedSkins(){
 }
 
 function renderQuestPanel(){
-  const account=state.account;const progress=Math.max(0,Number(account?.trainingQuestProgress)||0);const label=$('quest-progress-label');
-  if(label)label.textContent=`${progress} / ${TRAINING_QUEST_TARGET}`;
+  const account=state.account;
+  const progress=Math.max(0,Number(account?.trainingQuestProgress)||0);
+  const repeat=account?.repeatQuestProgress||{};
+  const pistolKills=Math.max(0,Number(repeat.pistolKills)||0);
+  const knifeInspects=Math.max(0,Number(repeat.knifeInspects)||0);
+  const setProgress=(id,value,target,reward,verb)=>{
+    const label=$(`${id}-progress-label`),fill=$(`${id}-progress-fill`),copy=$(`${id}-progress-copy`);
+    if(label)label.textContent=`${value} / ${target}`;
+    if(fill)fill.style.width=`${Math.min(100,value/target*100)}%`;
+    if(copy)copy.textContent=account?`완료까지 ${target-value}회 · 완료 시 +${reward} NP · 무한 반복 가능`: '진행도를 저장하려면 계정에 로그인하세요.';
+  };
+  const label=$('quest-progress-label');if(label)label.textContent=`${progress} / ${TRAINING_QUEST_TARGET}`;
   const fill=$('quest-progress-fill');if(fill)fill.style.width=`${Math.min(100,progress/TRAINING_QUEST_TARGET*100)}%`;
   const copy=$('quest-progress-copy');if(copy)copy.textContent=account?`완료까지 ${TRAINING_QUEST_TARGET-progress}개 · 완료 시 +${TRAINING_QUEST_REWARD} NP · 반복 가능`:'진행도를 계정에 저장하려면 계정 탭에서 로그인하세요.';
+  setProgress('quest-pistol',pistolKills,6,67,'킬');
+  setProgress('quest-knife-inspect',knifeInspects,100,15,'관찰');
 }
 async function buyStoreProduct(productType,productId){
   if(storeBusy)return;if(!storeAuthRequired())return;storeBusy=true;
@@ -874,6 +918,7 @@ function applyCustomWeaponModel(weaponId) {
   const equippedSkinId = state.account?.equippedSkins?.[weaponId] || null;
   const source = getWeaponModelSource(weaponId, equippedSkinId);
   const config = WEAPON_MODEL_CONFIG[weaponId];
+  gunRoot.userData.appliedSkinId = equippedSkinId || null;
   if (!source || !config || state.currentWeapon !== weaponId) return false;
   const fallbackParts = gunRoot.userData.proceduralWeaponChildren || [];
   // Hide the procedural silhouette but keep its small muzzle flash visible.
@@ -887,8 +932,12 @@ function applyCustomWeaponModel(weaponId) {
   }
   const previousPivot = gunRoot.userData.primeSpinPivot;
   if (previousPivot) gunRoot.remove(previousPivot);
+  const previousSniperPivot = gunRoot.userData.primeSniperPivot;
+  if (previousSniperPivot) gunRoot.remove(previousSniperPivot);
   gunRoot.userData.primeSpinPivot = null;
+  gunRoot.userData.primeSniperPivot = null;
   const model = cloneModelForGame(source);
+  model.userData.skinId = equippedSkinId || null;
   model.name = `NEON_${weaponId.toUpperCase()}_VIEWMODEL`;
   if (SKIN_MODEL_CONFIG[equippedSkinId]?.authored) model.userData.authoredSkinAsset=true;
   // The ring at the handle end is the pivot, so spins feel like a fingertip trick rather than a center spin.
@@ -907,6 +956,16 @@ function applyCustomWeaponModel(weaponId) {
     pivot.add(model);
     gunRoot.add(pivot);
     gunRoot.userData.primeSpinPivot = pivot;
+  } else if (weaponId === 'sniper' && equippedSkinId === 'prime_sniper') {
+    const pivot = new THREE.Group();
+    pivot.name = 'PRIME1_SNIPER_FLOAT_INSPECT_PIVOT';
+    pivot.position.set(...config.offset);
+    pivot.userData.basePosition = pivot.position.clone();
+    pivot.userData.baseRotation = pivot.rotation.clone();
+    model.position.set(0,0,0);
+    pivot.add(model);
+    gunRoot.add(pivot);
+    gunRoot.userData.primeSniperPivot = pivot;
   } else {
     model.position.set(...config.offset);
     gunRoot.add(model);
@@ -920,6 +979,7 @@ function applyCustomWeaponModel(weaponId) {
   });
   if (magazineNodes.length) model.userData.magazineNodes = magazineNodes;
   gunRoot.userData.customWeaponModel = model;
+  gunRoot.userData.appliedSkinId = equippedSkinId || null;
   if (magazineNodes.length) {
     if (gunRoot.userData.reloadMagazine) gunRoot.userData.reloadMagazine.visible = false;
     if (gunRoot.userData.reloadInsertMagazine) gunRoot.userData.reloadInsertMagazine.visible = false;
@@ -1110,11 +1170,11 @@ function buildGun(id) {
     reloadMagazine.userData.basePosition=reloadMagazine.position.clone();
     reloadInsertMagazine=box(.13,-.64,-.51,magDims[0],magDims[1],magDims[2],darkMat);reloadInsertMagazine.visible=false;reloadInsertMagazine.userData.slotPosition=new THREE.Vector3(magX,magY,magZ);
   }
-  for(const handPart of [leftSleeve,leftHand,rightSleeve,rightHand])if(handPart)handPart.userData.baseRotation=handPart.rotation.clone();
+  for(const handPart of [leftSleeve,leftHand,rightSleeve,rightHand])if(handPart){handPart.userData.baseRotation=handPart.rotation.clone();handPart.userData.basePosition=handPart.position.clone();}
   gunRoot.userData={leftSleeve,leftHand,rightSleeve,rightHand,reloadMagazine,reloadInsertMagazine,proceduralWeaponChildren,weaponVisualRoot};
   gunRoot.position.set(0,0,0);gunRoot.rotation.set(0,0,0);
   applyCustomWeaponModel(id);
-  state.weaponMotion.drawAt=performance.now();state.weaponMotion.inspectAt=0;state.weaponMotion.fireAt=0;state.weaponMotion.knifeAt=0;
+  state.weaponMotion.drawAt=performance.now();state.weaponMotion.inspectAt=0;state.weaponMotion.inspectWeaponId=null;state.weaponMotion.inspectSkinId=null;state.weaponMotion.fireAt=0;state.weaponMotion.knifeAt=0;
 }
 
 function buildCharacterWeapon(root,weaponId='pistol',skinId=null){
@@ -1131,6 +1191,7 @@ function buildCharacterWeapon(root,weaponId='pistol',skinId=null){
     else customRig.position.set(.20, 1.02, -.31);
     customRig.rotation.set(0, Math.PI / 2, 0);
     customRig.scale.setScalar(SKIN_MODEL_CONFIG[skinId]?.remoteScale || modelConfig.remoteScale);
+    customRig.userData.inspectBasePosition=customRig.position.clone();customRig.userData.inspectBaseRotation=customRig.rotation.clone();
     applyWeaponSkinVisual(customRig, skinId, weaponId);
     customRig.traverse(object => { if (object.isMesh) object.userData.noHitbox = true; });
     root.add(customRig);
@@ -2041,7 +2102,9 @@ function registerRoomLobbySocket(socket){
   socket.on('roomLobby',data=>{state.roomLobbyData=data;if(data.map)state.selectedMap=data.map;renderRoomLobby(data);});
   socket.on('matchStarting',data=>{state.roomLobbyData=null;state.teamMode=data.teamMode||'1v1';if(data.map)state.selectedMap=data.map;if(data.map&&state.mapId!==data.map)buildMap(data.map);hideRoomWait();});
   socket.on('killerKillEffect',data=>beginKillerSkinEffect(data));
+  socket.on('questReward',data=>{if(data?.account)applyAccountUpdated({account:data.account});if(data?.reward>0)showToast(`권총 6킬 계약 완료! +${data.reward} 네온 포인트`,2400);});
   socket.on('killerFreedom',data=>{state.killCamKillerId=data.killerId||socket.id;state.killerFreedomUntil=performance.now()+Math.max(0,Number(data.durationMs)||5000);state.killCamActive=false;state.keys.clear();$('killcam-label')?.classList.add('hidden');});
+  socket.on('weaponInspect',data=>{if(!data||data.id===socket.id)return;const remote=state.remotePlayers.get(data.id);if(!remote||remote.weapon!==data.weaponId)return;if(data.weaponId==='sniper'&&data.skinId==='prime_sniper'){remote.inspectWeaponId=data.weaponId;remote.inspectSkinId=data.skinId;remote.inspectStartedAt=performance.now();}});
 }
 
 function joinOnline(){const code=$('room-code').value.trim().toUpperCase().replace(/[^A-Z0-9]/g,'');if(code.length!==6){showToast('6자리 방 코드를 입력하세요.');return;}initAudio();state.mode='online';state.name=($('player-name').value.trim()||'PLAYER').slice(0,16);state.rule=state.rule||'crossplay';state.money=450;state.hp=100;state.armor=0;state.armorTier='none';state.selfScore=0;state.enemyScore=0;state.round=0;state.currentWeapon='pistol';state.owned=new Set(['pistol','knife']);state.phase='waiting';state.roomCode='';state.roomLobbyData=null;clearBots();clearRemotePlayers();clearTrainingTargets();resetKillCam();setModeUI();updateHUD();
@@ -2113,7 +2176,7 @@ function setupEvents(){
       if(state.mode!=='menu'&&state.phase!=='ended'&&state.phase!=='matchover'){state.paused=true;pauseMenu.classList.remove('hidden');if(document.pointerLockElement)document.exitPointerLock();}return;
     }
     if(state.mode==='menu'||(state.phase==='ended'&&!hasKillerMovementGrace())||state.paused)return;
-    if(e.code==='KeyE'&&!e.repeat&&(state.phase==='live'||hasKillerMovementGrace())){state.weaponMotion.inspectAt=performance.now();const activeSkin=state.account?.equippedSkins?.[state.currentWeapon];showToast(activeSkin==='oni_katana'?'오니마루 장검 발도':activeSkin==='oni_burst'||activeSkin==='oni_revolver'?'도깨비 영혼 발광':state.currentWeapon==='knife'&&activeSkin==='prime_knife'?'프라임 1 카람빗 관찰':'무기 관찰',850);return;}
+    if((e.code==='KeyE'||String(e.key||'').toLowerCase()==='e')&&!e.repeat&&(state.phase==='live'||state.phase==='buy'||hasKillerMovementGrace())){e.preventDefault();triggerWeaponInspect();return;}
     state.keys.add(e.code);
     if(e.code==='KeyR')reloadWeapon();if(e.code==='KeyQ')toggleZoom();if(e.code==='KeyT'&&state.mode==='training')openTrainingWeapons();if(/^Digit[1-9]$/.test(e.code))switchWeaponByNumber(Number(e.code.slice(-1)));
     if(e.code==='KeyB'&&state.phase==='buy')openBuy();
@@ -2123,7 +2186,7 @@ function setupEvents(){
   canvas.addEventListener('contextmenu',e=>e.preventDefault());
   document.addEventListener('pointerlockchange',()=>{state.pointerLocked=document.pointerLockElement===canvas;});
   document.addEventListener('mousemove',e=>{if(state.device!=='pc'||document.pointerLockElement!==canvas||(state.phase!=='live'&&!hasKillerMovementGrace())||state.paused||state.killCamActive)return;state.yaw-=e.movementX*.00215;state.pitch-=e.movementY*.00215;state.pitch=THREE.MathUtils.clamp(state.pitch,-1.28,1.28);});
-  $('touch-fire').addEventListener('pointerdown',e=>{e.preventDefault();initAudio();state.fireHeld=true;state.sniperMustRelease=false;$('touch-fire').setPointerCapture?.(e.pointerId);doShoot();});$('touch-fire').addEventListener('pointerup',()=>{state.fireHeld=false;state.sniperMustRelease=false;});$('touch-fire').addEventListener('pointercancel',()=>{state.fireHeld=false;state.sniperMustRelease=false;});$('touch-scope').addEventListener('pointerdown',e=>{e.preventDefault();toggleZoom();});$('touch-jump').addEventListener('pointerdown',e=>{e.preventDefault();state.keys.add('Space');});$('touch-jump').addEventListener('pointerup',()=>state.keys.delete('Space'));$('touch-reload').addEventListener('pointerdown',e=>{e.preventDefault();reloadWeapon();});$('touch-switch').addEventListener('pointerdown',e=>{e.preventDefault();if(state.mode==='training'){openTrainingWeapons();return;}const current=WEAPONS.findIndex(w=>w.id===state.currentWeapon);for(let i=1;i<=WEAPONS.length;i++){const n=(current+i)%WEAPONS.length;if(state.owned.has(WEAPONS[n].id)){setWeapon(WEAPONS[n].id);break;}}});
+  $('touch-fire').addEventListener('pointerdown',e=>{e.preventDefault();initAudio();state.fireHeld=true;state.sniperMustRelease=false;$('touch-fire').setPointerCapture?.(e.pointerId);doShoot();});$('touch-fire').addEventListener('pointerup',()=>{state.fireHeld=false;state.sniperMustRelease=false;});$('touch-fire').addEventListener('pointercancel',()=>{state.fireHeld=false;state.sniperMustRelease=false;});$('touch-scope').addEventListener('pointerdown',e=>{e.preventDefault();toggleZoom();});$('touch-jump').addEventListener('pointerdown',e=>{e.preventDefault();state.keys.add('Space');});$('touch-jump').addEventListener('pointerup',()=>state.keys.delete('Space'));$('touch-reload').addEventListener('pointerdown',e=>{e.preventDefault();reloadWeapon();});$('touch-inspect')?.addEventListener('pointerdown',e=>{e.preventDefault();if(state.phase==='live'||state.phase==='buy'||hasKillerMovementGrace())triggerWeaponInspect();});$('touch-switch').addEventListener('pointerdown',e=>{e.preventDefault();if(state.mode==='training'){openTrainingWeapons();return;}const current=WEAPONS.findIndex(w=>w.id===state.currentWeapon);for(let i=1;i<=WEAPONS.length;i++){const n=(current+i)%WEAPONS.length;if(state.owned.has(WEAPONS[n].id)){setWeapon(WEAPONS[n].id);break;}}});
   const pad=$('move-pad'),stick=$('move-stick');let padPointer=null;
   pad.addEventListener('pointerdown',e=>{e.preventDefault();padPointer=e.pointerId;pad.setPointerCapture(e.pointerId);updatePad(e);});pad.addEventListener('pointermove',e=>{if(e.pointerId===padPointer)updatePad(e);});
   const resetPad=()=>{padPointer=null;state.touchMove.x=0;state.touchMove.y=0;stick.style.transform='translate(0px,0px)';};pad.addEventListener('pointerup',resetPad);pad.addEventListener('pointercancel',resetPad);
@@ -2146,35 +2209,97 @@ function ensureOniInspectAura(){
   const dust=new THREE.Points(geo,new THREE.PointsMaterial({color:0x4dff9f,size:.025,sizeAttenuation:true,transparent:true,opacity:.85,blending:THREE.AdditiveBlending,depthWrite:false}));group.add(dust);
   gunRoot.userData.oniInspectAura={group,ring,core,bladeGlow,dust,started:0};return gunRoot.userData.oniInspectAura;
 }
+function ensureOniKatanaInspectRig(model){
+  if(model.userData.oniKatanaRig)return model.userData.oniKatanaRig;
+  model.updateMatrixWorld(true);
+  const swordRig=new THREE.Group();swordRig.name='ONI_KATANA_DRAWN_SWORD_RIG';
+  const sheathRig=new THREE.Group();sheathRig.name='ONI_KATANA_SHEATH_LEFT_HAND_RIG';
+  model.add(swordRig,sheathRig);
+  const meshes=[];model.traverse(object=>{if(object.isMesh&&object!==model)meshes.push(object);});
+  for(const object of meshes){
+    const name=String(object.name||'');
+    const isSheath=/^(ONI_SHEATH|ONI_SAYA|KATANA_ONI_)/.test(name);
+    const isSword=/^(ONI_KATANA|ONI_HANDLE|ONI_POMMEL|ONI_TSUBA|ONI_BLADE|ONI_HABAKI)/.test(name);
+    if(isSheath)sheathRig.attach(object);
+    else if(isSword)swordRig.attach(object);
+  }
+  model.updateMatrixWorld(true);
+  const baseSwordPosition=swordRig.position.clone(),baseSwordRotation=swordRig.rotation.clone();
+  const baseSheathPosition=sheathRig.position.clone(),baseSheathRotation=sheathRig.rotation.clone();
+  const armMaterial=new THREE.MeshStandardMaterial({color:0x172637,metalness:.25,roughness:.72});
+  const gloveMaterial=new THREE.MeshStandardMaterial({color:0x101820,metalness:.18,roughness:.58});
+  const trimMaterial=new THREE.MeshStandardMaterial({color:0x4bceb0,metalness:.62,roughness:.32,emissive:0x0b594c,emissiveIntensity:.35});
+  // Left forearm and glove are parented to the saya, so the support hand never loses contact.
+  const leftArm=new THREE.Group();leftArm.name='ONI_SHEATH_HOLDER_LEFT_HAND';leftArm.position.set(.08,-.11,.20);sheathRig.add(leftArm);
+  const leftSleeve=new THREE.Mesh(new THREE.CapsuleGeometry(.052,.30,4,8),armMaterial);leftSleeve.rotation.z=Math.PI/2;leftSleeve.position.set(-.18,-.012,0);leftArm.add(leftSleeve);
+  const leftCuff=new THREE.Mesh(new THREE.TorusGeometry(.055,.012,6,14),trimMaterial);leftCuff.rotation.y=Math.PI/2;leftCuff.position.set(-.035,-.012,0);leftArm.add(leftCuff);
+  const leftPalm=new THREE.Mesh(new THREE.BoxGeometry(.135,.09,.105),gloveMaterial);leftPalm.position.set(.065,.005,.005);leftArm.add(leftPalm);
+  for(let i=0;i<4;i++){const finger=new THREE.Mesh(new THREE.CapsuleGeometry(.014,.055,3,6),gloveMaterial);finger.rotation.z=Math.PI/2;finger.position.set(.135,.035-i*.022,.028);leftArm.add(finger);}
+  const leftThumb=new THREE.Mesh(new THREE.CapsuleGeometry(.014,.045,3,6),gloveMaterial);leftThumb.rotation.set(.2,0,-.55);leftThumb.position.set(.09,-.035,.065);leftArm.add(leftThumb);
+  // Right hand is attached to the hilt group and travels with the drawn sword.
+  const rightArm=new THREE.Group();rightArm.name='ONI_KATANA_DRAWING_RIGHT_HAND';rightArm.position.set(-.49,-.105,.145);swordRig.add(rightArm);
+  const rightSleeve=new THREE.Mesh(new THREE.CapsuleGeometry(.047,.30,4,8),armMaterial);rightSleeve.rotation.z=Math.PI/2;rightSleeve.position.set(-.16,-.005,0);rightArm.add(rightSleeve);
+  const rightCuff=new THREE.Mesh(new THREE.TorusGeometry(.050,.011,6,14),trimMaterial);rightCuff.rotation.y=Math.PI/2;rightCuff.position.set(-.025,-.005,0);rightArm.add(rightCuff);
+  const rightPalm=new THREE.Mesh(new THREE.BoxGeometry(.12,.085,.10),gloveMaterial);rightPalm.position.set(.055,.004,.002);rightArm.add(rightPalm);
+  for(let i=0;i<4;i++){const finger=new THREE.Mesh(new THREE.CapsuleGeometry(.013,.05,3,6),gloveMaterial);finger.rotation.z=Math.PI/2;finger.position.set(.12,.030-i*.020,.026);rightArm.add(finger);}
+  const rightThumb=new THREE.Mesh(new THREE.CapsuleGeometry(.013,.043,3,6),gloveMaterial);rightThumb.rotation.set(.2,0,-.55);rightThumb.position.set(.085,-.032,.060);rightArm.add(rightThumb);
+  leftArm.visible=false;rightArm.visible=false;sheathRig.visible=false;
+  model.userData.oniKatanaRig={swordRig,sheathRig,leftArm,rightArm,baseSwordPosition,baseSwordRotation,baseSheathPosition,baseSheathRotation};
+  return model.userData.oniKatanaRig;
+}
+
+function ensurePrimeSniperInspectAura(){
+  if(gunRoot.userData.primeSniperInspectAura)return gunRoot.userData.primeSniperInspectAura;
+  const group=new THREE.Group();group.name='PRIME1_SNIPER_FLOAT_AURA';group.position.set(.36,-.10,-.62);group.visible=false;gunRoot.add(group);
+  const gold=new THREE.MeshBasicMaterial({color:0xffd66d,transparent:true,opacity:.68,blending:THREE.AdditiveBlending,depthWrite:false});
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(.37,.012,6,48),gold);ring.rotation.x=.42;group.add(ring);
+  const core=new THREE.Mesh(new THREE.SphereGeometry(.15,12,8),new THREE.MeshBasicMaterial({color:0xffe7a0,transparent:true,opacity:.20,blending:THREE.AdditiveBlending,depthWrite:false}));group.add(core);
+  const count=36,positions=new Float32Array(count*3);for(let i=0;i<count;i++){const a=Math.random()*Math.PI*2,r=.12+Math.random()*.34;positions[i*3]=Math.cos(a)*r;positions[i*3+1]=(Math.random()-.5)*.55;positions[i*3+2]=Math.sin(a)*r;}
+  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));
+  const dust=new THREE.Points(geometry,new THREE.PointsMaterial({color:0xffdf8a,size:.022,sizeAttenuation:true,transparent:true,opacity:.8,blending:THREE.AdditiveBlending,depthWrite:false}));group.add(dust);
+  gunRoot.userData.primeSniperInspectAura={group,ring,core,dust};return gunRoot.userData.primeSniperInspectAura;
+}
 function updateOniWeaponInspect(now,activeWeapon,motion){
-  const skinId=state.account?.equippedSkins?.[activeWeapon.id]||null;
-  const isOniGun=(activeWeapon.id==='burst'&&skinId==='oni_burst')||(activeWeapon.id==='revolver'&&skinId==='oni_revolver');
-  const isOniKatana=activeWeapon.id==='knife'&&skinId==='oni_katana';
+  const inspectSkin=motion.inspectWeaponId===activeWeapon.id&&motion.inspectSkinId?motion.inspectSkinId:(state.account?.equippedSkins?.[activeWeapon.id]||gunRoot.userData.appliedSkinId||null);
+  const isOniGun=(activeWeapon.id==='burst'&&inspectSkin==='oni_burst')||(activeWeapon.id==='revolver'&&inspectSkin==='oni_revolver');
+  const isOniKatana=activeWeapon.id==='knife'&&inspectSkin==='oni_katana';
   const age=motion.inspectAt?now-motion.inspectAt:Infinity;
-  const active=age>=0&&age<(isOniKatana?3000:2200)&&(isOniGun||isOniKatana);
+  const duration=isOniKatana?4000:2200;
+  const active=age>=0&&age<duration&&(isOniGun||isOniKatana);
   const model=gunRoot.userData.customWeaponModel;
   if(model){
     model.traverse(object=>{
       if(!object.isMesh||!/(EYE_GLOW)/.test(object.name))return;
       const materials=Array.isArray(object.material)?object.material:[object.material];
-      for(const mat of materials){if(!mat?.emissive)continue;const pulse=active?1.5+2.5*Math.pow(Math.sin(Math.PI*Math.min(1,age/(isOniKatana?3000:2200))),.65):.35;mat.emissiveIntensity=pulse;}
+      for(const mat of materials){if(!mat?.emissive)continue;const pulse=active?1.5+2.5*Math.pow(Math.sin(Math.PI*Math.min(1,age/duration)),.65):.35;mat.emissiveIntensity=pulse;}
     });
     if(isOniKatana){
-      if(!model.userData.oniKatanaParts){
-        const bladeParts=[];const sheathParts=[];
-        model.traverse(object=>{if(!object.isMesh)return;if(object.name==='ONI_KATANA_BLADE'||object.name.startsWith('ONI_BLADE_')||object.name==='ONI_HABAKI'){object.userData.oniBasePosition=object.position.clone();bladeParts.push(object);}if(object.name.includes('SHEATH')||object.name.includes('SAYA')||object.name.startsWith('KATANA_ONI_')){object.userData.oniBaseScale=object.scale.clone();sheathParts.push(object);}});
-        model.userData.oniKatanaParts={bladeParts,sheathParts};for(const object of sheathParts)object.visible=false;
+      const rig=ensureOniKatanaInspectRig(model);
+      const t=active?Math.max(0,Math.min(1,age/duration)):0;
+      const smooth=v=>v*v*(3-2*v);
+      let sheathLift=0,draw=0;
+      if(active){
+        if(t<.16){sheathLift=smooth(t/.16);draw=0;}
+        else if(t<.34){sheathLift=1;draw=0;}
+        else if(t<.84){sheathLift=1;draw=smooth((t-.34)/.50);}
+        else if(t<.93){sheathLift=1;draw=1;}
+        else {sheathLift=1-smooth((t-.93)/.07);draw=1;}
       }
-      const parts=model.userData.oniKatanaParts;const t=active?Math.max(0,Math.min(1,age/3000)):0;
-      const smooth=v=>v*v*(3-2*v);let draw=0;
-      if(active){if(t<.18)draw=0;else if(t<.48)draw=.52*smooth((t-.18)/.30);else if(t<.72)draw=.52;else draw=.52*(1-smooth((t-.72)/.28));}
-      for(const object of parts.bladeParts){const base=object.userData.oniBasePosition;if(base)object.position.set(base.x+draw,base.y,base.z);}
-      for(const object of parts.sheathParts){object.visible=active;const base=object.userData.oniBaseScale;if(base)object.scale.copy(base).multiplyScalar(active?(.65+.35*smooth(Math.min(1,t/.16))):0.001);}
+      rig.sheathRig.visible=active;
+      rig.leftArm.visible=active;
+      rig.rightArm.visible=active;
+      // Lift the sheath into the support hand. The whole sword (handle, guard and blade)
+      // starts seated inside it, then slides back to the normal ready position as one unit.
+      rig.sheathRig.position.set(rig.baseSheathPosition.x-.15*sheathLift,rig.baseSheathPosition.y+.29*sheathLift,rig.baseSheathPosition.z+.10*sheathLift);
+      rig.sheathRig.rotation.set(rig.baseSheathRotation.x,rig.baseSheathRotation.y,rig.baseSheathRotation.z-.06*sheathLift);
+      const sheathedOffset=-.58*(active?1-draw:0);
+      rig.swordRig.position.set(rig.baseSwordPosition.x+sheathedOffset,rig.baseSwordPosition.y+.012*Math.sin(t*Math.PI),rig.baseSwordPosition.z);
+      rig.swordRig.rotation.set(rig.baseSwordRotation.x,rig.baseSwordRotation.y,rig.baseSwordRotation.z-.012*Math.sin(t*Math.PI));
     }
   }
   const aura=ensureOniInspectAura();
   aura.group.visible=active&&(isOniGun||isOniKatana);
-  if(aura.group.visible){const t=Math.max(0,Math.min(1,age/(isOniKatana?3000:2200)));const envelope=Math.sin(Math.PI*t);aura.group.position.set(isOniKatana?.42:.36,isOniKatana?-.15:-.10,-.58);aura.group.scale.setScalar((isOniKatana?1.0:.72)+(isOniKatana?.16:.50)*envelope);aura.group.rotation.y+=isOniKatana?.012:.035;aura.ring.material.opacity=.18+.57*envelope;aura.core.material.opacity=.08+.30*envelope;aura.bladeGlow.material.opacity=isOniKatana?.22+.64*envelope:0;aura.dust.material.opacity=.18+.70*envelope;}
+  if(aura.group.visible){const t=Math.max(0,Math.min(1,age/duration));const envelope=Math.sin(Math.PI*t);aura.group.position.set(isOniKatana?.42:.36,isOniKatana?-.15:-.10,-.58);aura.group.scale.setScalar((isOniKatana?1.0:.72)+(isOniKatana?.16:.50)*envelope);aura.group.rotation.y+=isOniKatana?.012:.035;aura.ring.material.opacity=.18+.57*envelope;aura.core.material.opacity=.08+.30*envelope;aura.bladeGlow.material.opacity=isOniKatana?.22+.64*envelope:0;aura.dust.material.opacity=.18+.70*envelope;}
 }
 
 function updateWorld(dt,now){
@@ -2191,6 +2316,12 @@ function updateWorld(dt,now){
       const beforeX=r.root.position.x,beforeZ=r.root.position.z;
       if(!r.root.userData.primeDissolveAt)r.root.position.lerp(r.target,Math.min(1,dt*12));
       r.root.rotation.y=r.yaw;
+      const remoteWeaponModel=r.root.userData.remoteWeaponModel;
+      if(remoteWeaponModel&&r.inspectWeaponId==='sniper'&&r.inspectSkinId==='prime_sniper'&&r.inspectStartedAt){
+        const inspectAge=now-r.inspectStartedAt,base=remoteWeaponModel.userData.inspectBasePosition,baseRot=remoteWeaponModel.userData.inspectBaseRotation;
+        if(inspectAge>=0&&inspectAge<2500&&base&&baseRot){const t=inspectAge/2500,lift=Math.sin(Math.PI*t),orbit=Math.sin(t*Math.PI*2);remoteWeaponModel.position.set(base.x+orbit*.10,base.y+lift*.20,base.z+lift*.14);remoteWeaponModel.rotation.set(baseRot.x+lift*.30,baseRot.y+t*Math.PI*2,baseRot.z+orbit*.40);}
+        else {if(base)remoteWeaponModel.position.copy(base);if(baseRot)remoteWeaponModel.rotation.copy(baseRot);r.inspectStartedAt=0;}
+      }
       if(state.killCamActive&&state.killCam&&id===state.killCam.killerId){state.killCam.killer.x=r.root.position.x;state.killCam.killer.y=r.root.position.y;state.killCam.killer.z=r.root.position.z;state.killCam.killer.yaw=r.yaw;}
       if(r.root.userData.ghostLiftAt){updateGhostLiftRoot(r.root,now);continue;}
       if(r.root.userData.primeDissolveAt){updatePrimeGoldDissolve(r.root,now);continue;}
@@ -2217,7 +2348,9 @@ function updateWorld(dt,now){
     const drawT=clamp01((now-motion.drawAt)/(reduceMotion?80:440)), drawOffset=(1-easeOut(drawT));
     const fireAge=now-motion.fireAt, fireKick=fireAge>=0&&fireAge<180?Math.exp(-fireAge/52):0;
     let inspectX=0,inspectY=0,inspectZ=0,inspectRot=0;
-    if(motion.inspectAt&&now-motion.inspectAt<(activeWeapon.id==='sniper'&&state.account?.equippedSkins?.sniper==='prime_sniper'?2500:2200)){const inspectDuration=activeWeapon.id==='sniper'&&state.account?.equippedSkins?.sniper==='prime_sniper'?2500:2200;const it=(now-motion.inspectAt)/inspectDuration;inspectY=Math.sin(Math.PI*it)*.065;inspectX=Math.sin(Math.PI*it)*.09;inspectRot=Math.sin(Math.PI*it)*.38;}
+    const activeInspectSkin=motion.inspectWeaponId===activeWeapon.id&&motion.inspectSkinId?motion.inspectSkinId:(state.account?.equippedSkins?.[activeWeapon.id]||gunRoot.userData.appliedSkinId||null);
+    const primeSniperInspect=activeWeapon.id==='sniper'&&activeInspectSkin==='prime_sniper'&&motion.inspectAt>0&&now-motion.inspectAt>=0&&now-motion.inspectAt<2500;
+    if(motion.inspectAt&&now-motion.inspectAt<(primeSniperInspect?2500:2200)&&!primeSniperInspect){const inspectDuration=2200;const it=(now-motion.inspectAt)/inspectDuration;inspectY=Math.sin(Math.PI*it)*.065;inspectX=Math.sin(Math.PI*it)*.09;inspectRot=Math.sin(Math.PI*it)*.38;}
     const reloadProgress=state.reloading&&activeWeapon.reload>0?clamp01((now-(motion.reloadAt||now))/(activeWeapon.reload*1000)):0;
     const reloadWave=state.reloading?Math.sin(Math.PI*reloadProgress):0;
     const knifeAge=now-motion.knifeAt, knifeActive=activeWeapon.id==='knife'&&knifeAge>=0&&knifeAge<420;
@@ -2239,14 +2372,31 @@ function updateWorld(dt,now){
     gunRoot.rotation.x=-fireKick*.10+reloadWave*.11+(knifeActive?knifeMove.rx*knifeWave:0);
     gunRoot.rotation.y=inspectRot+reloadWave*.05+(knifeActive?knifeMove.ry*knifeWave:0);
     gunRoot.rotation.z=-drawOffset*.42+Math.sin(state.walkCycle)*.018*state.walkIntensity+inspectRot*.45+reloadWave*(activeWeapon.slot==='sidearm'?.16:.06)+(knifeActive?knifeMove.rz*knifeWave:0);
-    const oniKatanaAge=now-motion.inspectAt;
-    if(activeWeapon.id==='knife'&&state.account?.equippedSkins?.knife==='oni_katana'&&motion.inspectAt&&oniKatanaAge>=0&&oniKatanaAge<3000){
-      const t=clamp01(oniKatanaAge/3000),smooth=v=>v*v*(3-2*v);const drawPose=t<.22?smooth(t/.22):t<.72?1:1-smooth((t-.72)/.28);
-      gunRoot.position.x+=.055*drawPose;gunRoot.position.y+=.025*Math.sin(t*Math.PI);gunRoot.rotation.x-=.13*drawPose;gunRoot.rotation.y+=.10*drawPose;gunRoot.rotation.z+=.30*drawPose;
-    }
     // Spin the karambit around the handle's finger loop, with several fast multi-axis rotations.
-    const primeSniperInspect=activeWeapon.id==='sniper'&&state.account?.equippedSkins?.sniper==='prime_sniper'&&motion.inspectAt&&now-motion.inspectAt<2500;
-    if(primeSniperInspect){const st=clamp01((now-motion.inspectAt)/2500);inspectY+=Math.sin(Math.PI*st)*.16;inspectX+=Math.sin(Math.PI*st*2)*.10;inspectRot+=Math.sin(Math.PI*st*2)*.62;}
+    const primeSniperPivot=gunRoot.userData.primeSniperPivot;
+    const primeSniperModel=gunRoot.userData.customWeaponModel;
+    if(primeSniperPivot){
+      const base=primeSniperPivot.userData.basePosition,baseRot=primeSniperPivot.userData.baseRotation;
+      if(primeSniperInspect&&base&&baseRot){
+        const t=clamp01((now-motion.inspectAt)/2500),lift=Math.sin(Math.PI*t),orbit=Math.sin(t*Math.PI*2);
+        primeSniperPivot.position.set(base.x+orbit*.12,base.y+lift*.27,base.z+lift*.21);
+        primeSniperPivot.rotation.set(baseRot.x+lift*.42,baseRot.y+t*Math.PI*2,baseRot.z+orbit*.58);
+      }else if(base&&baseRot){primeSniperPivot.position.copy(base);primeSniperPivot.rotation.copy(baseRot);}
+    }else if(primeSniperModel){
+      const base=primeSniperModel.userData.primeInspectBasePosition||(primeSniperModel.userData.primeInspectBasePosition=primeSniperModel.position.clone());
+      const baseRot=primeSniperModel.userData.primeInspectBaseRotation||(primeSniperModel.userData.primeInspectBaseRotation=primeSniperModel.rotation.clone());
+      if(primeSniperInspect){const t=clamp01((now-motion.inspectAt)/2500),lift=Math.sin(Math.PI*t),orbit=Math.sin(t*Math.PI*2);primeSniperModel.position.set(base.x+orbit*.12,base.y+lift*.27,base.z+lift*.21);primeSniperModel.rotation.set(baseRot.x+lift*.42,baseRot.y+t*Math.PI*2,baseRot.z+orbit*.58);}
+      else {primeSniperModel.position.copy(base);primeSniperModel.rotation.copy(baseRot);}
+    }
+    const primeAura=ensurePrimeSniperInspectAura();
+    primeAura.group.visible=!!primeSniperInspect;
+    if(primeSniperInspect){const t=clamp01((now-motion.inspectAt)/2500),energy=Math.sin(Math.PI*t);primeAura.group.scale.setScalar(.82+energy*.52);primeAura.group.rotation.y+=.024;primeAura.ring.material.opacity=.16+energy*.62;primeAura.core.material.opacity=.08+energy*.28;primeAura.dust.material.opacity=.16+energy*.72;}
+    const oniKatanaInspect=activeWeapon.id==='knife'&&activeInspectSkin==='oni_katana'&&motion.inspectAt>0&&now-motion.inspectAt>=0&&now-motion.inspectAt<4000;
+    const katanaT=oniKatanaInspect?clamp01((now-motion.inspectAt)/4000):0;
+    const katanaSmooth=v=>v*v*(3-2*v);
+    let katanaDraw=0;
+    if(oniKatanaInspect){if(katanaT<.34)katanaDraw=0;else if(katanaT<.84)katanaDraw=katanaSmooth((katanaT-.34)/.50);else katanaDraw=1;}
+    const katanaHandTravel=oniKatanaInspect?.25*(1-katanaDraw):0;
     const primeSpinPivot=gunRoot.userData.primeSpinPivot;
     if(primeSpinPivot&&activeWeapon.id==='knife'&&state.account?.equippedSkins?.knife==='prime_knife'){
       const inspectAge=now-motion.inspectAt;
@@ -2276,10 +2426,10 @@ function updateWorld(dt,now){
       }
     }
     const hands=gunRoot.userData||{};const showSupportHand=activeWeapon.slot==='primary'||(state.reloading&&activeWeapon.slot==='sidearm');
-    if(hands.leftSleeve){hands.leftSleeve.visible=showSupportHand;const br=hands.leftSleeve.userData.baseRotation;if(br){hands.leftSleeve.rotation.x=br.x+reloadWave*.42+fireKick*.12;hands.leftSleeve.rotation.z=br.z-reloadWave*.28;}}
-    if(hands.leftHand){hands.leftHand.visible=showSupportHand;const br=hands.leftHand.userData.baseRotation;if(br){hands.leftHand.rotation.x=br.x+reloadWave*.52;hands.leftHand.rotation.z=br.z-reloadWave*.22;}}
-    if(hands.rightSleeve){const br=hands.rightSleeve.userData.baseRotation;if(br)hands.rightSleeve.rotation.x=br.x-fireKick*.22+reloadWave*.12;}
-    if(hands.rightHand){const br=hands.rightHand.userData.baseRotation;if(br)hands.rightHand.rotation.x=br.x-fireKick*.27+reloadWave*.18;}
+    if(hands.leftSleeve){hands.leftSleeve.visible=showSupportHand&&!primeSniperInspect&&!oniKatanaInspect;const br=hands.leftSleeve.userData.baseRotation;if(br){hands.leftSleeve.rotation.x=br.x+reloadWave*.42+fireKick*.12;hands.leftSleeve.rotation.z=br.z-reloadWave*.28;}}
+    if(hands.leftHand){hands.leftHand.visible=showSupportHand&&!primeSniperInspect&&!oniKatanaInspect;const br=hands.leftHand.userData.baseRotation;if(br){hands.leftHand.rotation.x=br.x+reloadWave*.52;hands.leftHand.rotation.z=br.z-reloadWave*.22;}}
+    if(hands.rightSleeve){hands.rightSleeve.visible=!primeSniperInspect&&!oniKatanaInspect;const br=hands.rightSleeve.userData.baseRotation,bp=hands.rightSleeve.userData.basePosition;if(bp)hands.rightSleeve.position.set(bp.x,bp.y,bp.z+katanaHandTravel);if(br)hands.rightSleeve.rotation.x=br.x-fireKick*.22+reloadWave*.12;}
+    if(hands.rightHand){hands.rightHand.visible=!primeSniperInspect&&!oniKatanaInspect;const br=hands.rightHand.userData.baseRotation,bp=hands.rightHand.userData.basePosition;if(bp)hands.rightHand.position.set(bp.x,bp.y,bp.z+katanaHandTravel);if(br)hands.rightHand.rotation.x=br.x-fireKick*.27+reloadWave*.18;}
     // Magazine removal/insertion phases make the reload readable instead of only bobbing the weapon.
     const modelMagazines=hands.customWeaponModel?.userData?.magazineNodes || [];
     if(modelMagazines.length){

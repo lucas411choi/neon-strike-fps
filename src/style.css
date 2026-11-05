@@ -242,3 +242,8 @@
 .oni-avatar img{width:100%;height:100%;object-fit:cover;display:block}
 .room-player-avatar.oni-avatar img{width:100%;height:100%;object-fit:cover}
 .account-avatar.oni-avatar img{width:100%;height:100%;object-fit:cover}
+
+/* v1.6.8 repeatable contract cards */
+.quest-card+.quest-card{margin-top:12px}.lobby-quests-view{padding-bottom:24px}
+
+.touch-actions #touch-inspect{grid-column:3;grid-row:2;border-color:#55f1d588;color:#8dffe3;box-shadow:0 0 12px #55f1d522}
