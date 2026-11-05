@@ -1,4 +1,4 @@
-const CACHE_NAME = 'neon-strike-v1.6.8-inspect-quests';
+const CACHE_NAME = 'neon-strike-v1.6.9-perfect-shot';
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(['/','/manifest.webmanifest','/icon.svg'])).catch(()=>{}));
   self.skipWaiting();
