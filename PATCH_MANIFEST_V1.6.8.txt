@@ -1,0 +1,15 @@
+NEON STRIKE v1.6.8 UPDATE ONLY
+
+Changed files:
+- server/index.js
+- src/main.js
+- index.html
+- src/style.css
+- public/sw.js
+- package.json
+- UPDATE_V1.6.8_KO.md
+
+This patch reuses the v1.6.7 ONI and Prime 1 GLB assets. Do not delete or replace public/models.
+Database migration is additive: repeat_quest_progress is added with IF NOT EXISTS.
+
+Apply all files to the same paths in the existing v1.6.7 repository.
