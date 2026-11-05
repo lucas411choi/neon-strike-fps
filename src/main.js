@@ -326,6 +326,17 @@ async function saveAccountCosmetics(){
     if(data.account){state.account=data.account;renderAccountPanel();}accountMessage('account-profile-message','프로필과 이름 색상이 계정에 저장되었습니다.','success');
   }catch(error){accountMessage('account-profile-message',error.message,'error');}finally{if(button)button.disabled=false;}
 }
+async function setPerfectShotEnabled(enabled){
+  if(!state.account?.perfectShotUnlocked||!getAuthToken())return;
+  const toggle=$('account-perfect-shot-toggle');if(toggle)toggle.disabled=true;
+  try{
+    const response=await fetch('/api/account/perfect-shot',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${getAuthToken()}`,'Cache-Control':'no-cache'},cache:'no-store',body:JSON.stringify({enabled:!!enabled})});
+    const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||'퍼펙트 샷 설정을 저장하지 못했습니다.');
+    if(data.account){state.account=data.account;renderAccountPanel();}
+    showToast(enabled?'퍼펙트 샷 활성화':'퍼펙트 샷 비활성화',1500);
+  }catch(error){showToast(error.message,2200);if(toggle)toggle.checked=!!state.account?.perfectShotEnabled;}
+  finally{if(toggle)toggle.disabled=false;}
+}
 function renderAccountPanel(){
   const loggedIn=!!state.account;
   $('account-auth-panel')?.classList.toggle('hidden',loggedIn);
@@ -336,6 +347,8 @@ function renderAccountPanel(){
   const password=$('account-password');if(password)password.autocomplete=state.accountMode==='register'?'new-password':'current-password';
   if(!loggedIn)return;
   const account=state.account,level=Math.max(1,Number(account.level)||1),xp=Math.max(0,Number(account.xp)||0),needed=level*XP_PER_LEVEL;
+  const perfectPanel=$('account-perfect-shot-panel');if(perfectPanel)perfectPanel.classList.toggle('hidden',!account.perfectShotUnlocked);
+  const perfectToggle=$('account-perfect-shot-toggle');if(perfectToggle)perfectToggle.checked=!!account.perfectShotEnabled;
   $('account-profile-name').textContent=account.username;
   const avatar=$('account-avatar');if(avatar){
     avatar.classList.toggle('pumpkin-avatar',account.profileId==='pumpkin');avatar.classList.toggle('oni-avatar',account.profileId==='oni');
@@ -591,7 +604,7 @@ async function buyStoreProduct(productType,productId){
 }
 async function redeemStoreCode(event){
   event?.preventDefault();if(storeBusy)return;if(!storeAuthRequired())return;const input=$('store-code-input');const code=input?.value.trim()||'';if(!code){setStoreFeedback('코드를 입력하세요.','error');return;}storeBusy=true;
-  try{const data=await storeRequest('/api/store/redeem',{code});setStoreFeedback(data.message||`+${data.reward} NP 지급 완료`,'success');showToast(`+${Number(data.reward||0).toLocaleString('en-US')} 네온 포인트`,2200);if(input)input.value='';renderStoreCurrentPage();}
+  try{const data=await storeRequest('/api/store/redeem',{code});setStoreFeedback(data.message||`+${data.reward} NP 지급 완료`,'success');if(data.unlock==='perfect-shot'){showToast('퍼펙트 샷 설정 해금 완료 · 계정 페이지에서 켜세요.',2600);renderAccountPanel();}else showToast(`+${Number(data.reward||0).toLocaleString('en-US')} 네온 포인트`,2200);if(input)input.value='';renderStoreCurrentPage();}
   catch(error){setStoreFeedback(error.message,'error');}
   finally{storeBusy=false;}
 }
@@ -1730,6 +1743,10 @@ function doShoot(fromBurst=false){
       // Online damage remains server-authoritative. The server samples shotgun pellets independently.
     }
   }
+  if(state.mode==='training'&&w.id!=='knife'&&state.account?.perfectShotUnlocked&&state.account?.perfectShotEnabled){
+    const target=[...state.trainingTargets].filter(candidate=>candidate.alive).sort((a,b)=>a.root.position.distanceToSquared(state.pos)-b.root.position.distanceToSquared(state.pos))[0];
+    if(target){const damage=w.damage*(w.id==='shotgun'?(w.pellets||10):1)*getHitMultiplier('torso');localDamageByTarget.clear();localDamageByTarget.set(target.id,damage);hitPoint.set(target.root.position.x,target.root.position.y+1.08,target.root.position.z);}
+  }
   if(w.id!=='knife')addShotFx(origin,hitPoint,w.id==='sniper'?0xffdfb5:0x73f8e4);
   if(state.mode==='training'&&localDamageByTarget.size){
     for(const [targetId,damage] of localDamageByTarget){const target=state.trainingTargets.find(t=>t.id===targetId&&t.alive);if(!target)continue;target.hp-=damage;soundHit();$('hit-marker').classList.remove('hidden');setTimeout(()=>$('hit-marker').classList.add('hidden'),100);if(target.hp<=0){target.hp=0;target.alive=false;const isDummy=target.id.startsWith('practice-dummy-');target.respawnAt=Date.now()+(isDummy?5000:3000);target.fallenAt=isDummy?performance.now():0;target.fallDirection=(target.root.position.x-state.pos.x)>=0?1:-1;unregisterTarget(target.id);if(isDummy){restoreCharacterHitFlash(target.root);const skinId=state.account?.equippedSkins?.[state.currentWeapon]||null;if(skinId&&getStoreSkin(skinId)?.killEffect){spawnSkinKillEffect({skinId,victim:{x:target.root.position.x,y:target.root.position.y,z:target.root.position.z}});if(skinId==='prime_knife'||skinId==='prime_sniper')beginPrimeGoldDissolve(target.root);else if(getStoreSkin(skinId)?.killEffect==='oni-stab-dissolve')beginOniDissolve(target.root);else if(getStoreSkin(skinId)?.killEffect==='ghost-lift')beginGhostLift(target.root);else {target.root.userData.killFallAt=performance.now();target.root.userData.killFallStartZ=target.root.rotation.z;target.root.userData.killFallStartY=target.root.position.y;target.root.userData.killFallDirection=target.fallDirection;}}else{target.root.userData.killFallAt=performance.now();target.root.userData.killFallStartZ=target.root.rotation.z;target.root.userData.killFallStartY=target.root.position.y;target.root.userData.killFallDirection=target.fallDirection;}}else target.root.visible=false;void awardTrainingXP();soundKill();$('kill-banner').innerHTML=`${target.name.toUpperCase()} RESET <small>RESPAWN ${isDummy?5:3} SEC · +10 XP</small>`;$('kill-banner').classList.remove('hidden');setTimeout(()=>$('kill-banner').classList.add('hidden'),900);}}
@@ -2126,6 +2143,7 @@ function setupEvents(){
   document.querySelectorAll('[data-lobby-tab]').forEach(b=>b.addEventListener('click',()=>setLobbyPage(b.dataset.lobbyTab)));
   document.querySelectorAll('[data-account-mode]').forEach(b=>b.addEventListener('click',()=>{state.accountMode=b.dataset.accountMode;accountMessage('account-auth-message',state.accountMode==='register'?'아이디와 비밀번호를 입력해 가입하세요.':'가입한 아이디와 비밀번호로 로그인하세요.');renderAccountPanel();}));
   $('account-auth-form')?.addEventListener('submit',submitAccountAuth);$('account-logout')?.addEventListener('click',logoutAccount);$('account-cosmetics-save')?.addEventListener('click',saveAccountCosmetics);
+  $('account-perfect-shot-toggle')?.addEventListener('change',event=>void setPerfectShotEnabled(event.target.checked));
   $('store-code-form')?.addEventListener('submit',redeemStoreCode);
   $('store-roll-button')?.addEventListener('click',rollStoreSkin);
   $('gacha-finish')?.addEventListener('click',closeGacha);$('gacha-close')?.addEventListener('click',closeGacha);
