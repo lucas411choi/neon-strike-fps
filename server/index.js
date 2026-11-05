@@ -46,6 +46,34 @@ function parseJsonValue(value, fallback) {
   if (Array.isArray(value) || (typeof value === 'object' && value !== null)) return value;
   try { return JSON.parse(String(value)); } catch { return fallback; }
 }
+function normalizeRepeatQuestProgress(value) {
+  const parsed = parseJsonValue(value, {});
+  return {
+    pistolKills: Math.max(0, Math.floor(Number(parsed?.pistolKills) || 0)) % 6,
+    knifeInspects: Math.max(0, Math.floor(Number(parsed?.knifeInspects) || 0)) % 100,
+  };
+}
+const REPEAT_QUEST_RULES = Object.freeze({
+  pistolKills: { target: 6, reward: 67 },
+  knifeInspects: { target: 100, reward: 15 },
+});
+async function incrementRepeatQuest(accountId, questId, amount = 1) {
+  const rule = REPEAT_QUEST_RULES[questId];
+  if (!rule || !accountId) return null;
+  return mutateAccountState(accountId, model => {
+    const progress = normalizeRepeatQuestProgress(model.repeatQuestProgress);
+    progress[questId] += Math.max(1, Math.min(10, Math.floor(Number(amount) || 1)));
+    let completions = 0;
+    while (progress[questId] >= rule.target) {
+      progress[questId] -= rule.target;
+      model.neonPoints += rule.reward;
+      completions += 1;
+    }
+    model.repeatQuestProgress = progress;
+    return { ok: true, questId, progress: progress[questId], target: rule.target, completions, reward: completions * rule.reward };
+  });
+}
+
 function normalizeAccountPublic(row) {
   if (!row) return null;
   const level = Math.max(1, Number(row.level) || 1);
@@ -55,6 +83,7 @@ function normalizeAccountPublic(row) {
     ownedSkins: parseJsonValue(row.owned_skins ?? row.ownedSkins, []),
     equippedSkins: parseJsonValue(row.equipped_skins ?? row.equippedSkins, {}),
     trainingQuestProgress: Math.max(0, Number(row.training_quest_progress ?? row.trainingQuestProgress) || 0),
+    repeatQuestProgress: normalizeRepeatQuestProgress(row.repeat_quest_progress ?? row.repeatQuestProgress),
     ownedProfiles: parseJsonValue(row.owned_profiles ?? row.ownedProfiles, ['default']),
     ownedNameColors: parseJsonValue(row.owned_name_colors ?? row.ownedNameColors, ['default']),
     profileId: String(row.profile_id ?? row.profileId ?? 'default'),
@@ -68,6 +97,7 @@ function accountStoreModel(row) {
     ownedSkins: parseJsonValue(row.owned_skins ?? row.ownedSkins, []),
     equippedSkins: parseJsonValue(row.equipped_skins ?? row.equippedSkins, {}),
     trainingQuestProgress: Math.max(0, Number(row.training_quest_progress ?? row.trainingQuestProgress) || 0),
+    repeatQuestProgress: normalizeRepeatQuestProgress(row.repeat_quest_progress ?? row.repeatQuestProgress),
     redeemedCodes: parseJsonValue(row.redeemed_codes ?? row.redeemedCodes, []),
     dailyShopIds: parseJsonValue(row.daily_shop_ids ?? row.dailyShopIds, []),
     dailyShopExpiresAt: row.daily_shop_expires_at ?? row.dailyShopExpiresAt ?? null,
@@ -112,6 +142,7 @@ async function initializeAccountStorage() {
         owned_skins JSONB NOT NULL DEFAULT '[]'::jsonb,
         equipped_skins JSONB NOT NULL DEFAULT '{}'::jsonb,
         training_quest_progress INTEGER NOT NULL DEFAULT 0 CHECK (training_quest_progress >= 0 AND training_quest_progress < 67),
+        repeat_quest_progress JSONB NOT NULL DEFAULT '{"pistolKills":0,"knifeInspects":0}'::jsonb,
         redeemed_codes JSONB NOT NULL DEFAULT '[]'::jsonb,
         daily_shop_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
         daily_shop_expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -122,6 +153,7 @@ async function initializeAccountStorage() {
       ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS owned_skins JSONB NOT NULL DEFAULT '[]'::jsonb;
       ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS equipped_skins JSONB NOT NULL DEFAULT '{}'::jsonb;
       ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS training_quest_progress INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS repeat_quest_progress JSONB NOT NULL DEFAULT '{"pistolKills":0,"knifeInspects":0}'::jsonb;
       ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS redeemed_codes JSONB NOT NULL DEFAULT '[]'::jsonb;
       ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS daily_shop_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
       ALTER TABLE ns_accounts ADD COLUMN IF NOT EXISTS daily_shop_expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
@@ -161,6 +193,7 @@ async function initializeAccountStorage() {
         account.owned_skins = parseJsonValue(account.owned_skins ?? account.ownedSkins, []);
         account.equipped_skins = parseJsonValue(account.equipped_skins ?? account.equippedSkins, {});
         account.training_quest_progress = Math.max(0, Number(account.training_quest_progress ?? account.trainingQuestProgress) || 0) % TRAINING_QUEST_TARGET;
+        account.repeat_quest_progress = normalizeRepeatQuestProgress(account.repeat_quest_progress ?? account.repeatQuestProgress);
         account.redeemed_codes = parseJsonValue(account.redeemed_codes ?? account.redeemedCodes, []);
         account.daily_shop_ids = parseJsonValue(account.daily_shop_ids ?? account.dailyShopIds, []);
         account.daily_shop_expires_at = account.daily_shop_expires_at ?? account.dailyShopExpiresAt ?? null;
@@ -177,7 +210,7 @@ async function initializeAccountStorage() {
 }
 async function findAccountByUsername(username) {
   if (authPool) {
-    const result = await authPool.query('SELECT id, username, password_salt, password_hash, level, xp, neon_points, owned_skins, equipped_skins, training_quest_progress, redeemed_codes,owned_profiles,owned_name_colors,profile_id,name_color FROM ns_accounts WHERE username=$1 LIMIT 1', [username]);
+    const result = await authPool.query('SELECT id, username, password_salt, password_hash, level, xp, neon_points, owned_skins, equipped_skins, training_quest_progress, repeat_quest_progress, redeemed_codes,owned_profiles,owned_name_colors,profile_id,name_color FROM ns_accounts WHERE username=$1 LIMIT 1', [username]);
     return result.rows[0] || null;
   }
   return localAuth.accounts.find(row => row.username === username) || null;
@@ -185,7 +218,7 @@ async function findAccountByUsername(username) {
 async function insertAccount(username, passwordSalt, passwordHash) {
   if (authPool) {
     const result = await authPool.query(
-      `INSERT INTO ns_accounts (username,password_salt,password_hash,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,redeemed_codes) VALUES ($1,$2,$3,1,0,0,'[]'::jsonb,'{}'::jsonb,0,'[]'::jsonb) RETURNING id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress`,
+      `INSERT INTO ns_accounts (username,password_salt,password_hash,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,repeat_quest_progress,redeemed_codes) VALUES ($1,$2,$3,1,0,0,'[]'::jsonb,'{}'::jsonb,0,'{"pistolKills":0,"knifeInspects":0}'::jsonb,'[]'::jsonb) RETURNING id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,repeat_quest_progress`,
       [username,passwordSalt,passwordHash]
     );
     return result.rows[0];
@@ -193,7 +226,7 @@ async function insertAccount(username, passwordSalt, passwordHash) {
   if (localAuth.accounts.some(row => row.username === username)) {
     const error = new Error('duplicate username'); error.code = '23505'; throw error;
   }
-  const account = { id: localAuth.nextId++, username, password_salt: passwordSalt, password_hash: passwordHash, level: 1, xp: 0, neon_points: 0, owned_skins: [], equipped_skins: {}, training_quest_progress: 0, redeemed_codes: [], daily_shop_ids: [], daily_shop_expires_at: null, owned_profiles:['default'], owned_name_colors:['default'], profile_id:'default', name_color:'default', created_at: new Date().toISOString() };
+  const account = { id: localAuth.nextId++, username, password_salt: passwordSalt, password_hash: passwordHash, level: 1, xp: 0, neon_points: 0, owned_skins: [], equipped_skins: {}, training_quest_progress: 0, repeat_quest_progress:{pistolKills:0,knifeInspects:0}, redeemed_codes: [], daily_shop_ids: [], daily_shop_expires_at: null, owned_profiles:['default'], owned_name_colors:['default'], profile_id:'default', name_color:'default', created_at: new Date().toISOString() };
   localAuth.accounts.push(account); await persistLocalAuth(); return account;
 }
 async function createAuthSession(accountId) {
@@ -209,7 +242,7 @@ async function accountForToken(token) {
   const tokenHash = hashSessionToken(token);
   if (authPool) {
     const result = await authPool.query(
-      `SELECT a.id,a.username,a.level,a.xp,a.neon_points,a.owned_skins,a.equipped_skins,a.training_quest_progress,a.daily_shop_ids,a.daily_shop_expires_at,a.owned_profiles,a.owned_name_colors,a.profile_id,a.name_color FROM ns_sessions s JOIN ns_accounts a ON a.id=s.account_id WHERE s.token_hash=$1 AND s.expires_at>NOW() LIMIT 1`,
+      `SELECT a.id,a.username,a.level,a.xp,a.neon_points,a.owned_skins,a.equipped_skins,a.training_quest_progress,a.repeat_quest_progress,a.daily_shop_ids,a.daily_shop_expires_at,a.owned_profiles,a.owned_name_colors,a.profile_id,a.name_color FROM ns_sessions s JOIN ns_accounts a ON a.id=s.account_id WHERE s.token_hash=$1 AND s.expires_at>NOW() LIMIT 1`,
       [tokenHash]
     );
     return result.rows[0] || null;
@@ -241,10 +274,10 @@ async function awardAccountXP(accountId, amount) {
     const client = await authPool.connect();
     try {
       await client.query('BEGIN');
-      const result = await client.query('SELECT id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,owned_profiles,owned_name_colors,profile_id,name_color FROM ns_accounts WHERE id=$1 FOR UPDATE', [accountId]);
+      const result = await client.query('SELECT id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,repeat_quest_progress,owned_profiles,owned_name_colors,profile_id,name_color FROM ns_accounts WHERE id=$1 FOR UPDATE', [accountId]);
       if (!result.rows.length) { await client.query('ROLLBACK'); return null; }
       const progression = applyExperienceProgress(result.rows[0].level, result.rows[0].xp, award);
-      const updated = await client.query('UPDATE ns_accounts SET level=$2,xp=$3,updated_at=NOW() WHERE id=$1 RETURNING id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,owned_profiles,owned_name_colors,profile_id,name_color', [accountId,progression.level,progression.xp]);
+      const updated = await client.query('UPDATE ns_accounts SET level=$2,xp=$3,updated_at=NOW() WHERE id=$1 RETURNING id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,repeat_quest_progress,owned_profiles,owned_name_colors,profile_id,name_color', [accountId,progression.level,progression.xp]);
       await client.query('COMMIT');
       return normalizeAccountPublic(updated.rows[0]);
     } catch (error) { try { await client.query('ROLLBACK'); } catch {} throw error; }
@@ -264,7 +297,7 @@ async function mutateAccountState(accountId, mutator) {
     try {
       await client.query('BEGIN');
       const result = await client.query(
-        'SELECT id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,redeemed_codes,daily_shop_ids,daily_shop_expires_at,owned_profiles,owned_name_colors,profile_id,name_color FROM ns_accounts WHERE id=$1 FOR UPDATE',
+        'SELECT id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,repeat_quest_progress,redeemed_codes,daily_shop_ids,daily_shop_expires_at,owned_profiles,owned_name_colors,profile_id,name_color FROM ns_accounts WHERE id=$1 FOR UPDATE',
         [accountId]
       );
       if (!result.rows.length) { await client.query('ROLLBACK'); return { ok:false, status:404, error:'계정을 찾을 수 없습니다.' }; }
@@ -272,9 +305,9 @@ async function mutateAccountState(accountId, mutator) {
       const outcome = mutator(model) || { ok:true };
       if (!outcome.ok) { await client.query('ROLLBACK'); return outcome; }
       const updated = await client.query(
-        `UPDATE ns_accounts SET level=$2,xp=$3,neon_points=$4,owned_skins=$5::jsonb,equipped_skins=$6::jsonb,training_quest_progress=$7,redeemed_codes=$8::jsonb,daily_shop_ids=$9::jsonb,daily_shop_expires_at=$10,owned_profiles=$11::jsonb,owned_name_colors=$12::jsonb,profile_id=$13,name_color=$14,updated_at=NOW()
-         WHERE id=$1 RETURNING id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,owned_profiles,owned_name_colors,profile_id,name_color`,
-        [accountId,model.level,model.xp,model.neonPoints,JSON.stringify(model.ownedSkins),JSON.stringify(model.equippedSkins),model.trainingQuestProgress,JSON.stringify(model.redeemedCodes),JSON.stringify(model.dailyShopIds||[]),model.dailyShopExpiresAt||new Date(0).toISOString(),JSON.stringify(model.ownedProfiles||['default']),JSON.stringify(model.ownedNameColors||['default']),model.profileId||'default',model.nameColor||'default']
+        `UPDATE ns_accounts SET level=$2,xp=$3,neon_points=$4,owned_skins=$5::jsonb,equipped_skins=$6::jsonb,training_quest_progress=$7,redeemed_codes=$8::jsonb,daily_shop_ids=$9::jsonb,daily_shop_expires_at=$10,owned_profiles=$11::jsonb,owned_name_colors=$12::jsonb,profile_id=$13,name_color=$14,repeat_quest_progress=$15::jsonb,updated_at=NOW()
+         WHERE id=$1 RETURNING id,username,level,xp,neon_points,owned_skins,equipped_skins,training_quest_progress,repeat_quest_progress,owned_profiles,owned_name_colors,profile_id,name_color`,
+        [accountId,model.level,model.xp,model.neonPoints,JSON.stringify(model.ownedSkins),JSON.stringify(model.equippedSkins),model.trainingQuestProgress,JSON.stringify(model.redeemedCodes),JSON.stringify(model.dailyShopIds||[]),model.dailyShopExpiresAt||new Date(0).toISOString(),JSON.stringify(model.ownedProfiles||['default']),JSON.stringify(model.ownedNameColors||['default']),model.profileId||'default',model.nameColor||'default',JSON.stringify(model.repeatQuestProgress||{pistolKills:0,knifeInspects:0})]
       );
       await client.query('COMMIT');
       return { ...outcome, ok:true, account:normalizeAccountPublic(updated.rows[0]) };
@@ -291,7 +324,7 @@ async function mutateAccountState(accountId, mutator) {
   Object.assign(row, {
     level:model.level, xp:model.xp, neon_points:model.neonPoints,
     owned_skins:model.ownedSkins, equipped_skins:model.equippedSkins,
-    training_quest_progress:model.trainingQuestProgress, redeemed_codes:model.redeemedCodes,
+    training_quest_progress:model.trainingQuestProgress, repeat_quest_progress:model.repeatQuestProgress, redeemed_codes:model.redeemedCodes,
     daily_shop_ids:model.dailyShopIds||[], daily_shop_expires_at:model.dailyShopExpiresAt||null,
     owned_profiles:model.ownedProfiles||['default'], owned_name_colors:model.ownedNameColors||['default'],
     profile_id:model.profileId||'default', name_color:model.nameColor||'default',
@@ -409,6 +442,23 @@ app.post('/api/account/xp', async (req, res) => {
     if (!result.ok) return res.status(result.status || 500).json({ error:result.error || '경험치 저장에 실패했습니다.' });
     res.json({ account:result.account, awardedXP:result.awardedXP, questProgress:result.questProgress, questTarget:result.questTarget, questReward:result.questReward, questCompletions:result.questCompletions, reason:result.reason });
   } catch (error) { console.error('[accounts] training XP/quest failed:', error?.message || error); res.status(500).json({ error: 'XP 저장에 실패했습니다.' }); }
+});
+
+
+app.post('/api/quests/training-knife-inspect', async (req, res) => {
+  if (apiStorageUnavailable(res)) return;
+  if (req.body?.reason !== 'training_knife_inspect') return res.status(400).json({ error: '잘못된 퀘스트 진행 요청입니다.' });
+  if (!accountRateAllowed(req, 'quest-knife-inspect', 240, 60_000)) return res.status(429).json({ error: '관찰 퀘스트 요청이 너무 많습니다. 잠시 후 다시 시도하세요.' });
+  try {
+    const account = await accountForToken(getRequestToken(req));
+    if (!account) return accountRequiredMessage(res);
+    const result = await incrementRepeatQuest(account.id, 'knifeInspects', 1);
+    if (!result?.ok) return res.status(result?.status || 500).json({ error: result?.error || '관찰 퀘스트 진행도를 저장하지 못했습니다.' });
+    res.json({ account: result.account, questId: result.questId, progress: result.progress, target: result.target, completions: result.completions, reward: result.reward });
+  } catch (error) {
+    console.error('[quests] knife inspect progress failed:', error?.message || error);
+    res.status(500).json({ error: '관찰 퀘스트 진행도를 저장하지 못했습니다.' });
+  }
 });
 
 app.get('/api/store/state', async (req, res) => {
@@ -1000,6 +1050,14 @@ io.on('connection', socket => {
     room.hasStarted=true;io.to(room.code).emit('matchStarting',{map:room.map,mode:room.mode,teamMode:room.teamMode,hostId:room.hostId});beginRound(room);
   });
   socket.on('resumeRoom', payload => resumePlayer(socket,payload));
+  socket.on('weaponInspect', payload => {
+    const room=rooms.get(socket.data.roomCode);const player=playerById(room,socket.id);
+    if(!room||!player||player.connected===false||!['live','buy'].includes(room.phase))return;
+    const weaponId=String(payload?.weaponId||'');const skinId=String(payload?.skinId||'');
+    if(weaponId!=='sniper'||player.weapon!=='sniper'||skinId!=='prime_sniper'||player.equippedSkins?.sniper!=='prime_sniper')return;
+    const now=Date.now();if(now-(player.lastInspectAt||0)<900)return;player.lastInspectAt=now;
+    io.to(room.code).emit('weaponInspect',{id:socket.id,weaponId,skinId,startedAt:now});
+  });
   socket.on('move', payload => {
     const room=rooms.get(socket.data.roomCode);const p=playerById(room,socket.id);if(!p||p.connected===false||!payload)return;
     const x=Number(payload.x),y=Number(payload.y??0),z=Number(payload.z),yaw=Number(payload.yaw),pitch=Number(payload.pitch);
@@ -1144,6 +1202,13 @@ io.on('connection', socket => {
       if(killed){
         const skinId=shooter.equippedSkins?.[shooter.weapon]||null;
         emitKillPresentation(room,socket.id,hit.id,skinId);
+        if (id === 'pistol' && shooter.accountId) {
+          void incrementRepeatQuest(shooter.accountId, 'pistolKills', 1).then(progress => {
+            if (!progress?.ok || !progress.account) return;
+            socket.emit('accountUpdated', { account: progress.account });
+            if (progress.completions > 0) socket.emit('questReward', { questId: 'pistolKills', reward: progress.reward, completions: progress.completions, account: progress.account });
+          }).catch(error => console.warn('[quests] pistol kill progress failed:', error?.message || error));
+        }
         finalKillInfo={victimId:hit.id,skinId};
         if(!isTeamsMode(room)||![...room.players.values()].some(player=>player.team===t.team&&player.hp>0)){
           endRound(room,socket.id,`${shooter.name} 처치 성공`,finalKillInfo);
